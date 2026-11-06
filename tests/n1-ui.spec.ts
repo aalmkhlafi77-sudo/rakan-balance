@@ -3,12 +3,14 @@ import { expect, test } from '@playwright/test';
 test('inter-account transfer can be created, edited and deleted in isolated demo workspace', async ({ page }) => {
   page.setDefaultTimeout(7000);
   await page.goto('/');
-  await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
-  await expect(page.getByText('وضع المعاينة التجريبية')).toBeVisible();
-
   const isMobile = page.viewportSize()!.width < 1024;
   if (isMobile) {
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
+  }
+  await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
+  await expect(page.getByText('وضع المعاينة التجريبية')).toBeVisible();
+
+  if (isMobile) {
     await page.getByRole('navigation').getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
     await page.getByRole('button', { name: 'حركة بينية (نقل مديونية)', exact: true }).click();
   } else {
