@@ -5,6 +5,7 @@ import 'package:rakan_balance_mobile/data/sqlite/database_helper.dart';
 import 'package:rakan_balance_mobile/data/sqlite/sqlite_storage_adapter.dart';
 import 'package:rakan_balance_mobile/data/sqlite/tables_schema.dart';
 import 'package:rakan_balance_mobile/domain/financial/inter_account_transfer_engine.dart';
+import 'package:rakan_balance_mobile/domain/financial/balance_calculator.dart';
 import 'package:rakan_balance_mobile/domain/financial/money_utils.dart';
 import 'package:rakan_balance_mobile/domain/models/account_model.dart';
 import 'package:rakan_balance_mobile/domain/models/due_item_model.dart';
@@ -58,6 +59,47 @@ void main() {
     test('date rejects calendar overflow', () {
       expect(MoneyUtils.isValidDateString('2026-02-30'), false);
       expect(MoneyUtils.isValidDateString('2026-02-28'), true);
+    });
+  });
+
+  group('N3.2 web parity - balance and statement', () {
+    test('reference example: opening at final transaction date and closing', () {
+      final account = _account('ref', 20000);
+      final txs = [
+        _tx('one', 'ref', EntryType.owedByAccount, 15000),
+        _tx('two', 'ref', EntryType.owedToAccount, 8000),
+        _tx('three', 'ref', EntryType.owedToAccount, 30000),
+      ];
+      // Earlier entries have explicit preceding dates.
+      final ordered = [
+        TransactionModel(id: 'one', accountId: 'ref', entryType: EntryType.owedByAccount,
+          amountMinor: 15000, date: '2026-11-01', description: '',
+          attachmentIds: const [], createdAt: '', updatedAt: ''),
+        TransactionModel(id: 'two', accountId: 'ref', entryType: EntryType.owedToAccount,
+          amountMinor: 8000, date: '2026-11-02', description: '',
+          attachmentIds: const [], createdAt: '', updatedAt: ''),
+        TransactionModel(id: 'three', accountId: 'ref', entryType: EntryType.owedToAccount,
+          amountMinor: 30000, date: '2026-11-04', description: '',
+          attachmentIds: const [], createdAt: '', updatedAt: ''),
+      ];
+      expect(txs.length, 3);
+      final statement = BalanceCalculator.calculateAccountStatement(
+        account: account, transactions: ordered,
+        fromDate: '2026-11-04', toDate: '2026-11-04');
+      expect(statement.openingBalanceMinor, 27000);
+      expect(statement.closingBalanceMinor, -3000);
+      expect(statement.rows.single.runningBalanceMinor, -3000);
+    });
+    test('stable statement sort includes date, createdAt and ID', () {
+      final txs = [
+        _tx('z', 'ref', EntryType.owedByAccount, 200),
+        _tx('a', 'ref', EntryType.owedByAccount, 100),
+      ];
+      final statement = BalanceCalculator.calculateAccountStatement(
+        account: _account('ref', 0), transactions: txs);
+      expect(statement.rows.map((row) => row.transaction.id).toList(), ['a', 'z']);
+      expect(statement.totalOwedByMinor, 300);
+      expect(statement.closingBalanceMinor, 300);
     });
   });
 
