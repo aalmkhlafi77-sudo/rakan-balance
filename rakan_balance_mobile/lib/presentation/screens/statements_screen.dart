@@ -31,7 +31,7 @@ class _StatementsScreenState extends State<StatementsScreen> {
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'اختر الحساب لاستعراض كشف الحساب'),
-            value: _selectedAccountId,
+            initialValue: _selectedAccountId,
             items: state.accounts.map((a) {
               return DropdownMenuItem(value: a.id, child: Text(a.name));
             }).toList(),
