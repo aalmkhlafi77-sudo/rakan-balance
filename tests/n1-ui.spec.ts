@@ -38,9 +38,6 @@ test('account-private notes only appear in account details, not account search',
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   }
   await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
-  if (page.viewportSize()!.width < 1024) {
-    await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
-  }
   await page.getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
 
   const secret = 'ملاحظة-خصوصية-للاختبار-التفاعلي-2026';
