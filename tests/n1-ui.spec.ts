@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('inter-account transfer can be created, edited and deleted in isolated demo workspace', async ({ page }) => {
+  page.setDefaultTimeout(7000);
   await page.goto('/');
   await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
   await expect(page.getByText('وضع المعاينة التجريبية')).toBeVisible();
