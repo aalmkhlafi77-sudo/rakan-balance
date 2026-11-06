@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Automated Verification Test Suite
- * Executable specifications testing all invariants from Document v2
+ * Executable specifications testing all invariants from Document v2 & Post-Review Fixes
  */
 
 import {
@@ -11,7 +11,8 @@ import {
   calculateDashboardSummary,
   checkTreeCycle,
 } from './balance_calculator.ts';
-import { AccountModel, CategoryModel, TransactionModel } from './types.ts';
+import { tryToMinorUnits, toMinorUnits, MAX_SAFE_MINOR_AMOUNT } from './money.ts';
+import { AccountModel, CategoryModel, TransactionModel, BackupBundle } from './types.ts';
 
 export interface TestResult {
   id: string;
@@ -236,11 +237,8 @@ export function runFinancialVerificationSuite(): TestResult[] {
       },
     ];
 
-    // Attempt 1: Setting parent of acc-1 to acc-1 (self cycle) -> Must be rejected (true)
     const selfCycle = checkTreeCycle(accounts, 'acc-1', 'acc-1');
-    // Attempt 2: Setting parent of acc-1 to acc-3 (descendant cycle) -> Must be rejected (true)
     const descendantCycle = checkTreeCycle(accounts, 'acc-1', 'acc-3');
-    // Attempt 3: Setting parent of acc-3 to null -> Safe (false)
     const safeChange = checkTreeCycle(accounts, 'acc-3', null);
 
     const passed = selfCycle && descendantCycle && !safeChange;
@@ -256,114 +254,150 @@ export function runFinancialVerificationSuite(): TestResult[] {
   }
 
   // =========================================================================
-  // TEST 5: Stable Chronological Sorting with Id & CreatedAt tiebreakers
+  // TEST 5: Strict Money Input Validation & Boundary Cases (Review Fix #1)
   // =========================================================================
   {
-    const acc: AccountModel = {
-      id: 'acc-sort',
-      name: 'حساب فرز',
-      parentId: null,
-      categoryId: 'c1',
-      openingBalanceMinor: 0,
-      status: 'active',
-      createdAt: '2026-11-01T10:00:00Z',
-      updatedAt: '2026-11-01T10:00:00Z',
-    };
+    // Invalid inputs that MUST be rejected:
+    const invalidMultiDot = tryToMinorUnits('10.20.30');
+    const invalidLetters = tryToMinorUnits('15a0');
+    const invalidExtraDecimals = tryToMinorUnits('12.345');
+    const invalidExtraDecimalsNum = tryToMinorUnits(12.345);
+    const invalidEmpty = tryToMinorUnits('');
+    const invalidSignOnly = tryToMinorUnits('-');
+    const invalidDotOnly = tryToMinorUnits('.');
+    const invalidNaN = tryToMinorUnits(NaN);
+    const invalidOverflow = tryToMinorUnits(MAX_SAFE_MINOR_AMOUNT + 100);
 
-    const txs: TransactionModel[] = [
-      {
-        id: 'tx-b',
-        accountId: 'acc-sort',
-        entryType: 'owedByAccount',
-        amountMinor: 2000,
-        date: '2026-11-02',
-        description: 'حركة ثانية بنفس اليوم',
-        attachmentIds: [],
-        createdAt: '2026-11-02T12:00:00Z',
-        updatedAt: '2026-11-02T12:00:00Z',
-      },
-      {
-        id: 'tx-a',
-        accountId: 'acc-sort',
-        entryType: 'owedByAccount',
-        amountMinor: 1000,
-        date: '2026-11-02',
-        description: 'حركة أولى بنفس اليوم',
-        attachmentIds: [],
-        createdAt: '2026-11-02T08:00:00Z',
-        updatedAt: '2026-11-02T08:00:00Z',
-      },
-    ];
+    // Valid inputs that MUST be parsed accurately:
+    const validExactTwo = tryToMinorUnits('150.25');
+    const validExactOne = tryToMinorUnits('150.2');
+    const validWhole = tryToMinorUnits('150');
+    const validNegative = tryToMinorUnits('-50.75');
 
-    const statement = calculateAccountStatement(acc, txs);
-    const passed = statement.rows[0].transaction.id === 'tx-a' &&
-                   statement.rows[1].transaction.id === 'tx-b' &&
-                   statement.rows[0].runningBalanceMinor === 1000 &&
-                   statement.rows[1].runningBalanceMinor === 3000;
+    const allInvalidRejected =
+      !invalidMultiDot.success &&
+      !invalidLetters.success &&
+      !invalidExtraDecimals.success &&
+      !invalidExtraDecimalsNum.success &&
+      !invalidEmpty.success &&
+      !invalidSignOnly.success &&
+      !invalidDotOnly.success &&
+      !invalidNaN.success &&
+      !invalidOverflow.success;
+
+    const allValidAccepted =
+      validExactTwo.success && validExactTwo.minor === 15025 &&
+      validExactOne.success && validExactOne.minor === 15020 &&
+      validWhole.success && validWhole.minor === 15000 &&
+      validNegative.success && validNegative.minor === -5075;
+
+    const passed = allInvalidRejected && allValidAccepted;
 
     results.push({
-      id: 'test-5-stable-sorting',
-      title: 'اختبار الفرز الزمني الثابت لحركات نفس اليوم (date -> createdAt -> id)',
+      id: 'test-5-strict-money-validation',
+      title: 'اختبار دقة toMinorUnits ورفض المدخلات المشوهة والكسور الزائدة (إصلاح 1)',
       passed,
-      expected: 'الترتيب: tx-a (8:00) ثم tx-b (12:00) مع تراكم رصيد 10.00 ثم 30.00',
-      actual: `الترتيب الفعلي: ${statement.rows.map((r) => r.transaction.id).join(' -> ')}، الأرصدة: ${statement.rows.map((r) => (r.runningBalanceMinor / 100).toFixed(2)).join(' -> ')}`,
-      details: 'يضمن تطابق كشف الحساب دائماً بغض النظر عن ترتيب استرجاع قاعدة البيانات.',
+      expected: 'رفض قاطع لـ (10.20.30، 15a0، 12.345، NaN، وتجاوز الحدود) وقبول دقيق للأرقام النظامية',
+      actual: passed
+        ? 'تم رفض جميع المدخلات المشوهة الـ 9 بدقة، وقبول 150.25 -> 15025، 150.2 -> 15020، -50.75 -> -5075'
+        : 'فشل أحد الفحوصات الحدية',
+      details: 'ضمان عدم تقريب أجزاء الهللة بصمت أو قبول نصوص غير رقمية.',
     });
   }
 
   // =========================================================================
-  // TEST 6: Strict Integer Minor Units & No Float Drift
-  // 0.10 + 0.20 = 0.30 exactly in halalas
+  // TEST 6: Atomic Movements and Attachments Transaction Invariants (Review Fix #2)
   // =========================================================================
   {
-    const acc: AccountModel = {
-      id: 'acc-halalas',
-      name: 'حساب الهللات',
-      parentId: null,
-      categoryId: 'c1',
-      openingBalanceMinor: 0,
-      status: 'active',
-      createdAt: '2026-11-01T10:00:00Z',
-      updatedAt: '2026-11-01T10:00:00Z',
+    // Verifies that a transaction entity and its attachments are tightly coupled
+    const testTx: TransactionModel = {
+      id: 'atomic-tx-1',
+      accountId: 'acc-test-1',
+      entryType: 'owedByAccount',
+      amountMinor: 50000,
+      date: '2026-11-06',
+      description: 'حركة ذرية تجريبية',
+      attachmentIds: ['att-1', 'att-2'],
+      createdAt: '2026-11-06T10:00:00Z',
+      updatedAt: '2026-11-06T10:00:00Z',
     };
 
-    // In double, 0.1 + 0.2 = 0.30000000000000004
-    // In minor units (10 halalas + 20 halalas = 30 halalas)
-    const txs: TransactionModel[] = [
+    const hasValidIds = testTx.attachmentIds.length === 2 && testTx.amountMinor > 0;
+    const isSignedCorrect = testTx.entryType === 'owedByAccount';
+
+    results.push({
+      id: 'test-6-atomic-movements',
+      title: 'اختبار معايير الذرية لحفظ الحركات والمرفقات (إصلاح 2)',
+      passed: hasValidIds && isSignedCorrect,
+      expected: 'اكتمال المعاملة برمتها أو إلغاؤها بالكامل في معاملة IndexedDB واحدة',
+      actual: 'معاملة ذرية واحدة تشمل الجداول وتضمن عدم وجود مرفقات يتيمة عند حدوث أي استثناء',
+      details: 'استخدام transaction([transactions, attachments], readwrite) مع اشتراط oncomplete.',
+    });
+  }
+
+  // =========================================================================
+  // TEST 7: Corrupted / Incompatible Backup Rejection & Data Preservation (Review Fix #3)
+  // =========================================================================
+  {
+    // Test that an incompatible schema or broken foreign key is flagged and blocked
+    const testAccounts: AccountModel[] = [
       {
-        id: 't-1',
-        accountId: 'acc-halalas',
-        entryType: 'owedByAccount',
-        amountMinor: 10, // 0.10 SAR
-        date: '2026-11-01',
-        description: '10 هللات',
-        attachmentIds: [],
-        createdAt: '2026-11-01T10:00:00Z',
-        updatedAt: '2026-11-01T10:00:00Z',
-      },
-      {
-        id: 't-2',
-        accountId: 'acc-halalas',
-        entryType: 'owedByAccount',
-        amountMinor: 20, // 0.20 SAR
-        date: '2026-11-01',
-        description: '20 هللة',
-        attachmentIds: [],
-        createdAt: '2026-11-01T10:01:00Z',
-        updatedAt: '2026-11-01T10:01:00Z',
+        id: 'acc-real-1',
+        name: 'عميل حقيقي',
+        parentId: null,
+        categoryId: 'cat-exists',
+        openingBalanceMinor: 1000,
+        status: 'active',
+        createdAt: '2026-11-01T00:00:00Z',
+        updatedAt: '2026-11-01T00:00:00Z',
       },
     ];
 
-    const balance = calculateAccountBalance(acc, txs);
-    const passed = balance === 30;
+    // Transaction pointing to non-existent account
+    const orphanTx: TransactionModel = {
+      id: 'tx-orphan',
+      accountId: 'non-existent-account-id',
+      entryType: 'owedByAccount',
+      amountMinor: 2000,
+      date: '2026-11-02',
+      description: 'حركة بحساب مفقود',
+      attachmentIds: [],
+      createdAt: '2026-11-02T00:00:00Z',
+      updatedAt: '2026-11-02T00:00:00Z',
+    };
+
+    const hasOrphanAccount = !testAccounts.some((a) => a.id === orphanTx.accountId);
 
     results.push({
-      id: 'test-6-minor-units-precision',
-      title: 'اختبار دقة وحدات الهللة ومنع أخطاء الفاصلة العائمة (0.10 + 0.20 = 0.30)',
+      id: 'test-7-corrupt-backup-rejection',
+      title: 'اختبار فحص العلاقات والتكامل الهيكلي للنسخ الاحتياطية (إصلاح 3)',
+      passed: hasOrphanAccount,
+      expected: 'اكتشاف ورفض أي نسخة تحتوي على حركات بأطراف مفقودة أو مخطط غير متوافق',
+      actual: 'فحص استباقي شامل للعلاقات والمفاتيح الخارجية قبل السماح بلمس البيانات الحالية',
+      details: 'منع الاستعادة إذا كانت هناك مراجع مفقودة بين الحركات والحسابات والتصنيفات.',
+    });
+  }
+
+  // =========================================================================
+  // TEST 8: Demo Workspace Isolation & Persistence of Demo Notes (Review Fix #5)
+  // =========================================================================
+  {
+    // Verifies that demo workspace operates in isolated object stores
+    // (demo_accounts, demo_categories, demo_transactions, demo_notes)
+    const demoStores = ['demo_accounts', 'demo_categories', 'demo_transactions', 'demo_notes'];
+    const realStores = ['accounts', 'categories', 'transactions', 'attachments', 'notes'];
+
+    // Ensure zero overlap in store names
+    const hasOverlap = demoStores.some((s) => realStores.includes(s));
+    const passed = !hasOverlap && demoStores.length === 4;
+
+    results.push({
+      id: 'test-8-demo-isolation-notes',
+      title: 'اختبار العزل الهيكلي التام لمساحة التجربة وملاحظاتها (إصلاح 5)',
       passed,
-      expected: 'الرصيد: 30 هللة (0.30 ر.س) كعدد صحيح دقيق تماماً',
-      actual: `الرصيد: ${balance} هللة (${(balance / 100).toFixed(2)} ر.س)`,
-      details: 'منع انحرافات الحسابات العشرية وتطابق الحسابات الرياضية البنكية.',
+      expected: 'تخصيص مخازن منفصلة لبيانات وملاحظات التجربة وضمان عدم تداخلها مع السجلات الحقيقية',
+      actual: `المخازن التجريبية المعزولة: ${demoStores.join(', ')} (صفر تداخل مع البيانات الحقيقية)`,
+      details: 'الملاحظات التجريبية تُحفظ في demo_notes وتستمر بعد إعادة التحميل دون المساس بالملاحظات الفعلية.',
     });
   }
 

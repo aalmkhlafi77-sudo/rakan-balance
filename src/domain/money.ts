@@ -2,45 +2,141 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Precise Minor Units (Halalas) Financial Arithmetic
- * Follows Document v2 Section 3 & 4: Integer minor units to prevent float rounding errors.
+ * Follows Document v2 Section 3 & 4 & Review Fix #1:
+ * - Strictly accepts only valid numerical formats with at most 2 decimal places.
+ * - Explicitly rejects malformed inputs, multiple dots, letters, >2 decimal fractions, and unsafe integers.
+ * - Integer minor units prevent float rounding drift.
  */
+
+// Maximum supported financial minor units (100 Billion SAR in Halalas = 10,000,000,000,000 Halalas)
+// Well within JavaScript Number.MAX_SAFE_INTEGER (9,007,199,254,740,991)
+export const MAX_SAFE_MINOR_AMOUNT = 10_000_000_000_000;
+
+export interface MinorUnitsValidationResult {
+  success: boolean;
+  minor: number;
+  error?: string;
+}
 
 /**
- * Converts a decimal user input (e.g. 150.25 or "150.25") to integer minor units (15025 halalas)
- * Handles up to 2 decimal places with strict integer math.
+ * Validates and safely parses an input (number or string) into integer minor units (Halalas).
+ * Returns { success: true, minor } or { success: false, error }.
+ *
+ * Rules:
+ * 1. Must be finite, non-NaN, non-empty.
+ * 2. If string: exactly matches ^-?\d+(\.\d{1,2})?$ (no extra dots, letters, or >2 decimals).
+ * 3. Fractions exceeding 2 decimal digits are strictly rejected (e.g. 150.255, 0.001).
+ * 4. Must be a safe integer within [ -MAX_SAFE_MINOR_AMOUNT, MAX_SAFE_MINOR_AMOUNT ].
+ */
+export function tryToMinorUnits(value: number | string): MinorUnitsValidationResult {
+  if (value === null || value === undefined) {
+    return { success: false, minor: 0, error: 'المبلغ غير محدد.' };
+  }
+
+  let strVal: string;
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || Number.isNaN(value)) {
+      return { success: false, minor: 0, error: 'قيمة المبلغ الرقمي غير صالحة (NaN أو غير محدد).' };
+    }
+    // Check if number exceeds safe integer limit
+    if (Math.abs(value * 100) > MAX_SAFE_MINOR_AMOUNT) {
+      return { success: false, minor: 0, error: 'المبلغ يتجاوز الحد الأقصى المسموح به للنظام.' };
+    }
+    // Check if number representation has more than 2 decimal digits
+    // Format to 6 decimals to catch float precision like 10.001
+    const parts = value.toString().split('.');
+    if (parts.length > 1 && parts[1].length > 2) {
+      // Check if it's true fractional digits or just IEEE representation jitter
+      const rounded = Math.round(value * 100) / 100;
+      if (Math.abs(value - rounded) > 1e-9) {
+        return {
+          success: false,
+          minor: 0,
+          error: 'الكسور التي تتجاوز منزلتين عشريتين (أجزاء الهللة) غير مقبولة.',
+        };
+      }
+    }
+    strVal = value.toString();
+  } else if (typeof value === 'string') {
+    strVal = value.trim();
+  } else {
+    return { success: false, minor: 0, error: 'نوع بيانات المبلغ غير مدعوم.' };
+  }
+
+  // Reject empty string or standalone sign/dot
+  if (!strVal || strVal === '-' || strVal === '+' || strVal === '.') {
+    return { success: false, minor: 0, error: 'يرجى إدخال مبلغ مالي صالح.' };
+  }
+
+  // Strict regex: optional leading negative sign, one or more digits, optional dot with exactly 1 or 2 digits
+  // Rejects: "10.20.30", "15a0", "12.345", "--50", "10.", ".5" without leading 0, etc.
+  const strictPattern = /^-?\d+(\.\d{1,2})?$/;
+  if (!strictPattern.test(strVal)) {
+    // Provide specific diagnostic error
+    if (strVal.split('.').length > 2) {
+      return { success: false, minor: 0, error: 'المدخل مشوه: يحتوي على أكثر من علامة عشرية واحدة.' };
+    }
+    const decParts = strVal.split('.');
+    if (decParts.length === 2 && decParts[1].length > 2) {
+      return {
+        success: false,
+        minor: 0,
+        error: `الكسور التي تتجاوز منزلتين عشريتين غير مقبولة (${decParts[1].length} منازل).`,
+      };
+    }
+    return {
+      success: false,
+      minor: 0,
+      error: 'تنسيق المبلغ غير صالح. يرجى إدخال أرقام فقط مع منزلتين عشريتين كحد أقصى.',
+    };
+  }
+
+  // Split whole and fraction
+  const isNegative = strVal.startsWith('-');
+  const cleanStr = isNegative ? strVal.slice(1) : strVal;
+  const [wholeStr, fracStr = ''] = cleanStr.split('.');
+
+  const wholeNum = parseInt(wholeStr, 10);
+  if (!Number.isSafeInteger(wholeNum)) {
+    return { success: false, minor: 0, error: 'العدد الصحيح يتجاوز الحد الآمن للذاكرة.' };
+  }
+
+  let fracNum = 0;
+  if (fracStr.length === 1) {
+    fracNum = parseInt(fracStr, 10) * 10;
+  } else if (fracStr.length === 2) {
+    fracNum = parseInt(fracStr, 10);
+  }
+
+  const rawMinor = wholeNum * 100 + fracNum;
+
+  if (!Number.isSafeInteger(rawMinor) || rawMinor > MAX_SAFE_MINOR_AMOUNT) {
+    return { success: false, minor: 0, error: 'المبلغ المحسوب بالهللات يتجاوز الحد الآمن للنظام.' };
+  }
+
+  const minor = isNegative ? -rawMinor : rawMinor;
+  return { success: true, minor };
+}
+
+/**
+ * Converts a decimal user input (e.g. 150.25 or "150.25") to integer minor units (15025 halalas).
+ * Throws an Error on any invalid, malformed, or out-of-bounds input.
  */
 export function toMinorUnits(value: number | string): number {
-  if (typeof value === 'number') {
-    if (isNaN(value)) return 0;
-    // Round to avoid IEEE 754 precision issues like 150.25 * 100 = 15024.999999999998
-    return Math.round(value * 100);
+  const result = tryToMinorUnits(value);
+  if (!result.success) {
+    throw new Error(result.error);
   }
-
-  const sanitized = value.trim().replace(/[^\d.-]/g, '');
-  if (!sanitized || sanitized === '-' || sanitized === '.') return 0;
-
-  const parts = sanitized.split('.');
-  const wholePart = parseInt(parts[0] || '0', 10);
-  const isNegative = wholePart < 0 || sanitized.startsWith('-');
-
-  if (parts.length === 1) {
-    return wholePart * 100;
-  }
-
-  // Fraction up to 2 digits
-  let fractionPart = parts[1].slice(0, 2);
-  if (fractionPart.length === 1) fractionPart += '0';
-  const fractionNum = parseInt(fractionPart, 10);
-
-  const total = Math.abs(wholePart) * 100 + fractionNum;
-  return isNegative ? -total : total;
+  return result.minor;
 }
 
 /**
  * Converts integer minor units (15025 halalas) back to decimal number (150.25)
  */
 export function fromMinorUnits(minor: number): number {
-  return (minor || 0) / 100;
+  if (!Number.isFinite(minor)) return 0;
+  return minor / 100;
 }
 
 /**

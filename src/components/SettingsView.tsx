@@ -307,12 +307,32 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                مواصفات شيفرة Dart النقية (جاهزة لتطبيق Flutter)
+                مواصفات وتصدير شيفرة Dart النقية (Pure Domain Engine)
               </h3>
               <p className="text-[11px] text-slate-500">
-                فصل المنطق المالي وتمكينه من العمل على Android وiOS بدون إعادة اختراع القواعد
+                فصل المنطق المالي وتمكينه من العمل على Android وiOS بنفس القواعد الرياضية
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Flutter Porting Limits & Architectural Notice */}
+        <div className="mb-4 p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 text-xs text-blue-950 dark:text-blue-200 space-y-1.5">
+          <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-100">
+            <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+            <span>حدود التصدير الحالية ومتطلبات تطبيق الهاتف المحمول:</span>
+          </div>
+          <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
+            الشفرات البرمجية أدناه تمثل <strong>طبقة المنطق المالي النقي (Domain Layer)</strong> المكتوبة بلغة Dart (حساب الأرصدة، وقواعد الإشارات، ونماذج البيانات). هذه الشفرات جاهزة للنسخ مباشرة داخل مجلد <code className="font-mono bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 rounded">lib/domain/</code> في أي مشروع Flutter.
+          </p>
+          <div className="text-[11px] text-blue-800 dark:text-blue-300">
+            <strong>لإصدار تطبيق محمول متكامل (Android / iOS)، يتطلب مشروع Flutter إكمال:</strong>
+            <ul className="list-disc list-inside mt-1 space-y-0.5 pr-2">
+              <li>واجهات المستخدم (Flutter Widgets & Screens) بدلاً من مكونات الويب.</li>
+              <li>طبقة التخزين الموضعي للهاتف (مثل sqflite أو Hive بدلاً من IndexedDB).</li>
+              <li>إدارة الحالة في التطبيق (Riverpod أو Bloc أو Provider).</li>
+              <li>أذونات الكاميرا وتخزين الملفات للمرفقات الخاصة بنظامي Android وiOS.</li>
+            </ul>
           </div>
         </div>
 

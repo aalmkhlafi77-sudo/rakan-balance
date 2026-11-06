@@ -46,11 +46,13 @@ export const VerificationModal: React.FC = () => {
                   : 'bg-rose-100 text-rose-800'
               }`}
             >
-              {allPassed ? 'كافة الاختبارات ناجحة (6/6)' : 'توجد إخفاقات'}
+              {allPassed
+                ? `كافة الاختبارات ناجحة (${testResults.filter((t) => t.passed).length}/${testResults.length})`
+                : `توجد إخفاقات (${testResults.filter((t) => !t.passed).length})`}
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            التحقق البرمجي التلقائي من انضباط قواعد الرصيد والمعادلات الرياضية لوثيقة Blueprint v2
+            التحقق البرمجي التلقائي من انضباط قواعد الرصيد والمعادلات الرياضية وعمليات التخزين الذرية والنسخ وعزل الملاحظات التجريبية
           </p>
         </div>
 

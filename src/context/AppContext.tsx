@@ -130,25 +130,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoading(true);
     try {
       if (scope === 'demo') {
-        let [demoAccs, demoCats, demoTxs] = await Promise.all([
+        let [demoAccs, demoCats, demoTxs, demoNotes] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_DEMO.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_DEMO.CATEGORIES),
           dbStorage.getAll<TransactionModel>(STORES_DEMO.TRANSACTIONS),
+          dbStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES),
         ]);
 
         // Auto-seed demo workspace if empty
         if (!demoAccs || demoAccs.length === 0) {
-          await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS);
+          await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
           demoAccs = DEMO_ACCOUNTS;
           demoCats = INITIAL_CATEGORIES;
           demoTxs = DEMO_TRANSACTIONS;
+          demoNotes = DEMO_NOTES;
         }
 
         setAccounts(demoAccs);
         setCategories(demoCats);
         setTransactions(demoTxs);
         setAttachments([]);
-        setNotes(DEMO_NOTES);
+        setNotes(demoNotes || []);
       } else {
         // Real Workspace
         const [realAccs, realCats, realTxs, realAtts, realNotes] = await Promise.all([
@@ -277,7 +279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // =========================================================================
-  // Transaction Actions
+  // Transaction Actions (Atomic via IndexedDB Transaction - Review Fix #2)
   // =========================================================================
 
   const addTransaction = async (
@@ -300,18 +302,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const txId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const now = new Date().toISOString();
+    const isDemo = activeScope === 'demo';
+
+    // Prepare full attachments
+    const preparedAttachments: AttachmentModel[] = [];
     const attIds: string[] = [];
 
-    // Save attachments if any (only in real workspace)
-    if (newAttachments && newAttachments.length > 0 && activeScope === 'real') {
+    if (newAttachments && newAttachments.length > 0 && !isDemo) {
       for (const att of newAttachments) {
         const fullAtt: AttachmentModel = {
           ...att,
           transactionId: txId,
         };
-        await dbStorage.put(STORES_REAL.ATTACHMENTS, fullAtt);
+        preparedAttachments.push(fullAtt);
         attIds.push(fullAtt.id);
-        setAttachments((prev) => [...prev, fullAtt]);
       }
     }
 
@@ -319,14 +323,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...txData,
       id: txId,
       attachmentIds: attIds,
-      isDemo: activeScope === 'demo',
+      isDemo,
       createdAt: now,
       updatedAt: now,
     };
 
-    const targetStore = activeScope === 'demo' ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
-    await dbStorage.put(targetStore, newTx);
+    // Save atomically inside ONE transaction. Only updates state on transaction completion!
+    await dbStorage.saveTransactionAtomic(newTx, preparedAttachments, isDemo);
+
     setTransactions((prev) => [newTx, ...prev]);
+    if (preparedAttachments.length > 0) {
+      setAttachments((prev) => [...prev, ...preparedAttachments]);
+    }
+
     return txId;
   };
 
@@ -339,26 +348,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('يجب أن يكون مبلغ الحركة أكبر من صفر.');
     }
 
-    // Remove deleted attachments
-    if (removedAttachmentIds && removedAttachmentIds.length > 0 && activeScope === 'real') {
-      for (const attId of removedAttachmentIds) {
-        await dbStorage.delete(STORES_REAL.ATTACHMENTS, attId);
-      }
-      setAttachments((prev) => prev.filter((a) => !removedAttachmentIds.includes(a.id)));
-    }
-
-    // Add newly added attachments
+    const isDemo = activeScope === 'demo';
+    const toRemove = removedAttachmentIds || [];
+    const toAdd: AttachmentModel[] = [];
     const addedIds: string[] = [];
-    if (newAttachments && newAttachments.length > 0 && activeScope === 'real') {
+
+    if (newAttachments && newAttachments.length > 0 && !isDemo) {
       for (const att of newAttachments) {
-        await dbStorage.put(STORES_REAL.ATTACHMENTS, att);
-        addedIds.push(att.id);
-        setAttachments((prev) => [...prev, att]);
+        const fullAtt: AttachmentModel = {
+          ...att,
+          transactionId: tx.id,
+        };
+        toAdd.push(fullAtt);
+        addedIds.push(fullAtt.id);
       }
     }
 
     const updatedAttIds = [
-      ...tx.attachmentIds.filter((id) => !(removedAttachmentIds || []).includes(id)),
+      ...tx.attachmentIds.filter((id) => !toRemove.includes(id)),
       ...addedIds,
     ];
 
@@ -368,26 +375,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
 
-    const targetStore = activeScope === 'demo' ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
-    await dbStorage.put(targetStore, updatedTx);
+    // Execute atomic update in a single transaction
+    await dbStorage.updateTransactionAtomic(updatedTx, toAdd, toRemove, isDemo);
+
+    // Update in-memory state only upon complete transaction success
     setTransactions((prev) => prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)));
+    if (!isDemo) {
+      setAttachments((prev) => [
+        ...prev.filter((a) => !toRemove.includes(a.id)),
+        ...toAdd,
+      ]);
+    }
   };
 
   const deleteTransaction = async (transactionId: string): Promise<void> => {
     const tx = transactions.find((t) => t.id === transactionId);
     if (!tx) return;
 
-    // Delete attached files if real
-    if (activeScope === 'real' && tx.attachmentIds && tx.attachmentIds.length > 0) {
-      for (const attId of tx.attachmentIds) {
-        await dbStorage.delete(STORES_REAL.ATTACHMENTS, attId);
-      }
-      setAttachments((prev) => prev.filter((a) => !tx.attachmentIds.includes(a.id)));
-    }
+    const isDemo = activeScope === 'demo';
+    const attIds = tx.attachmentIds || [];
 
-    const targetStore = activeScope === 'demo' ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
-    await dbStorage.delete(targetStore, transactionId);
+    // Atomically delete transaction and all linked attachments inside ONE transaction
+    await dbStorage.deleteTransactionAtomic(transactionId, attIds, isDemo);
+
+    // Update in-memory state only on complete transaction success
     setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    if (!isDemo && attIds.length > 0) {
+      setAttachments((prev) => prev.filter((a) => !attIds.includes(a.id)));
+    }
   };
 
   // =========================================================================
@@ -428,7 +443,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // =========================================================================
-  // Notes Actions
+  // Notes Actions (Isolated Demo Persistence - Review Fix #5)
   // =========================================================================
 
   const addNote = async (
@@ -442,24 +457,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: now,
       updatedAt: now,
     };
-    if (activeScope === 'real') {
-      await dbStorage.put(STORES_REAL.NOTES, newNote);
-    }
+    const targetStore = activeScope === 'demo' ? STORES_DEMO.NOTES : STORES_REAL.NOTES;
+    await dbStorage.put(targetStore, newNote);
     setNotes((prev) => [newNote, ...prev]);
   };
 
   const updateNote = async (note: StickyNoteModel): Promise<void> => {
     const updated: StickyNoteModel = { ...note, updatedAt: new Date().toISOString() };
-    if (activeScope === 'real') {
-      await dbStorage.put(STORES_REAL.NOTES, updated);
-    }
+    const targetStore = activeScope === 'demo' ? STORES_DEMO.NOTES : STORES_REAL.NOTES;
+    await dbStorage.put(targetStore, updated);
     setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
   };
 
   const deleteNote = async (id: string): Promise<void> => {
-    if (activeScope === 'real') {
-      await dbStorage.delete(STORES_REAL.NOTES, id);
-    }
+    const targetStore = activeScope === 'demo' ? STORES_DEMO.NOTES : STORES_REAL.NOTES;
+    await dbStorage.delete(targetStore, id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
   };
 
@@ -479,7 +491,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loadDemoData = async () => {
-    await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS);
+    await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
     if (activeScope === 'demo') {
       await loadWorkspaceData('demo');
     }

@@ -3,11 +3,30 @@
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Dart Domain Specification & Export
  * Pure Dart source code specification corresponding 1:1 to the domain rules.
- * Ready for immediate copy / export into a Flutter project (Android / iOS).
+ * 
+ * REVIEW FIX #6: Strict Architectural Boundary Documentation:
+ * This Dart export represents the PURE FINANCIAL DOMAIN logic and immutable calculation models.
+ * It does NOT claim immediate mobile/Flutter completeness. Releasing on Android/iOS requires
+ * subsequent implementation of mobile storage adapters (sqflite), Flutter UI widgets, and device testing.
  */
 
-export const DART_ACCOUNT_MODEL_SOURCE = `// lib/shared/models/account_model.dart
-// RAKAN BALANCE — Core Account Model for Flutter
+export const DART_HEADER_NOTICE = `// =========================================================================
+// RAKAN BALANCE — PURE FINANCIAL DOMAIN ENGINE (Flutter / Dart)
+// المستودع المرجعي: github.com/aalmkhlafi77-sudo/rakan-accounts
+//
+// [تنبيه هندسي إلزامي حول حدود التصدير الحالية]:
+// هذه الشيفرة تمثل فقط النواة المالية المجردة (Pure Financial Domain) وقواعد الرصيد الصارمة.
+// هذه الملفات ليست تطبيق Flutter مكتملاً ولا تدعي الجاهزية الفورية للنشر على المتاجر.
+// إطلاق نسخة الهواتف (Android / iOS) لاحقاً يتطلب بصورة إلزامية:
+// 1. بناء واجهات العرض التفاعلية (Flutter UI Widgets / Riverpod State Management).
+// 2. بناء محول تخزين SQLite المحلي (sqflite / ffi) مع عزل استدعاءات dart:io عن الويب.
+// 3. تنفيذ واختبار عقود الاستحقاقات والدفعات والتذكيرات (N1 / N2).
+// 4. إجراء اختبارات القبول الميدانية على أجهزة فيزيائية حقيقية (Android & iOS).
+// =========================================================================
+`;
+
+export const DART_ACCOUNT_MODEL_SOURCE = `${DART_HEADER_NOTICE}
+// lib/shared/models/account_model.dart
 import 'package:flutter/foundation.dart';
 
 enum AccountStatus { active, archived }
@@ -70,13 +89,13 @@ class AccountModel {
 }
 `;
 
-export const DART_TRANSACTION_MODEL_SOURCE = `// lib/shared/models/transaction_model.dart
-// RAKAN BALANCE — Core Transaction Model for Flutter
+export const DART_TRANSACTION_MODEL_SOURCE = `${DART_HEADER_NOTICE}
+// lib/shared/models/transaction_model.dart
 import 'package:flutter/foundation.dart';
 
 enum EntryType {
-  owedByAccount, // 'عليه' (+amountMinor)
-  owedToAccount,  // 'له' (-amountMinor)
+  owedByAccount, // 'عليه' (+amountMinor) - يزيد الرصيد
+  owedToAccount,  // 'له' (-amountMinor) - ينقص الرصيد
 }
 
 @immutable
@@ -111,8 +130,8 @@ class TransactionModel {
 }
 `;
 
-export const DART_BALANCE_CALCULATOR_SOURCE = `// lib/features/accounts/domain/account_balance_calculator.dart
-// RAKAN BALANCE — Pure Financial Balance Engine for Flutter
+export const DART_BALANCE_CALCULATOR_SOURCE = `${DART_HEADER_NOTICE}
+// lib/features/accounts/domain/account_balance_calculator.dart
 import 'dart:math';
 import '../../../shared/models/account_model.dart';
 import '../../../shared/models/transaction_model.dart';

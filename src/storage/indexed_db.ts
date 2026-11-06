@@ -2,11 +2,11 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — IndexedDB Storage Engine
- * Follows Document v2 & Approved Plan:
+ * Follows Document v2 & Review Fix #2 & #5:
  * 1. Financial data strictly stored in IndexedDB.
- * 2. Complete physical isolation between Real and Demo object stores.
- * 3. True atomic (All-or-Nothing) restore within a single IndexedDB transaction.
- * 4. Automatic snapshot creation prior to restore for instant rollback.
+ * 2. True atomic operations for adding, updating, and deleting transactions + attachments in ONE transaction.
+ * 3. Complete physical isolation between Real and Demo object stores (including demo_notes).
+ * 4. True atomic (All-or-Nothing) restore within a single IndexedDB transaction with automatic rollback snapshots.
  */
 
 import {
@@ -20,7 +20,7 @@ import {
 } from '../domain/types.ts';
 
 const DB_NAME = 'RakanBalanceDB_v2';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented to version 2 to include demo_notes
 
 // Real workspace object stores
 export const STORES_REAL = {
@@ -32,11 +32,12 @@ export const STORES_REAL = {
   SETTINGS: 'settings',
 } as const;
 
-// Isolated Demo workspace object stores
+// Isolated Demo workspace object stores (completely separated from real data)
 export const STORES_DEMO = {
   ACCOUNTS: 'demo_accounts',
   CATEGORIES: 'demo_categories',
   TRANSACTIONS: 'demo_transactions',
+  NOTES: 'demo_notes',
 } as const;
 
 // Rollback Snapshot store
@@ -90,6 +91,9 @@ class IndexedDBStorage {
           const s = db.createObjectStore(STORES_DEMO.TRANSACTIONS, { keyPath: 'id' });
           s.createIndex('accountId', 'accountId', { unique: false });
         }
+        if (!db.objectStoreNames.contains(STORES_DEMO.NOTES)) {
+          db.createObjectStore(STORES_DEMO.NOTES, { keyPath: 'id' });
+        }
 
         // Rollback snapshots store
         if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) {
@@ -105,7 +109,7 @@ class IndexedDBStorage {
   }
 
   // =========================================================================
-  // Generic CRUD
+  // Generic Single Store CRUD
   // =========================================================================
 
   public async getAll<T>(storeName: string): Promise<T[]> {
@@ -125,8 +129,9 @@ class IndexedDBStorage {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
       const req = store.put(item);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(new Error('Transaction aborted'));
     });
   }
 
@@ -135,9 +140,10 @@ class IndexedDBStorage {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
-      const req = store.delete(key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      store.delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(new Error('Transaction aborted'));
     });
   }
 
@@ -146,14 +152,175 @@ class IndexedDBStorage {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
-      const req = store.clear();
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      store.clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
     });
   }
 
   // =========================================================================
-  // Demo Workspace Isolation & Safe Purge
+  // Atomic Operations for Transactions & Attachments (Review Fix #2)
+  // Operation only considered successful when the entire transaction completes!
+  // =========================================================================
+
+  /**
+   * Atomically saves a new transaction and all its attachments inside a SINGLE transaction.
+   * If saving either the transaction or any attachment fails, everything rolls back.
+   */
+  public async saveTransactionAtomic(
+    txData: TransactionModel,
+    newAttachments: AttachmentModel[],
+    isDemo: boolean
+  ): Promise<void> {
+    const db = await this.getDB();
+    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+    const attStoreName = STORES_REAL.ATTACHMENTS;
+
+    const storesToLock = isDemo || newAttachments.length === 0
+      ? [txStoreName]
+      : [txStoreName, attStoreName];
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storesToLock, 'readwrite');
+
+      tx.onerror = () => {
+        reject(new Error(`فشلت المعاملة الذرية لحفظ الحركة: ${tx.error?.message || 'خطأ غير معروف'}`));
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء المعاملة الذرية لحفظ الحركة ولم يتم حفظ أي بيانات جزئية.'));
+      };
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+
+      try {
+        // 1. Put transaction
+        const txStore = tx.objectStore(txStoreName);
+        txStore.put(txData);
+
+        // 2. Put attachments within the same transaction (real workspace)
+        if (!isDemo && newAttachments.length > 0) {
+          const attStore = tx.objectStore(attStoreName);
+          for (const att of newAttachments) {
+            attStore.put(att);
+          }
+        }
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
+  }
+
+  /**
+   * Atomically updates a transaction, adds new attachments, and deletes removed attachments
+   * inside a SINGLE transaction.
+   */
+  public async updateTransactionAtomic(
+    txData: TransactionModel,
+    newAttachments: AttachmentModel[],
+    removedAttachmentIds: string[],
+    isDemo: boolean
+  ): Promise<void> {
+    const db = await this.getDB();
+    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+    const attStoreName = STORES_REAL.ATTACHMENTS;
+
+    const storesToLock = isDemo || (newAttachments.length === 0 && removedAttachmentIds.length === 0)
+      ? [txStoreName]
+      : [txStoreName, attStoreName];
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storesToLock, 'readwrite');
+
+      tx.onerror = () => {
+        reject(new Error(`فشلت المعاملة الذرية لتعديل الحركة: ${tx.error?.message || 'خطأ غير معروف'}`));
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء تعديل الحركة الذري وبقيت الحالة السابقة كما هي.'));
+      };
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+
+      try {
+        // 1. Update transaction record
+        const txStore = tx.objectStore(txStoreName);
+        txStore.put(txData);
+
+        // 2. Update attachments in the same transaction
+        if (!isDemo) {
+          const attStore = tx.objectStore(attStoreName);
+          for (const attId of removedAttachmentIds) {
+            attStore.delete(attId);
+          }
+          for (const att of newAttachments) {
+            attStore.put(att);
+          }
+        }
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
+  }
+
+  /**
+   * Atomically deletes a transaction and all its associated attachments inside a SINGLE transaction.
+   */
+  public async deleteTransactionAtomic(
+    txId: string,
+    attachmentIds: string[],
+    isDemo: boolean
+  ): Promise<void> {
+    const db = await this.getDB();
+    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+    const attStoreName = STORES_REAL.ATTACHMENTS;
+
+    const storesToLock = isDemo || attachmentIds.length === 0
+      ? [txStoreName]
+      : [txStoreName, attStoreName];
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storesToLock, 'readwrite');
+
+      tx.onerror = () => {
+        reject(new Error(`فشلت المعاملة الذرية لحذف الحركة: ${tx.error?.message || 'خطأ غير معروف'}`));
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء حذف الحركة الذري وبقيت البيانات دون تعديل.'));
+      };
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+
+      try {
+        // 1. Delete transaction record
+        const txStore = tx.objectStore(txStoreName);
+        txStore.delete(txId);
+
+        // 2. Delete all linked attachments in the same atomic transaction
+        if (!isDemo && attachmentIds.length > 0) {
+          const attStore = tx.objectStore(attStoreName);
+          for (const attId of attachmentIds) {
+            attStore.delete(attId);
+          }
+        }
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
+  }
+
+  // =========================================================================
+  // Demo Workspace Isolation & Safe Purge (Review Fix #5)
   // Guaranteed NEVER to touch Real data stores!
   // =========================================================================
 
@@ -161,12 +328,13 @@ class IndexedDBStorage {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(
-        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS],
+        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS, STORES_DEMO.NOTES],
         'readwrite'
       );
       tx.objectStore(STORES_DEMO.ACCOUNTS).clear();
       tx.objectStore(STORES_DEMO.CATEGORIES).clear();
       tx.objectStore(STORES_DEMO.TRANSACTIONS).clear();
+      tx.objectStore(STORES_DEMO.NOTES).clear();
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -176,12 +344,13 @@ class IndexedDBStorage {
   public async saveDemoWorkspace(
     accounts: AccountModel[],
     categories: CategoryModel[],
-    transactions: TransactionModel[]
+    transactions: TransactionModel[],
+    notes: StickyNoteModel[]
   ): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(
-        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS],
+        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS, STORES_DEMO.NOTES],
         'readwrite'
       );
 
@@ -196,6 +365,10 @@ class IndexedDBStorage {
       const txStore = tx.objectStore(STORES_DEMO.TRANSACTIONS);
       txStore.clear();
       transactions.forEach((t) => txStore.put(t));
+
+      const notesStore = tx.objectStore(STORES_DEMO.NOTES);
+      notesStore.clear();
+      notes.forEach((n) => notesStore.put(n));
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -259,7 +432,7 @@ class IndexedDBStorage {
 
       tx.onerror = () => {
         // Any failure causes full abort
-        reject(new Error(`فشلت المعاملة الذرية للاستعادة: ${tx.error?.message}`));
+        reject(new Error(`فشلت المعاملة الذرية للاستعادة: ${tx.error?.message || 'خطأ أثناء المعاملة'}`));
       };
 
       tx.onabort = () => {
@@ -267,7 +440,7 @@ class IndexedDBStorage {
       };
 
       try {
-        // Clear old real stores
+        // Clear and populate all real stores within the same atomic transaction
         const accStore = tx.objectStore(STORES_REAL.ACCOUNTS);
         accStore.clear();
         (bundleData.accounts || []).forEach((item) => accStore.put(item));
