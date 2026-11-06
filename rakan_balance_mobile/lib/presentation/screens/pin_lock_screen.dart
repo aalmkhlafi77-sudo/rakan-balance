@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state_notifier.dart';
+import '../../app/theme/app_colors.dart';
 
 class PinLockScreen extends StatefulWidget {
   const PinLockScreen({super.key});
@@ -24,7 +25,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.lock, size: 64, color: Colors.emerald),
+            const Icon(Icons.lock, size: 64, color: AppColors.emerald600),
             const SizedBox(height: 16),
             const Text(
               'راكان بلانس | RAKAN BALANCE',
