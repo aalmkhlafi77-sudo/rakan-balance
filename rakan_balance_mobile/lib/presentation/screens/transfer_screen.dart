@@ -139,8 +139,8 @@ class _TransferScreenState extends State<TransferScreen> {
                   children: [
                     const Text('معاينة أثر الحركة البينية:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                     const SizedBox(height: 4),
-                    Text('المصدر: ${MoneyUtils.formatMinorAmount(srcBalanceBefore)} $\\rightarrow$ ${MoneyUtils.formatMinorAmount(srcBalanceAfter!)} ر.س'),
-                    Text('الوجهة: ${MoneyUtils.formatMinorAmount(dstBalanceBefore)} $\\rightarrow$ ${MoneyUtils.formatMinorAmount(dstBalanceAfter!)} ر.س'),
+                    Text('المصدر: ${MoneyUtils.formatMinorAmount(srcBalanceBefore)} → ${MoneyUtils.formatMinorAmount(srcBalanceAfter!)} ر.س'),
+                    Text('الوجهة: ${MoneyUtils.formatMinorAmount(dstBalanceBefore)} → ${MoneyUtils.formatMinorAmount(dstBalanceAfter!)} ر.س'),
                     const Divider(),
                     const Text('أثر النظام الكلي: 0.00 ر.س (توازن تام)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                   ],
