@@ -79,7 +79,7 @@ class _TransferScreenState extends State<TransferScreen> {
           // Source Account
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'الحساب المصدر (الذي ينقل المديونية منه)'),
-            value: _sourceAccountId,
+            initialValue: _sourceAccountId,
             items: activeAccounts.map((a) {
               return DropdownMenuItem(
                 value: a.id,
@@ -93,7 +93,7 @@ class _TransferScreenState extends State<TransferScreen> {
           // Destination Account
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'الحساب الوجهة (الذي يُنقل المديونية إليه)'),
-            value: _destinationAccountId,
+            initialValue: _destinationAccountId,
             items: activeAccounts.map((a) {
               return DropdownMenuItem(
                 value: a.id,
@@ -184,7 +184,7 @@ class _TransferScreenState extends State<TransferScreen> {
               try {
                 await state.createTransfer(input);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: Text('تم تنفيذ الحركة البينية بنجاح في قاعدة البيانات.')),
                   );
                   _amountController.clear();
