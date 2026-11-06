@@ -603,6 +603,44 @@ export class IndexedDBStorage {
     });
   }
 
+  /** Remove an unpaid follow-up item and its manual reminders atomically. Never remove a paid item. */
+  public async deleteUnpaidDueAtomic(dueId: string, isDemo: boolean): Promise<void> {
+    const db = await this.getDB();
+    const dueStoreName = isDemo ? STORES_DEMO.DUES : STORES_REAL.DUES;
+    const allocationStoreName = isDemo ? STORES_DEMO.ALLOCATIONS : STORES_REAL.ALLOCATIONS;
+    const reminderStoreName = isDemo ? STORES_DEMO.REMINDERS : STORES_REAL.REMINDERS;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([dueStoreName, allocationStoreName, reminderStoreName], 'readwrite');
+      let reason = '';
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(reason || 'تعذر حذف الاستحقاق دون تغيير البيانات.'));
+      const dueStore = tx.objectStore(dueStoreName);
+      const dueReq = dueStore.get(dueId);
+      dueReq.onsuccess = () => {
+        const due = dueReq.result as DueItemContract | undefined;
+        if (!due || due.settledAmountMinor !== 0) { reason = 'لا يمكن حذف استحقاق غير موجود أو سبق سداده.'; tx.abort(); return; }
+        const allocReq = tx.objectStore(allocationStoreName).getAll();
+        allocReq.onsuccess = () => {
+          if ((allocReq.result as PaymentAllocationContract[]).some(a => a.dueItemId === dueId)) {
+            reason = 'الاستحقاق يحتوي على تخصيصات سداد ولا يمكن حذفه.';
+            tx.abort(); return;
+          }
+          const remStore = tx.objectStore(reminderStoreName);
+          const remReq = remStore.getAll();
+          remReq.onsuccess = () => {
+            for (const r of remReq.result as ReminderContract[]) {
+              if (r.dueItemId === dueId) remStore.delete(r.id);
+            }
+            dueStore.delete(dueId);
+          };
+          remReq.onerror = () => { reason = 'تعذر التحقق من التذكيرات.'; tx.abort(); };
+        };
+        allocReq.onerror = () => { reason = 'تعذر فحص تخصيصات السداد.'; tx.abort(); };
+      };
+      dueReq.onerror = () => { reason = 'تعذر قراءة الاستحقاق.'; tx.abort(); };
+    });
+  }
+
   /** N2: one existing financial transaction AND one allocation, committed together. */
   public async recordDuePaymentAtomic(
     dueId: string,
