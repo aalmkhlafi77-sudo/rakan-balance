@@ -18,6 +18,7 @@ import {
   TransactionModel,
   UserSettings,
 } from '../domain/types.ts';
+import { validateTransferPairs } from '../domain/inter_account_transfer.ts';
 
 export const DB_NAME = 'RakanBalanceDB_v2';
 export const DB_VERSION = 2; // Incremented to version 2 to include demo_notes
@@ -455,8 +456,25 @@ export class IndexedDBStorage {
   }
 
   /**
-   * Atomically updates an inter-account transfer in a SINGLE transaction:
-   * Deletes old pair entries and adds new pair entries.
+   * Rejects a missing or corrupt transfer pair before changing any stored record.
+   * Runs inside the SAME readwrite transaction as the mutation, preventing TOCTOU.
+   */
+  private validateStoredTransfer(
+    records: TransactionModel[],
+    transferId: string
+  ): TransactionModel[] {
+    const pair = records.filter((entry) => entry.transferId === transferId);
+    const validation = validateTransferPairs(pair);
+    if (pair.length !== 2 || !validation.isValid) {
+      throw new Error(
+        `تعذر تعديل أو حذف الحركة البينية ${transferId}: ${validation.error || 'القيدان غير موجودين أو غير مكتملين'}.`
+      );
+    }
+    return pair;
+  }
+
+  /**
+   * Atomically updates the verified pair. Missing/corrupt transfers are NEVER upserted.
    */
   public async updateTransferAtomic(
     oldTransferId: string,
@@ -464,107 +482,83 @@ export class IndexedDBStorage {
     newDestinationEntry: TransactionModel,
     isDemo: boolean
   ): Promise<void> {
+    if (
+      !oldTransferId ||
+      newSourceEntry.transferId !== oldTransferId ||
+      newDestinationEntry.transferId !== oldTransferId ||
+      !validateTransferPairs([newSourceEntry, newDestinationEntry]).isValid
+    ) {
+      throw new Error('بيانات طرفي الحركة البينية الجديدة غير متطابقة.');
+    }
+
     const db = await this.getDB();
-    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+    const storeName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(txStoreName, 'readwrite');
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      let reason: string | null = null;
 
-      tx.onerror = () => {
-        reject(
-          new Error(
-            `فشلت المعاملة الذرية لتعديل الحركة البينية: ${tx.error?.message || 'خطأ غير معروف'}`
-          )
-        );
-      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(reason || 'تم إلغاء تعديل الحركة البينية دون تغيير البيانات.'));
+      tx.onerror = () => { /* The transaction abort handler reports the error. */ };
 
-      tx.onabort = () => {
-        reject(new Error('تم إلغاء تعديل الحركة البينية وبقيت البيانات السابقة كما هي دون مساس.'));
-      };
-
-      tx.oncomplete = () => {
-        resolve();
-      };
-
-      try {
-        const store = tx.objectStore(txStoreName);
-        const req = store.openCursor();
-
-        req.onsuccess = (event) => {
-          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-          if (cursor) {
-            const val = cursor.value as TransactionModel;
-            if (val && val.transferId === oldTransferId) {
-              cursor.delete();
-            }
-            cursor.continue();
-          } else {
-            // Once all old records for this transfer are purged, add both new entries
-            store.add(newSourceEntry);
-            store.add(newDestinationEntry);
-          }
-        };
-
-        req.onerror = () => {
+      const readRequest = store.getAll();
+      readRequest.onsuccess = () => {
+        try {
+          const previousPair = this.validateStoredTransfer(
+            readRequest.result as TransactionModel[],
+            oldTransferId
+          );
+          for (const entry of previousPair) store.delete(entry.id);
+          store.add(newSourceEntry);
+          store.add(newDestinationEntry);
+        } catch (error) {
+          reason = error instanceof Error ? error.message : String(error);
           tx.abort();
-          reject(req.error);
-        };
-      } catch (err) {
+        }
+      };
+      readRequest.onerror = () => {
+        reason = 'تعذر فحص القيدين الأصليين قبل تعديل الحركة البينية.';
         tx.abort();
-        reject(err);
-      }
+      };
     });
   }
 
   /**
-   * Atomically deletes both entries of an inter-account transfer in a SINGLE transaction.
+   * Atomically removes an existing valid pair; missing and orphaned pairs are rejected.
    */
   public async deleteTransferAtomic(transferId: string, isDemo: boolean): Promise<void> {
+    if (!transferId) throw new Error('معرف الحركة البينية مفقود.');
     const db = await this.getDB();
-    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+    const storeName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(txStoreName, 'readwrite');
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      let reason: string | null = null;
 
-      tx.onerror = () => {
-        reject(
-          new Error(
-            `فشلت المعاملة الذرية لحذف الحركة البينية: ${tx.error?.message || 'خطأ غير معروف'}`
-          )
-        );
-      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(reason || 'تم إلغاء حذف الحركة البينية دون تغيير البيانات.'));
+      tx.onerror = () => { /* The transaction abort handler reports the error. */ };
 
-      tx.onabort = () => {
-        reject(new Error('تم إلغاء المعاملة الذرية لحذف الحركة البينية وبقيت البيانات دون تعديل.'));
-      };
-
-      tx.oncomplete = () => {
-        resolve();
-      };
-
-      try {
-        const store = tx.objectStore(txStoreName);
-        const req = store.openCursor();
-
-        req.onsuccess = (event) => {
-          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-          if (cursor) {
-            const val = cursor.value as TransactionModel;
-            if (val && val.transferId === transferId) {
-              cursor.delete();
-            }
-            cursor.continue();
-          }
-        };
-
-        req.onerror = () => {
+      const readRequest = store.getAll();
+      readRequest.onsuccess = () => {
+        try {
+          const pair = this.validateStoredTransfer(
+            readRequest.result as TransactionModel[],
+            transferId
+          );
+          for (const entry of pair) store.delete(entry.id);
+        } catch (error) {
+          reason = error instanceof Error ? error.message : String(error);
           tx.abort();
-          reject(req.error);
-        };
-      } catch (err) {
+        }
+      };
+      readRequest.onerror = () => {
+        reason = 'تعذر فحص القيدين الأصليين قبل حذف الحركة البينية.';
         tx.abort();
-        reject(err);
-      }
+      };
     });
   }
 
