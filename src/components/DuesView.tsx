@@ -11,7 +11,7 @@ const localToday = () => {
 const statusLabels = { pending: 'قادم', partially_settled: 'مسدد جزئيًا', settled: 'مسدد', overdue: 'متأخر' } as const;
 
 export const DuesView: React.FC = () => {
-  const { accounts, dues, reminders, transactions, createDue, settleDue, createReminder, completeReminder, activeScope, getAccountBalance } = useApp();
+  const { accounts, dues, reminders, createDue, settleDue, deleteUnpaidDue, createReminder, completeReminder, activeScope, getAccountBalance } = useApp();
   const [accountId, setAccountId] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('owedByAccount');
   const [amount, setAmount] = useState('');
@@ -111,7 +111,6 @@ export const DuesView: React.FC = () => {
           const account = accounts.find(a => a.id === due.accountId);
           const status = dueDisplayStatus(due, today);
           const dueReminders = reminders.filter(r => r.dueItemId === due.id);
-          const linkedPayments = transactions.filter(tx => tx.accountId === due.accountId && tx.description === 'سداد استحقاق بتاريخ ' + due.dueDate);
           return <article key={due.id} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
             <div className="flex flex-wrap gap-3 justify-between">
               <div><p className="font-bold">{account?.name || 'حساب غير معروف'}</p><p className="text-xs text-slate-500">موعد الاستحقاق: {due.dueDate} · {due.entryType === 'owedByAccount' ? 'لك' : 'عليك'}</p></div>
@@ -126,6 +125,10 @@ export const DuesView: React.FC = () => {
             {dueRemaining(due) > 0 && <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => {setPayingDue(payingDue === due.id ? null : due.id); setRemindingDue(null); setPaymentAmount(''); setError('');}} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600">تسجيل سداد جزئي / كامل</button>
               <button type="button" onClick={() => {setRemindingDue(remindingDue === due.id ? null : due.id); setPayingDue(null); setRemindText(`تذكير: يوجد استحقاق بتاريخ ${due.dueDate} بمبلغ متبقٍ ${formatMinorAmount(dueRemaining(due))} ر.س.`); setError('');}} className="px-3 py-2 rounded-lg text-xs border border-slate-300 dark:border-slate-700">تذكير يدوي</button>
+              {due.settledAmountMinor === 0 && <button type="button" disabled={busy} onClick={() => {
+                if (!window.confirm('هل تريد حذف الاستحقاق غير المسدد وتذكيراته دون أي تغيير للحركات المالية؟')) return;
+                void run(() => deleteUnpaidDue(due.id), 'تم حذف الاستحقاق غير المسدد وتذكيراته.');
+              }} className="px-3 py-2 rounded-lg text-xs border border-rose-300 text-rose-700 dark:text-rose-300 disabled:opacity-50">حذف الاستحقاق</button>}
             </div>}
             {payingDue === due.id && <form onSubmit={e => { e.preventDefault(); const p = tryToMinorUnits(paymentAmount); if (!p.success || p.minor <= 0) {setError(p.error || 'المبلغ غير صالح');return;} void run(async () => {await settleDue(due.id, p.minor, paymentDate); setPayingDue(null); setPaymentAmount('');}, 'تم تسجيل حركة سداد واحدة وربطها بالاستحقاق.');}} className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg p-3 bg-slate-50 dark:bg-slate-800">
               <label className="text-xs">مبلغ السداد<input required value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} inputMode="decimal" className="block w-full mt-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 p-2"/></label>
