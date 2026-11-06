@@ -16,12 +16,15 @@ import {
   CategoryModel,
   StickyNoteModel,
   TransactionModel,
+  DueItemContract,
+  PaymentAllocationContract,
+  ReminderContract,
   UserSettings,
 } from '../domain/types.ts';
 import { validateTransferPairs } from '../domain/inter_account_transfer.ts';
 
 export const DB_NAME = 'RakanBalanceDB_v2';
-export const DB_VERSION = 2; // Incremented to version 2 to include demo_notes
+export const DB_VERSION = 3; // N2: due schedules, payment allocations and manual reminders
 
 // Real workspace object stores
 export const STORES_REAL = {
@@ -31,6 +34,9 @@ export const STORES_REAL = {
   ATTACHMENTS: 'attachments',
   NOTES: 'notes',
   SETTINGS: 'settings',
+  DUES: 'dues',
+  ALLOCATIONS: 'payment_allocations',
+  REMINDERS: 'reminders',
 } as const;
 
 // Isolated Demo workspace object stores (completely separated from real data)
@@ -39,6 +45,9 @@ export const STORES_DEMO = {
   CATEGORIES: 'demo_categories',
   TRANSACTIONS: 'demo_transactions',
   NOTES: 'demo_notes',
+  DUES: 'demo_dues',
+  ALLOCATIONS: 'demo_payment_allocations',
+  REMINDERS: 'demo_reminders',
 } as const;
 
 // Rollback Snapshot store
@@ -169,6 +178,14 @@ export class IndexedDBStorage {
         }
         if (!db.objectStoreNames.contains(STORES_DEMO.NOTES)) {
           db.createObjectStore(STORES_DEMO.NOTES, { keyPath: 'id' });
+        }
+
+        // N2 stores are additive, preserving all existing v2 records on upgrade.
+        for (const name of [
+          STORES_REAL.DUES, STORES_REAL.ALLOCATIONS, STORES_REAL.REMINDERS,
+          STORES_DEMO.DUES, STORES_DEMO.ALLOCATIONS, STORES_DEMO.REMINDERS,
+        ]) {
+          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
         }
 
         // Rollback snapshots store
@@ -560,13 +577,16 @@ export class IndexedDBStorage {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(
-        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS, STORES_DEMO.NOTES],
+        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS, STORES_DEMO.NOTES, STORES_DEMO.DUES, STORES_DEMO.ALLOCATIONS, STORES_DEMO.REMINDERS],
         'readwrite'
       );
       tx.objectStore(STORES_DEMO.ACCOUNTS).clear();
       tx.objectStore(STORES_DEMO.CATEGORIES).clear();
       tx.objectStore(STORES_DEMO.TRANSACTIONS).clear();
       tx.objectStore(STORES_DEMO.NOTES).clear();
+      tx.objectStore(STORES_DEMO.DUES).clear();
+      tx.objectStore(STORES_DEMO.ALLOCATIONS).clear();
+      tx.objectStore(STORES_DEMO.REMINDERS).clear();
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -615,13 +635,16 @@ export class IndexedDBStorage {
    * Captures current real database state as a rollback snapshot.
    */
   public async createRollbackSnapshot(): Promise<string> {
-    const [accounts, categories, transactions, attachments, notes, settingsRecords] = await Promise.all([
+    const [accounts, categories, transactions, attachments, notes, settingsRecords, dues, allocations, reminders] = await Promise.all([
       this.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
       this.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
       this.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
       this.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
       this.getAll<StickyNoteModel>(STORES_REAL.NOTES),
       this.getAll<any>(STORES_REAL.SETTINGS),
+      this.getAll<DueItemContract>(STORES_REAL.DUES),
+      this.getAll<PaymentAllocationContract>(STORES_REAL.ALLOCATIONS),
+      this.getAll<ReminderContract>(STORES_REAL.REMINDERS),
     ]);
 
     // Normalize settings records array into a clean preferences object for snapshot payload
@@ -638,7 +661,7 @@ export class IndexedDBStorage {
     const snapshot = {
       id: snapshotId,
       createdAt: new Date().toISOString(),
-      data: { accounts, categories, transactions, attachments, notes, settings: settingsPayload },
+      data: { accounts, categories, transactions, attachments, notes, dues, allocations, reminders, settings: settingsPayload },
     };
 
     const db = await this.getDB();
@@ -681,6 +704,9 @@ export class IndexedDBStorage {
       STORES_REAL.ATTACHMENTS,
       STORES_REAL.NOTES,
       STORES_REAL.SETTINGS,
+      STORES_REAL.DUES,
+      STORES_REAL.ALLOCATIONS,
+      STORES_REAL.REMINDERS,
     ];
 
     return new Promise((resolve, reject) => {
@@ -717,6 +743,18 @@ export class IndexedDBStorage {
         const noteStore = tx.objectStore(STORES_REAL.NOTES);
         noteStore.clear();
         (bundleData.notes || []).forEach((item) => noteStore.put(item));
+
+        const dueStore = tx.objectStore(STORES_REAL.DUES);
+        dueStore.clear();
+        (bundleData.dues || []).forEach(item => dueStore.put(item));
+
+        const allocationStore = tx.objectStore(STORES_REAL.ALLOCATIONS);
+        allocationStore.clear();
+        (bundleData.allocations || []).forEach(item => allocationStore.put(item));
+
+        const reminderStore = tx.objectStore(STORES_REAL.REMINDERS);
+        reminderStore.clear();
+        (bundleData.reminders || []).forEach(item => reminderStore.put(item));
 
         const settingsStore = tx.objectStore(STORES_REAL.SETTINGS);
         settingsStore.clear();
