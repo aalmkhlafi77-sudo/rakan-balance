@@ -46,7 +46,7 @@ import {
 } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
-import { dueRemaining, validateDueRecord } from '../domain/dues.ts';
+import { dueRemaining, validateDueRecord, validDate } from '../domain/dues.ts';
 import { MAX_SAFE_MINOR_AMOUNT } from '../domain/money.ts';
 import {
   buildTransferEntries,
@@ -623,7 +623,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createReminder = async (dueId: string, remindAt: string, templateText: string): Promise<void> => {
     if (!dues.some(d => d.id === dueId)) throw new Error('استحقاق التذكير غير موجود.');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(remindAt) || !templateText.trim()) throw new Error('تاريخ أو نص التذكير غير صالح.');
+    if (!validDate(remindAt) || !templateText.trim()) throw new Error('تاريخ أو نص التذكير غير صالح.');
     const reminder: ReminderContract = {
       id: crypto.randomUUID(), dueItemId: dueId, remindAt,
       templateText: templateText.trim(), isCompleted: false, channel: 'manual',
