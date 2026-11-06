@@ -1249,34 +1249,48 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
       });
     }
 
-    // TEST I (19): Single-entry modification guard
+    // TEST I (19): Execute the ordinary storage APIs against a real transfer leg.
     {
-      const transferTx: TransactionModel = {
-        id: 'tx_transfer_leg_19',
-        accountId: 'acc_19',
-        entryType: 'owedToAccount',
-        amountMinor: 10000,
-        date: '2026-11-06',
-        description: 'قيد بيني فردي',
-        attachmentIds: [],
-        transferId: 'trf_leg_19',
-        transferRole: 'source',
-        counterpartyAccountId: 'acc_cp_19',
-        createdAt: '2026-11-06T10:00:00Z',
-        updatedAt: '2026-11-06T10:00:00Z',
-      };
-
-      // Verify domain guard check condition (transferId presence enforces paired atomic modification)
-      const hasSingleEntryGuard = Boolean(transferTx.transferId);
-
+      const isolated = createIsolatedTestStorage();
+      let passed = false;
+      try {
+        const pair = buildTransferEntries({
+          sourceAccountId: 'acc_i_source',
+          destinationAccountId: 'acc_i_destination',
+          amountMinor: 10000,
+          date: '2026-11-06',
+          description: 'اختبار الحماية الفعلية من تعديل قيد منفرد',
+        });
+        await isolated.saveTransferAtomic(pair.sourceEntry, pair.destinationEntry, false);
+        let editRejected = false;
+        let deleteRejected = false;
+        let strippedMetadataRejected = false;
+        try {
+          await isolated.updateTransactionAtomic(
+            { ...pair.sourceEntry, amountMinor: 20000 }, [], [], false
+          );
+        } catch { editRejected = true; }
+        try {
+          const { transferId: _tid, transferRole: _role, counterpartyAccountId: _cp, ...ordinaryTx } = pair.sourceEntry;
+          await isolated.updateTransactionAtomic(ordinaryTx, [], [], false);
+        } catch { strippedMetadataRejected = true; }
+        try {
+          await isolated.deleteTransactionAtomic(pair.sourceEntry.id, [], false);
+        } catch { deleteRejected = true; }
+        const remaining = (await isolated.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS))
+          .filter(t => t.transferId === pair.transferId);
+        passed = editRejected && deleteRejected && strippedMetadataRejected
+          && remaining.length === 2 && validateTransferPairs(remaining).isValid
+          && remaining.some(t => t.id === pair.sourceEntry.id && t.amountMinor === 10000);
+      } finally {
+        await isolated.destroyDatabase();
+      }
       results.push({
         id: 'test-19-test-i-single-entry-guard',
-        title: 'الاختبار I (19): حماية الحركات البينية من التعديل أو الحذف المنفرد',
-        passed: hasSingleEntryGuard,
-        expected: 'وجود خاصية transferId تكتشف القيود المرتبطة وتمنع تعديل أو حذف أحدهما منفردًا',
-        actual: hasSingleEntryGuard
-          ? 'تم التحقق من تفعيل حماية القيود المرتبطة ومنع التعديل المنفرد'
-          : 'فشلت الحماية',
+        title: 'الاختبار I (19): رفض تعديل أو حذف القيد البيني المنفرد عبر التخزين الحقيقي المعزول',
+        passed,
+        expected: 'رفض التعديل والحذف ومحاولة إزالة معلومات الربط، وبقاء القيدين دون تغيير',
+        actual: passed ? 'رُفضت العمليات الثلاث وظل الزوج صحيحاً' : 'فشل منع تعديل أو حذف قيد بيني منفرد',
       });
     }
 
@@ -1614,6 +1628,77 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
           : 'فشل فحص ثوابت الهللة',
       });
     }
+    // TEST 27: Missing transfer IDs must never create data on update or succeed on delete.
+    {
+      const isolated = createIsolatedTestStorage();
+      let passed = false;
+      try {
+        const made = buildTransferEntries({
+          sourceAccountId: 'acc_missing_source',
+          destinationAccountId: 'acc_missing_destination',
+          amountMinor: 10000,
+          date: '2026-11-06',
+          description: 'محاولة تعديل معرف نقل غير موجود',
+        }, 'trf_absent_27');
+        let updateRejected = false;
+        let deleteRejected = false;
+        try {
+          await isolated.updateTransferAtomic(made.transferId, made.sourceEntry, made.destinationEntry, false);
+        } catch { updateRejected = true; }
+        try { await isolated.deleteTransferAtomic(made.transferId, false); }
+        catch { deleteRejected = true; }
+        const transactions = await isolated.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+        passed = updateRejected && deleteRejected && transactions.length === 0;
+      } finally { await isolated.destroyDatabase(); }
+      results.push({
+        id: 'test-27-missing-transfer-must-reject',
+        title: 'اختبار 27: رفض تعديل وحذف حركة بينية غير موجودة دون إنشاء قيود',
+        passed,
+        expected: 'رفض الحالتين وبقاء المخزن خالياً',
+        actual: passed ? 'نجح الرفض دون أي كتابة' : 'قُبلت عملية على حركة غير موجودة',
+      });
+    }
+
+    // TEST 28: Corrupt/orphaned stored pair must reject update and delete without mutation.
+    {
+      const isolated = createIsolatedTestStorage();
+      let passed = false;
+      try {
+        const oldPair = buildTransferEntries({
+          sourceAccountId: 'acc_corrupt_src',
+          destinationAccountId: 'acc_corrupt_dst',
+          amountMinor: 15000,
+          date: '2026-11-06',
+          description: 'حركة تالفة بقيد يتيم',
+        });
+        await isolated.put(STORES_REAL.TRANSACTIONS, oldPair.sourceEntry);
+        const updated = buildTransferEntries({
+          sourceAccountId: 'acc_corrupt_src',
+          destinationAccountId: 'acc_corrupt_dst',
+          amountMinor: 12000,
+          date: '2026-11-06',
+          description: 'محاولة تعديل قيد يتيم',
+        }, oldPair.transferId);
+        let updateRejected = false;
+        let deleteRejected = false;
+        try {
+          await isolated.updateTransferAtomic(oldPair.transferId, updated.sourceEntry, updated.destinationEntry, false);
+        } catch { updateRejected = true; }
+        try { await isolated.deleteTransferAtomic(oldPair.transferId, false); }
+        catch { deleteRejected = true; }
+        const after = await isolated.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+        passed = updateRejected && deleteRejected && after.length === 1
+          && after[0].id === oldPair.sourceEntry.id && after[0].amountMinor === 15000;
+      } finally { await isolated.destroyDatabase(); }
+      results.push({
+        id: 'test-28-orphaned-transfer-must-reject',
+        title: 'اختبار 28: منع تعديل أو حذف حركة بينية يتيمة والحفاظ على بياناتها',
+        passed,
+        expected: 'رفض الحالتين واستمرار القيد الأصلي دون تغيير',
+        actual: passed ? 'تم رفض الحالتين وبقي القيد الأصلي' : 'حدث تغيير غير مسموح في قيد يتيم',
+      });
+    }
+
   } finally {
     // =========================================================================
     // CLEANUP GUARANTEE:
