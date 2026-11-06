@@ -100,6 +100,19 @@ void main() {
         input: _transfer(100), accounts: [_account('source', 10000, status: 'archived'), accounts.last],
         currentTransactions: []).isValid, false);
     });
+    test('transfer entries have distinct stable IDs and matching web descriptions', () {
+      final input = _transfer(1500, description: '  وصف معتمد  ');
+      final first = InterAccountTransferEngine.buildTransferEntries(
+        input: input, transferId: 'trsf_alpha', sourceAccountName: 'source',
+        destinationAccountName: 'dest');
+      final second = InterAccountTransferEngine.buildTransferEntries(
+        input: input, transferId: 'trsf_beta', sourceAccountName: 'source',
+        destinationAccountName: 'dest');
+      expect(first[0].id, isNot(first[1].id));
+      expect(first[0].id, isNot(second[0].id));
+      expect(first[0].description, 'وصف معتمد');
+      expect(first[1].description, 'وصف معتمد');
+    });
     test('detect wrong transfer role and counterparty despite zero net', () {
       final input = _transfer(1500);
       final pair = InterAccountTransferEngine.buildTransferEntries(
