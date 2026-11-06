@@ -100,6 +100,9 @@ export async function exportBackupBundle(): Promise<{ jsonString: string; filena
       transactions: transactions.length,
       attachments: attachments.length,
       notes: notes.length,
+      dues: dues.length,
+      allocations: allocations.length,
+      reminders: reminders.length,
     },
   };
 
@@ -212,7 +215,10 @@ export async function validateBackupFile(fileContent: string): Promise<{
         categories.length !== manifest.recordCounts.categories ||
         transactions.length !== manifest.recordCounts.transactions ||
         attachments.length !== manifest.recordCounts.attachments ||
-        notes.length !== manifest.recordCounts.notes
+        notes.length !== manifest.recordCounts.notes ||
+        (manifest.recordCounts.dues !== undefined && (typeof manifest.recordCounts.dues !== 'number' || (data.dues || []).length !== manifest.recordCounts.dues)) ||
+        (manifest.recordCounts.allocations !== undefined && (typeof manifest.recordCounts.allocations !== 'number' || (data.allocations || []).length !== manifest.recordCounts.allocations)) ||
+        (manifest.recordCounts.reminders !== undefined && (typeof manifest.recordCounts.reminders !== 'number' || (data.reminders || []).length !== manifest.recordCounts.reminders))
       ) {
         return {
           isValid: false,
