@@ -68,7 +68,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [modalOpeningBalance, setModalOpeningBalance] = useState('');
   const [modalParentId, setModalParentId] = useState<string>('');
   const [modalPhone, setModalPhone] = useState('');
-  const [modalNotes, setModalNotes] = useState('');
   const [modalError, setModalError] = useState('');
 
   // Delete Guard State
@@ -118,7 +117,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setModalOpeningBalance('0.00');
     setModalParentId(parentAccountId || '');
     setModalPhone('');
-    setModalNotes('');
     setModalError('');
     setIsModalOpen(true);
   };
@@ -131,7 +129,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setModalOpeningBalance(fromMinorUnits(acc.openingBalanceMinor).toFixed(2));
     setModalParentId(acc.parentId || '');
     setModalPhone(acc.phone || '');
-    setModalNotes(acc.notes || '');
     setModalError('');
     setIsModalOpen(true);
   };
@@ -169,7 +166,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           openingBalanceMinor: openingMinor,
           parentId: parentIdClean,
           phone: modalPhone.trim() || undefined,
-          notes: modalNotes.trim() || undefined,
         });
       } else {
         await addAccount({
@@ -179,7 +175,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           parentId: parentIdClean,
           status: 'active',
           phone: modalPhone.trim() || undefined,
-          notes: modalNotes.trim() || undefined,
         });
       }
       setIsModalOpen(false);
@@ -655,19 +650,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   value={modalPhone}
                   onChange={(e) => setModalPhone(e.target.value)}
                   className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  ملاحظات:
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="أي مذكرات أو بيانات إضافية..."
-                  value={modalNotes}
-                  onChange={(e) => setModalNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
                 />
               </div>
 
