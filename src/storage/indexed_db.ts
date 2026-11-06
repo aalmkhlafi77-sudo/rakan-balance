@@ -568,6 +568,104 @@ export class IndexedDBStorage {
     });
   }
 
+  /** N2: due records are purely informational and never change financial balances. */
+  public async addDue(due: DueItemContract, isDemo: boolean): Promise<void> {
+    const db = await this.getDB();
+    const store = isDemo ? STORES_DEMO.DUES : STORES_REAL.DUES;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).add(due);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error('فشل حفظ الاستحقاق.'));
+      tx.onerror = () => { /* Transaction abort reports failure. */ };
+    });
+  }
+
+  /** N2: one existing financial transaction AND one allocation, committed together. */
+  public async recordDuePaymentAtomic(
+    dueId: string,
+    payment: TransactionModel,
+    allocation: PaymentAllocationContract,
+    isDemo: boolean
+  ): Promise<void> {
+    const db = await this.getDB();
+    const dueStore = isDemo ? STORES_DEMO.DUES : STORES_REAL.DUES;
+    const txStore = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+    const allocationStore = isDemo ? STORES_DEMO.ALLOCATIONS : STORES_REAL.ALLOCATIONS;
+    const accountStore = isDemo ? STORES_DEMO.ACCOUNTS : STORES_REAL.ACCOUNTS;
+    if (allocation.paymentTransactionId !== payment.id || allocation.dueItemId !== dueId ||
+        allocation.amountMinor !== payment.amountMinor || payment.transferId ||
+        !Number.isSafeInteger(payment.amountMinor) || payment.amountMinor <= 0) {
+      throw new Error('معلومات دفعة الاستحقاق غير متطابقة.');
+    }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([dueStore, txStore, allocationStore, accountStore], 'readwrite');
+      let error: string | undefined;
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(error || tx.error?.message || 'فشل حفظ الدفعة والتخصيص معاً.'));
+      tx.onerror = () => { /* Transaction abort reports failure. */ };
+      const dueRequest = tx.objectStore(dueStore).get(dueId);
+      dueRequest.onsuccess = () => {
+        const due = dueRequest.result as DueItemContract | undefined;
+        if (!due || due.accountId !== payment.accountId || due.entryType === payment.entryType ||
+            due.originalAmountMinor - due.settledAmountMinor < payment.amountMinor) {
+          error = 'الدفعة تتجاوز المتبقي أو لا تطابق حساب الاستحقاق واتجاهه.';
+          tx.abort();
+          return;
+        }
+        const accountRequest = tx.objectStore(accountStore).get(payment.accountId);
+        accountRequest.onsuccess = () => {
+          if (!accountRequest.result || accountRequest.result.status !== 'active') {
+            error = 'الحساب غير نشط أو غير موجود.';
+            tx.abort();
+            return;
+          }
+          const updatedSettled = due.settledAmountMinor + payment.amountMinor;
+          tx.objectStore(dueStore).put({
+            ...due,
+            settledAmountMinor: updatedSettled,
+            status: updatedSettled === due.originalAmountMinor ? 'settled' : 'partially_settled',
+            updatedAt: new Date().toISOString(),
+          });
+          tx.objectStore(txStore).add(payment);
+          tx.objectStore(allocationStore).add(allocation);
+        };
+        accountRequest.onerror = () => { error = 'تعذر التحقق من الحساب.'; tx.abort(); };
+      };
+      dueRequest.onerror = () => { error = 'تعذر قراءة الاستحقاق.'; tx.abort(); };
+    });
+  }
+
+  /** N2: reminders are manual drafts only; no background delivery is implied. */
+  public async addReminder(reminder: ReminderContract, isDemo: boolean): Promise<void> {
+    const db = await this.getDB();
+    const store = isDemo ? STORES_DEMO.REMINDERS : STORES_REAL.REMINDERS;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).add(reminder);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error('فشل حفظ التذكير.'));
+      tx.onerror = () => { /* Transaction abort reports failure. */ };
+    });
+  }
+
+  public async markReminderCompleted(reminderId: string, isDemo: boolean): Promise<void> {
+    const db = await this.getDB();
+    const storeName = isDemo ? STORES_DEMO.REMINDERS : STORES_REAL.REMINDERS;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      let reason: string | undefined;
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(reason || 'فشل إتمام التذكير.'));
+      const req = store.get(reminderId);
+      req.onsuccess = () => {
+        if (!req.result) { reason = 'التذكير غير موجود.'; tx.abort(); return; }
+        store.put({ ...req.result, isCompleted: true });
+      };
+    });
+  }
+
   // =========================================================================
   // Demo Workspace Isolation & Safe Purge (Review Fix #5)
   // Guaranteed NEVER to touch Real data stores!
