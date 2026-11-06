@@ -2,9 +2,9 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Automated Test Suite Runner (CLI)
- * Executes all 8 verification tests in Node.js environment with fake-indexeddb
+ * Executes all 10 verification tests in Node.js environment with fake-indexeddb
  * Uses a dedicated simulated environment database (NEVER creates test records in RakanBalanceDB_v2)
- * Ensures complete cleanup in all failure and success scenarios.
+ * Ensures complete cleanup in all failure and success scenarios without calling process.exit inside try/finally.
  */
 
 import 'fake-indexeddb/auto';
@@ -24,12 +24,14 @@ import {
   TransactionModel,
 } from '../domain/types.ts';
 
-async function main() {
+async function main(): Promise<number> {
   console.log('='.repeat(80));
   console.log('   RAKAN BALANCE — AUTOMATED VERIFICATION TEST SUITE (N0 MILESTONE)   ');
   console.log('='.repeat(80));
   console.log(`Production Database Name: ${DB_NAME}`);
   console.log('Testing data fingerprint isolation using dedicated simulated user environment...\n');
+
+  let exitCode = 0;
 
   // Dedicated simulated user environment storage instance (NEVER targets database named RakanBalanceDB_v2)
   const simulatedUserStorage = createIsolatedTestStorage('RakanBalance_SimulatedUserEnvDB');
@@ -195,28 +197,35 @@ async function main() {
 
     if (!fingerprintsMatch || !demoNotePreserved || !realAccountPreserved || !realTxPreserved) {
       console.error('\nSECURITY CRITICAL ERROR: The test suite modified user environment data!');
-      process.exit(1);
-    }
-
-    if (failedCount > 0) {
+      exitCode = 1;
+    } else if (failedCount > 0) {
       console.error(`\nFAILED: ${failedCount} test(s) failed.`);
-      process.exit(1);
+      exitCode = 1;
     } else {
-      console.log('\nSUCCESS: All 8 invariant tests passed & 100% data isolation verified.');
-      process.exit(0);
+      console.log(`\nSUCCESS: All ${results.length} invariant tests passed & 100% data isolation verified.`);
+      exitCode = 0;
     }
   } finally {
-    // ALWAYS destroy simulatedUserStorage in finally block to ensure complete cleanup in all cases!
+    // ALWAYS destroy simulatedUserStorage in finally block to ensure complete cleanup in all cases
     try {
       await simulatedUserStorage.destroyDatabase();
     } catch (cleanErr: any) {
       console.error('Failed to cleanup simulated user environment database:', cleanErr);
-      process.exit(1);
+      exitCode = 1;
     }
   }
+
+  return exitCode;
 }
 
-main().catch((err) => {
-  console.error('Fatal test runner error:', err);
-  process.exit(1);
-});
+main()
+  .then((exitCode) => {
+    process.exitCode = exitCode;
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+  })
+  .catch((err) => {
+    console.error('Fatal test runner error:', err);
+    process.exit(1);
+  });
