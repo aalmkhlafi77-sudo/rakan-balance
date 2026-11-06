@@ -8,6 +8,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { calculateAccountStatement } from '../domain/balance_calculator.ts';
+import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import {
   FileSpreadsheet,
@@ -72,35 +73,7 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
   const exportCSV = () => {
     if (!selectedAccount) return;
 
-    let csvContent = '\uFEFF'; // UTF-8 BOM for Excel Arabic compatibility
-    csvContent += `كشف حساب: ${selectedAccount.name}\n`;
-    csvContent += `العملة: SAR (ر.س)\n`;
-    csvContent += `الفترة: ${fromDate || 'البداية'} إلى ${toDate || 'اليوم'}\n`;
-    csvContent += `رصيد أول المدة: ${(statement.openingBalanceMinor / 100).toFixed(2)}\n\n`;
-
-    csvContent += 'م,التاريخ,البيان,عليه (لك),له (عليك),الرصيد بعد الحركة\n';
-
-    statement.rows.forEach((row, idx) => {
-      const isOwedBy = row.transaction.entryType === 'owedByAccount';
-      const owedByStr = isOwedBy ? (row.transaction.amountMinor / 100).toFixed(2) : '0.00';
-      const owedToStr = !isOwedBy ? (row.transaction.amountMinor / 100).toFixed(2) : '0.00';
-      const balanceStr = (row.runningBalanceMinor / 100).toFixed(2);
-
-      let descText = row.transaction.description;
-      if (row.transaction.transferId && row.transaction.counterpartyAccountId) {
-        const counterparty = accounts.find((a) => a.id === row.transaction.counterpartyAccountId);
-        if (counterparty) {
-          descText += ` (${row.transaction.transferRole === 'source' ? 'نقل مديونية إلى: ' : 'مديونية محولة من: '}${counterparty.name})`;
-        }
-      }
-      const safeDesc = `"${descText.replace(/"/g, '""')}"`;
-
-      csvContent += `${idx + 1},${row.transaction.date},${safeDesc},${owedByStr},${owedToStr},${balanceStr}\n`;
-    });
-
-    csvContent += `\nإجمالي عليه خلال الفترة: ${(statement.totalOwedByMinor / 100).toFixed(2)}\n`;
-    csvContent += `إجمالي له خلال الفترة: ${(statement.totalOwedToMinor / 100).toFixed(2)}\n`;
-    csvContent += `رصيد آخر المدة: ${(statement.closingBalanceMinor / 100).toFixed(2)}\n`;
+    const csvContent = buildStatementCSV(selectedAccount, accounts, statement, fromDate, toDate);
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

@@ -1,0 +1,37 @@
+name: N1 validation (isolated branch)
+
+on:
+  push:
+    branches:
+      - fix/n1-transfer-integrity-tests
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Execute isolated financial tests
+        run: npm test
+      - name: TypeScript validation
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium for browser checks
+        run: npx playwright install --with-deps chromium
+      - name: Browser UI regression tests
+        run: npm run test:e2e
