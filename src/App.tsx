@@ -13,6 +13,7 @@ import { AccountsView } from './components/AccountsView.tsx';
 import { TransactionsView } from './components/TransactionsView.tsx';
 import { StatementView } from './components/StatementView.tsx';
 import { NotesView } from './components/NotesView.tsx';
+import { DuesView } from './components/DuesView.tsx';
 import { BackupRestoreView } from './components/BackupRestoreView.tsx';
 import { VerificationModal } from './components/VerificationModal.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
@@ -139,6 +140,7 @@ const AppContent: React.FC = () => {
           )}
 
           {currentTab === 'notes' && <NotesView />}
+          {currentTab === 'dues' && <DuesView />}
 
           {currentTab === 'backup' && <BackupRestoreView />}
 

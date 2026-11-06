@@ -19,6 +19,9 @@ import {
   CategoryModel,
   StickyNoteModel,
   TransactionModel,
+  DueItemContract,
+  PaymentAllocationContract,
+  ReminderContract,
   UserSettings,
 } from '../domain/types.ts';
 import { checkTreeCycle } from '../domain/balance_calculator.ts';
@@ -30,6 +33,7 @@ import {
   getThemePref,
 } from './local_storage.ts';
 import { validateTransferPairs } from '../domain/inter_account_transfer.ts';
+import { validateDueLedger } from '../domain/dues.ts';
 
 /**
  * Computes a standard SHA-256 checksum string for any text or payload.
@@ -47,12 +51,15 @@ export async function computeSHA256(text: string): Promise<string> {
  * Includes owner settings while strictly excluding sensitive authentication secrets.
  */
 export async function exportBackupBundle(): Promise<{ jsonString: string; filename: string }> {
-  const [accounts, categories, transactions, attachments, notes] = await Promise.all([
+  const [accounts, categories, transactions, attachments, notes, dues, allocations, reminders] = await Promise.all([
     dbStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
     dbStorage.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
     dbStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
     dbStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
     dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
+    dbStorage.getAll<DueItemContract>(STORES_REAL.DUES),
+    dbStorage.getAll<PaymentAllocationContract>(STORES_REAL.ALLOCATIONS),
+    dbStorage.getAll<ReminderContract>(STORES_REAL.REMINDERS),
   ]);
 
   // Safe non-sensitive owner settings (PIN hashes/salts are explicitly excluded)
@@ -71,6 +78,9 @@ export async function exportBackupBundle(): Promise<{ jsonString: string; filena
     transactions,
     attachments,
     notes,
+    dues,
+    allocations,
+    reminders,
     settings: safeSettings,
   };
 
@@ -90,6 +100,9 @@ export async function exportBackupBundle(): Promise<{ jsonString: string; filena
       transactions: transactions.length,
       attachments: attachments.length,
       notes: notes.length,
+      dues: dues.length,
+      allocations: allocations.length,
+      reminders: reminders.length,
     },
   };
 
@@ -202,7 +215,10 @@ export async function validateBackupFile(fileContent: string): Promise<{
         categories.length !== manifest.recordCounts.categories ||
         transactions.length !== manifest.recordCounts.transactions ||
         attachments.length !== manifest.recordCounts.attachments ||
-        notes.length !== manifest.recordCounts.notes
+        notes.length !== manifest.recordCounts.notes ||
+        (manifest.recordCounts.dues !== undefined && (typeof manifest.recordCounts.dues !== 'number' || (data.dues || []).length !== manifest.recordCounts.dues)) ||
+        (manifest.recordCounts.allocations !== undefined && (typeof manifest.recordCounts.allocations !== 'number' || (data.allocations || []).length !== manifest.recordCounts.allocations)) ||
+        (manifest.recordCounts.reminders !== undefined && (typeof manifest.recordCounts.reminders !== 'number' || (data.reminders || []).length !== manifest.recordCounts.reminders))
       ) {
         return {
           isValid: false,
@@ -219,6 +235,10 @@ export async function validateBackupFile(fileContent: string): Promise<{
       attachments,
       notes,
     };
+    // Preserve the exact JSON key insertion order of both legacy N1 and N2 exports.
+    if (data.dues !== undefined) payloadToHash.dues = data.dues;
+    if (data.allocations !== undefined) payloadToHash.allocations = data.allocations;
+    if (data.reminders !== undefined) payloadToHash.reminders = data.reminders;
     if (data.settings !== undefined) {
       payloadToHash.settings = data.settings;
     }
@@ -385,6 +405,20 @@ export async function validateBackupFile(fileContent: string): Promise<{
         return { isValid: false, error: `معرف ملاحظة مكرر في النسخة الاحتياطية (${note.id}).` };
       }
       noteIds.add(note.id);
+    }
+
+    // N2 lists are optional for backups produced before this milestone.
+    if (
+      (data.dues !== undefined && !Array.isArray(data.dues)) ||
+      (data.allocations !== undefined && !Array.isArray(data.allocations)) ||
+      (data.reminders !== undefined && !Array.isArray(data.reminders))
+    ) {
+      return { isValid: false, error: 'بيانات الاستحقاقات أو تخصيصات السداد أو التذكيرات غير صالحة.' };
+    }
+    try {
+      validateDueLedger(data.dues || [], data.allocations || [], data.reminders || [], accounts, transactions);
+    } catch (error) {
+      return { isValid: false, error: 'فشل فحص بيانات N2: ' + (error instanceof Error ? error.message : String(error)) };
     }
 
     // F. Safe Settings Validation

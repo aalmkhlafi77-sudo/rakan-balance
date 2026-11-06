@@ -12,6 +12,10 @@ import {
   BackupBundle,
   CategoryModel,
   InterAccountTransferInput,
+  DueItemContract,
+  PaymentAllocationContract,
+  ReminderContract,
+  EntryType,
   StickyNoteModel,
   TransactionModel,
   UserSettings,
@@ -42,6 +46,8 @@ import {
 } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
+import { dueRemaining, validateDueRecord, validDate } from '../domain/dues.ts';
+import { MAX_SAFE_MINOR_AMOUNT } from '../domain/money.ts';
 import {
   buildTransferEntries,
   validateInterAccountTransfer,
@@ -54,6 +60,9 @@ interface AppContextType {
   transactions: TransactionModel[];
   attachments: AttachmentModel[];
   notes: StickyNoteModel[];
+  dues: DueItemContract[];
+  allocations: PaymentAllocationContract[];
+  reminders: ReminderContract[];
   settings: UserSettings;
   isLoading: boolean;
   activeScope: 'real' | 'demo';
@@ -78,6 +87,13 @@ interface AppContextType {
   createInterAccountTransfer: (input: InterAccountTransferInput) => Promise<string>;
   updateInterAccountTransfer: (transferId: string, input: InterAccountTransferInput) => Promise<void>;
   deleteInterAccountTransfer: (transferId: string) => Promise<void>;
+
+  // N2: dues are follow-up records; a payment is exactly ONE financial movement.
+  createDue: (input: { accountId: string; entryType: EntryType; dueDate: string; amountMinor: number; notes?: string }) => Promise<string>;
+  settleDue: (dueId: string, amountMinor: number, date: string) => Promise<void>;
+  deleteUnpaidDue: (dueId: string) => Promise<void>;
+  createReminder: (dueId: string, remindAt: string, templateText: string) => Promise<void>;
+  completeReminder: (reminderId: string) => Promise<void>;
 
   // Category actions
   addCategory: (name: string) => Promise<void>;
@@ -123,6 +139,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [transactions, setTransactions] = useState<TransactionModel[]>([]);
   const [attachments, setAttachments] = useState<AttachmentModel[]>([]);
   const [notes, setNotes] = useState<StickyNoteModel[]>([]);
+  const [dues, setDues] = useState<DueItemContract[]>([]);
+  const [allocations, setAllocations] = useState<PaymentAllocationContract[]>([]);
+  const [reminders, setReminders] = useState<ReminderContract[]>([]);
 
   // Settings & Security
   const [theme, setTheme] = useState<'dark' | 'light'>(getThemePref());
@@ -141,11 +160,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoading(true);
     try {
       if (scope === 'demo') {
-        let [demoAccs, demoCats, demoTxs, demoNotes] = await Promise.all([
+        let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_DEMO.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_DEMO.CATEGORIES),
           dbStorage.getAll<TransactionModel>(STORES_DEMO.TRANSACTIONS),
           dbStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES),
+          dbStorage.getAll<DueItemContract>(STORES_DEMO.DUES),
+          dbStorage.getAll<PaymentAllocationContract>(STORES_DEMO.ALLOCATIONS),
+          dbStorage.getAll<ReminderContract>(STORES_DEMO.REMINDERS),
         ]);
 
         // Auto-seed demo workspace if empty
@@ -162,14 +184,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTransactions(demoTxs);
         setAttachments([]);
         setNotes(demoNotes || []);
+        setDues(demoDues || []);
+        setAllocations(demoAllocations || []);
+        setReminders(demoReminders || []);
       } else {
         // Real Workspace
-        const [realAccs, realCats, realTxs, realAtts, realNotes] = await Promise.all([
+        const [realAccs, realCats, realTxs, realAtts, realNotes, realDues, realAllocations, realReminders] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
           dbStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
           dbStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
           dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
+          dbStorage.getAll<DueItemContract>(STORES_REAL.DUES),
+          dbStorage.getAll<PaymentAllocationContract>(STORES_REAL.ALLOCATIONS),
+          dbStorage.getAll<ReminderContract>(STORES_REAL.REMINDERS),
         ]);
 
         // Ensure default categories exist if completely empty
@@ -186,6 +214,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTransactions(realTxs || []);
         setAttachments(realAtts || []);
         setNotes(realNotes || []);
+        setDues(realDues || []);
+        setAllocations(realAllocations || []);
+        setReminders(realReminders || []);
       }
     } catch (err) {
       console.error('Failed to load workspace data from IndexedDB:', err);
@@ -276,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const relatedTxs = transactions.filter((t) => t.accountId === accountId);
     const childAccounts = accounts.filter((a) => a.parentId === accountId);
 
-    if (relatedTxs.length > 0 || childAccounts.length > 0) {
+    if (relatedTxs.length > 0 || childAccounts.length > 0 || dues.some(d => d.accountId === accountId)) {
       return {
         success: false,
         error: `لا يمكن حذف هذا الحساب لاحتوائه على ${relatedTxs.length} حركة مالية و${childAccounts.length} حسابات فرعية. الخيار الآمن المعتمد هو «أرشفة الحساب» للحفاظ على التاريخ المالي.`,
@@ -371,6 +402,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    if (allocations.some(a => a.paymentTransactionId === tx.id)) throw new Error('لا يمكن تعديل دفعة مرتبطة باستحقاق.');
     // Centralized strict validation for updated transaction
     const validation = validateTransactionInput(
       {
@@ -437,6 +469,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    if (allocations.some(a => a.paymentTransactionId === transactionId)) throw new Error('لا يمكن حذف دفعة مرتبطة باستحقاق.');
     const isDemo = activeScope === 'demo';
     const attIds = tx.attachmentIds || [];
 
@@ -519,6 +552,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. Update state upon complete transaction success
     setTransactions((prev) => prev.filter((t) => t.transferId !== transferId));
+  };
+
+  // =========================================================================
+  // N2: Due Follow-up, Partial Settlements and Manual Reminders
+  // =========================================================================
+
+  const createDue = async (input: { accountId: string; entryType: EntryType; dueDate: string; amountMinor: number; notes?: string }): Promise<string> => {
+    const account = accounts.find(a => a.id === input.accountId);
+    if (!account || account.status !== 'active') throw new Error('اختر حساباً نشطاً.');
+    const signedBalance = getAccountBalance(account.id);
+    const availableBalance = input.entryType === 'owedByAccount' ? signedBalance : -signedBalance;
+    const outstandingDues = dues.filter(d => d.accountId === account.id && d.entryType === input.entryType)
+      .reduce((sum, d) => sum + dueRemaining(d), 0);
+    if (availableBalance <= 0 || input.amountMinor > availableBalance - outstandingDues) {
+      throw new Error('مبلغ الاستحقاق يتجاوز الرصيد المتاح غير المصنف في استحقاقات أخرى.');
+    }
+    const now = new Date().toISOString();
+    const due: DueItemContract = {
+      id: crypto.randomUUID(), accountId: input.accountId, entryType: input.entryType,
+      dueDate: input.dueDate, originalAmountMinor: input.amountMinor,
+      settledAmountMinor: 0, status: 'pending', notes: input.notes?.trim() || undefined,
+      createdAt: now, updatedAt: now,
+    };
+    validateDueRecord(due, accounts, transactions);
+    await dbStorage.addDue(due, activeScope === 'demo');
+    setDues(prev => [...prev, due]);
+    return due.id;
+  };
+
+  const deleteUnpaidDue = async (dueId: string): Promise<void> => {
+    await dbStorage.deleteUnpaidDueAtomic(dueId, activeScope === 'demo');
+    setDues(prev => prev.filter(d => d.id !== dueId));
+    setReminders(prev => prev.filter(r => r.dueItemId !== dueId));
+  };
+
+  const settleDue = async (dueId: string, amountMinor: number, date: string): Promise<void> => {
+    const due = dues.find(d => d.id === dueId);
+    if (!due) throw new Error('الاستحقاق غير موجود.');
+    const account = accounts.find(a => a.id === due.accountId);
+    if (!account || account.status !== 'active') throw new Error('الحساب غير نشط.');
+    if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > MAX_SAFE_MINOR_AMOUNT ||
+      amountMinor > dueRemaining(due)) throw new Error('الدفعة تتجاوز المتبقي أو مبلغها غير صالح.');
+    const balance = getAccountBalance(due.accountId);
+    const available = due.entryType === 'owedByAccount' ? balance : -balance;
+    if (amountMinor > available) throw new Error('الدفعة تتجاوز الرصيد المالي الحالي للحساب.');
+    const entryType: EntryType = due.entryType === 'owedByAccount' ? 'owedToAccount' : 'owedByAccount';
+    const validation = validateTransactionInput({
+      accountId: due.accountId, entryType, amountMinor, date,
+      description: 'سداد استحقاق بتاريخ ' + due.dueDate,
+    }, accounts);
+    if (!validation.isValid) throw new Error(validation.error || 'بيانات دفعة الاستحقاق غير صالحة.');
+    const now = new Date().toISOString();
+    const payment: TransactionModel = {
+      id: crypto.randomUUID(), accountId: due.accountId, entryType, amountMinor, date,
+      description: 'سداد استحقاق بتاريخ ' + due.dueDate, attachmentIds: [],
+      isDemo: activeScope === 'demo', createdAt: now, updatedAt: now,
+    };
+    const allocation: PaymentAllocationContract = {
+      id: crypto.randomUUID(), dueItemId: due.id, paymentTransactionId: payment.id, amountMinor,
+    };
+    await dbStorage.recordDuePaymentAtomic(due.id, payment, allocation, activeScope === 'demo');
+    setTransactions(prev => [payment, ...prev]);
+    setAllocations(prev => [...prev, allocation]);
+    setDues(prev => prev.map(d => d.id === dueId
+      ? { ...d, settledAmountMinor: d.settledAmountMinor + amountMinor,
+          status: d.settledAmountMinor + amountMinor === d.originalAmountMinor ? 'settled' : 'partially_settled', updatedAt: now }
+      : d));
+  };
+
+  const createReminder = async (dueId: string, remindAt: string, templateText: string): Promise<void> => {
+    if (!dues.some(d => d.id === dueId)) throw new Error('استحقاق التذكير غير موجود.');
+    if (!validDate(remindAt) || !templateText.trim()) throw new Error('تاريخ أو نص التذكير غير صالح.');
+    const reminder: ReminderContract = {
+      id: crypto.randomUUID(), dueItemId: dueId, remindAt,
+      templateText: templateText.trim(), isCompleted: false, channel: 'manual',
+    };
+    await dbStorage.addReminder(reminder, activeScope === 'demo');
+    setReminders(prev => [...prev, reminder]);
+  };
+
+  const completeReminder = async (reminderId: string): Promise<void> => {
+    await dbStorage.markReminderCompleted(reminderId, activeScope === 'demo');
+    setReminders(prev => prev.map(r => r.id === reminderId ? { ...r, isCompleted: true } : r));
   };
 
   // =========================================================================
@@ -619,6 +735,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAccounts([]);
       setTransactions([]);
       setNotes([]);
+      setDues([]);
+      setAllocations([]);
+      setReminders([]);
     }
   };
 
@@ -738,6 +857,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactions,
         attachments,
         notes,
+        dues,
+        allocations,
+        reminders,
         settings,
         isLoading,
         activeScope,
@@ -754,6 +876,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createInterAccountTransfer,
         updateInterAccountTransfer,
         deleteInterAccountTransfer,
+        createDue,
+        settleDue,
+        deleteUnpaidDue,
+        createReminder,
+        completeReminder,
         addCategory,
         updateCategory,
         deleteCategory,
