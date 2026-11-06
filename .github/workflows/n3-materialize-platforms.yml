@@ -1,0 +1,49 @@
+name: N3 materialize standard Flutter host projects
+
+on:
+  push:
+    branches:
+      - fix/n3-mobile-build-and-functional-completion
+    paths:
+      - '.github/workflows/n3-materialize-platforms.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-platforms:
+    if: github.ref == 'refs/heads/fix/n3-mobile-build-and-functional-completion'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: rakan_balance_mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate standard Android and iOS host scaffolds
+        run: |
+          flutter create --no-pub --platforms=android,ios --project-name=rakan_balance_mobile --org=com.rakanbalance .
+          rm -f test/widget_test.dart
+      - name: Resolve and verify Dart source
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: Commit standard host scaffolds to isolated branch only
+        run: |
+          git add -A android ios .metadata .gitignore
+          if git diff --cached --quiet; then
+            echo 'Host scaffolds already recorded.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build(n3): materialize Flutter-generated Android and iOS host scaffolds'
+          git push origin HEAD:refs/heads/fix/n3-mobile-build-and-functional-completion
