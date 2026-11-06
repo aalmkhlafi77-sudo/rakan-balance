@@ -150,6 +150,9 @@ export interface BackupManifest {
     transactions: number;
     attachments: number;
     notes: number;
+    dues?: number;
+    allocations?: number;
+    reminders?: number;
   };
 }
 
