@@ -2,10 +2,12 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Backup & Restore Integrity Service
- * Follows Document v2 Section 6, 14.15 & Review Fix #3:
+ * Follows Document v2 Section 6, 14.15 & Final N0 Verification:
  * - Generates manifest with SHA-256 integrity hash
- * - Performs deep pre-validation on schema, versions, types, required fields, and relational integrity
+ * - Deeply inspects schema, versions, types, required fields, and relational integrity
  * - Validates foreign keys (categories, accounts, attachments) and tree cycles before allowing restore
+ * - Rejects duplicate IDs, incomplete payloads, unsafe amounts, and invalid references
+ * - Includes safe owner settings while strictly excluding sensitive PIN/lock secrets
  * - Triggers safe atomic restore via IndexedDB
  */
 
@@ -17,9 +19,16 @@ import {
   CategoryModel,
   StickyNoteModel,
   TransactionModel,
+  UserSettings,
 } from '../domain/types.ts';
 import { checkTreeCycle } from '../domain/balance_calculator.ts';
 import { dbStorage, STORES_REAL } from './indexed_db.ts';
+import { MAX_SAFE_MINOR_AMOUNT } from '../domain/money.ts';
+import {
+  getOwnerNamePref,
+  getSidebarCollapsedPref,
+  getThemePref,
+} from './local_storage.ts';
 
 /**
  * Computes a standard SHA-256 checksum string for any text or payload.
@@ -34,6 +43,7 @@ export async function computeSHA256(text: string): Promise<string> {
 
 /**
  * Creates a complete export bundle with manifest and checksum.
+ * Includes owner settings while strictly excluding sensitive authentication secrets.
  */
 export async function exportBackupBundle(): Promise<{ jsonString: string; filename: string }> {
   const [accounts, categories, transactions, attachments, notes] = await Promise.all([
@@ -44,12 +54,23 @@ export async function exportBackupBundle(): Promise<{ jsonString: string; filena
     dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
   ]);
 
+  // Safe non-sensitive owner settings (PIN hashes/salts are explicitly excluded)
+  const safeSettings: Partial<UserSettings> = {
+    ownerName: typeof window !== 'undefined' ? getOwnerNamePref() : 'راكان',
+    theme: typeof window !== 'undefined' ? getThemePref() : 'dark',
+    sidebarCollapsed: typeof window !== 'undefined' ? getSidebarCollapsedPref() : false,
+    currencyCode: 'SAR',
+    currencySymbol: 'ر.س',
+    currencyDecimals: 2,
+  };
+
   const payload = {
     accounts,
     categories,
     transactions,
     attachments,
     notes,
+    settings: safeSettings,
   };
 
   const payloadString = JSON.stringify(payload);
@@ -99,14 +120,17 @@ export function downloadBackupFile(jsonString: string, filename: string): void {
 }
 
 /**
- * Validates a backup file before attempting restore (Review Fix #3).
+ * Validates a backup file before attempting restore (Final N0 Validation).
  * Performs deep inspection of:
  * - Format and schema version
  * - Record count consistency
  * - SHA-256 Checksum
- * - Entity field types and required attributes
+ * - Entity completeness (all tables required)
+ * - Duplicate ID prevention across all tables
+ * - Safe numeric amounts (positive Halalas, within MAX_SAFE_MINOR_AMOUNT)
  * - Relational foreign-key integrity (accounts -> categories, transactions -> accounts, etc.)
  * - Circular tree hierarchy cycles
+ * - Safe owner settings (rejection/sanitization of sensitive credentials)
  */
 export async function validateBackupFile(fileContent: string): Promise<{
   isValid: boolean;
@@ -146,16 +170,29 @@ export async function validateBackupFile(fileContent: string): Promise<{
       };
     }
 
-    // 2. Data Container Check
+    // 2. Data Container Check & Completeness
     if (!data || typeof data !== 'object') {
       return { isValid: false, error: 'حاوية بيانات النسخة (Data) مفقودة أو غير صالحة.' };
     }
 
-    const accounts: AccountModel[] = Array.isArray(data.accounts) ? data.accounts : [];
-    const categories: CategoryModel[] = Array.isArray(data.categories) ? data.categories : [];
-    const transactions: TransactionModel[] = Array.isArray(data.transactions) ? data.transactions : [];
-    const attachments: AttachmentModel[] = Array.isArray(data.attachments) ? data.attachments : [];
-    const notes: StickyNoteModel[] = Array.isArray(data.notes) ? data.notes : [];
+    if (
+      !Array.isArray(data.accounts) ||
+      !Array.isArray(data.categories) ||
+      !Array.isArray(data.transactions) ||
+      !Array.isArray(data.attachments) ||
+      !Array.isArray(data.notes)
+    ) {
+      return {
+        isValid: false,
+        error: 'النسخة الاحتياطية ناقصة: يجب أن تحتوي حزمة البيانات على جميع الجداول (الحسابات، التصنيفات، الحركات، المرفقات، والملاحظات).',
+      };
+    }
+
+    const accounts: AccountModel[] = data.accounts;
+    const categories: CategoryModel[] = data.categories;
+    const transactions: TransactionModel[] = data.transactions;
+    const attachments: AttachmentModel[] = data.attachments;
+    const notes: StickyNoteModel[] = data.notes;
 
     // 3. Count consistency check
     if (manifest.recordCounts) {
@@ -174,14 +211,18 @@ export async function validateBackupFile(fileContent: string): Promise<{
     }
 
     // 4. SHA-256 Checksum Verification
-    const payloadString = JSON.stringify({
+    const payloadToHash: any = {
       accounts,
       categories,
       transactions,
       attachments,
       notes,
-    });
+    };
+    if (data.settings !== undefined) {
+      payloadToHash.settings = data.settings;
+    }
 
+    const payloadString = JSON.stringify(payloadToHash);
     const calculatedChecksum = await computeSHA256(payloadString);
     if (calculatedChecksum !== manifest.checksum) {
       return {
@@ -190,23 +231,34 @@ export async function validateBackupFile(fileContent: string): Promise<{
       };
     }
 
-    // 5. Deep Field & Type Validation
-    // A. Categories
+    // 5. Deep Field, Duplicate IDs, and Relational Integrity Checks
+
+    // A. Categories: Validate and Check Duplicate IDs
     const categoryIds = new Set<string>();
     for (const cat of categories) {
       if (!cat.id || typeof cat.id !== 'string' || !cat.name || typeof cat.name !== 'string') {
         return { isValid: false, error: `سجل تصنيف غير صالح في النسخة: معرف أو اسم مفقود (${cat.id}).` };
       }
+      if (categoryIds.has(cat.id)) {
+        return { isValid: false, error: `معرف تصنيف مكرر في النسخة الاحتياطية (${cat.id}).` };
+      }
       categoryIds.add(cat.id);
     }
 
-    // B. Accounts
+    // B. Accounts: Validate, Check Duplicate IDs, Safe Amounts, and Foreign Keys
     const accountIds = new Set<string>();
     for (const acc of accounts) {
       if (!acc.id || typeof acc.id !== 'string' || !acc.name || typeof acc.name !== 'string') {
         return { isValid: false, error: `سجل حساب غير صالح في النسخة: معرف أو اسم مفقود (${acc.id}).` };
       }
-      if (!Number.isSafeInteger(acc.openingBalanceMinor)) {
+      if (accountIds.has(acc.id)) {
+        return { isValid: false, error: `معرف حساب مكرر في النسخة الاحتياطية (${acc.id}).` };
+      }
+      if (
+        typeof acc.openingBalanceMinor !== 'number' ||
+        !Number.isSafeInteger(acc.openingBalanceMinor) ||
+        Math.abs(acc.openingBalanceMinor) > MAX_SAFE_MINOR_AMOUNT
+      ) {
         return { isValid: false, error: `الرصيد الافتتاحي للحساب "${acc.name}" ليس عدداً صحيحاً آمناً بالهللات.` };
       }
       if (acc.status !== 'active' && acc.status !== 'archived') {
@@ -231,6 +283,12 @@ export async function validateBackupFile(fileContent: string): Promise<{
             error: `الحساب الفرعي "${acc.name}" مرتبط بحساب أب مفقود في النسخة (${acc.parentId}).`,
           };
         }
+        if (acc.parentId === acc.id) {
+          return {
+            isValid: false,
+            error: `الحساب "${acc.name}" لا يمكن أن يكون أباً لنفسه.`,
+          };
+        }
         if (checkTreeCycle(accounts, acc.id, acc.parentId)) {
           return {
             isValid: false,
@@ -240,11 +298,14 @@ export async function validateBackupFile(fileContent: string): Promise<{
       }
     }
 
-    // C. Transactions
+    // C. Transactions: Validate, Check Duplicate IDs, Foreign Keys, and Positive Safe Amounts
     const transactionIds = new Set<string>();
     for (const tx of transactions) {
       if (!tx.id || typeof tx.id !== 'string') {
         return { isValid: false, error: 'حركة مالية بدون معرف صالح.' };
+      }
+      if (transactionIds.has(tx.id)) {
+        return { isValid: false, error: `معرف حركة مكرر في النسخة الاحتياطية (${tx.id}).` };
       }
       if (!accountIds.has(tx.accountId)) {
         return {
@@ -255,8 +316,16 @@ export async function validateBackupFile(fileContent: string): Promise<{
       if (tx.entryType !== 'owedByAccount' && tx.entryType !== 'owedToAccount') {
         return { isValid: false, error: `نوع الحركة "${tx.description}" غير صالح (${tx.entryType}).` };
       }
-      if (!Number.isSafeInteger(tx.amountMinor) || tx.amountMinor <= 0) {
-        return { isValid: false, error: `مبلغ الحركة "${tx.description}" يجب أن يكون عدداً صحيحاً موجباً بالهللات.` };
+      if (
+        typeof tx.amountMinor !== 'number' ||
+        !Number.isSafeInteger(tx.amountMinor) ||
+        tx.amountMinor <= 0 ||
+        tx.amountMinor > MAX_SAFE_MINOR_AMOUNT
+      ) {
+        return {
+          isValid: false,
+          error: `مبلغ الحركة "${tx.description}" يجب أن يكون عدداً صحيحاً موجباً وآمناً بالهللات (> 0 ولا يتجاوز الحد الأقصى).`,
+        };
       }
       if (!tx.date || !/^\d{4}-\d{2}-\d{2}$/.test(tx.date)) {
         return { isValid: false, error: `تاريخ الحركة "${tx.description}" غير صالح (${tx.date}).` };
@@ -264,11 +333,14 @@ export async function validateBackupFile(fileContent: string): Promise<{
       transactionIds.add(tx.id);
     }
 
-    // D. Attachments
+    // D. Attachments: Validate, Check Duplicate IDs, and Links to Transactions
     const attachmentIds = new Set<string>();
     for (const att of attachments) {
       if (!att.id || typeof att.id !== 'string' || !att.dataUrl || typeof att.dataUrl !== 'string') {
         return { isValid: false, error: `سجل مرفق غير صالح في النسخة (${att.id}).` };
+      }
+      if (attachmentIds.has(att.id)) {
+        return { isValid: false, error: `معرف مرفق مكرر في النسخة الاحتياطية (${att.id}).` };
       }
       if (!transactionIds.has(att.transactionId)) {
         return {
@@ -290,6 +362,37 @@ export async function validateBackupFile(fileContent: string): Promise<{
             };
           }
         }
+      }
+    }
+
+    // E. Notes: Check Duplicate IDs
+    const noteIds = new Set<string>();
+    for (const note of notes) {
+      if (!note.id || typeof note.id !== 'string') {
+        return { isValid: false, error: 'سجل ملاحظة بدون معرف صالح.' };
+      }
+      if (noteIds.has(note.id)) {
+        return { isValid: false, error: `معرف ملاحظة مكرر في النسخة الاحتياطية (${note.id}).` };
+      }
+      noteIds.add(note.id);
+    }
+
+    // F. Safe Settings Validation
+    if (data.settings !== undefined) {
+      if (typeof data.settings !== 'object' || data.settings === null) {
+        return { isValid: false, error: 'كائن إعدادات المالك في النسخة غير صالح.' };
+      }
+      if (data.settings.currencyCode && data.settings.currencyCode !== 'SAR') {
+        return { isValid: false, error: `عملة النسخة غير متوافقة (${data.settings.currencyCode}). التطبيق يعتمد SAR فقط.` };
+      }
+      if (data.settings.currencyDecimals && data.settings.currencyDecimals !== 2) {
+        return { isValid: false, error: 'دقة العملة يجب أن تكون 2 (100 هللة).' };
+      }
+      // Security boundary check: ensure sensitive PIN secrets are sanitized
+      if (data.settings.pinCodeHash || data.settings.pinSalt) {
+        delete data.settings.pinCodeHash;
+        delete data.settings.pinSalt;
+        delete data.settings.isLocked;
       }
     }
 

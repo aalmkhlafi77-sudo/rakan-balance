@@ -40,6 +40,7 @@ import {
   INITIAL_CATEGORIES,
 } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
+import { validateTransactionInput } from '../domain/transaction_validator.ts';
 
 interface AppContextType {
   // Data
@@ -286,18 +287,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     txData: Omit<TransactionModel, 'id' | 'createdAt' | 'updatedAt' | 'isDemo'>,
     newAttachments?: AttachmentModel[]
   ): Promise<string> => {
-    // Invariant check: Positive amount
-    if (txData.amountMinor <= 0) {
-      throw new Error('يجب أن يكون مبلغ الحركة أكبر من صفر قطوعاً.');
-    }
-
-    // Invariant check: Account exists and is active
-    const targetAccount = accounts.find((a) => a.id === txData.accountId);
-    if (!targetAccount) {
-      throw new Error('الحساب المحدد غير موجود.');
-    }
-    if (targetAccount.status === 'archived') {
-      throw new Error('لا يمكن تسجيل حركات مالية جديدة على حساب مؤرشف.');
+    // Centralized strict validation: positive integer halalas, account exists & is active, valid date/desc
+    const validation = validateTransactionInput(
+      {
+        accountId: txData.accountId,
+        entryType: txData.entryType,
+        amountMinor: txData.amountMinor,
+        date: txData.date,
+        description: txData.description,
+      },
+      accounts
+    );
+    if (!validation.isValid) {
+      throw new Error(validation.error || 'بيانات الحركة المالية غير صالحة.');
     }
 
     const txId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
@@ -344,8 +346,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newAttachments?: AttachmentModel[],
     removedAttachmentIds?: string[]
   ): Promise<void> => {
-    if (tx.amountMinor <= 0) {
-      throw new Error('يجب أن يكون مبلغ الحركة أكبر من صفر.');
+    // Centralized strict validation for updated transaction
+    const validation = validateTransactionInput(
+      {
+        accountId: tx.accountId,
+        entryType: tx.entryType,
+        amountMinor: tx.amountMinor,
+        date: tx.date,
+        description: tx.description,
+      },
+      accounts
+    );
+    if (!validation.isValid) {
+      throw new Error(validation.error || 'بيانات الحركة المعدلة غير صالحة.');
     }
 
     const isDemo = activeScope === 'demo';
@@ -509,6 +522,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const atomicRestoreData = async (bundleData: BackupBundle['data']) => {
     // Strictly operates on Real storage!
     await dbStorage.atomicRestore(bundleData);
+    if (bundleData.settings?.ownerName) {
+      updateOwnerName(bundleData.settings.ownerName);
+    }
     if (activeScope === 'real') {
       await loadWorkspaceData('real');
     }

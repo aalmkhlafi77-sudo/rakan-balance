@@ -2,7 +2,12 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Automated Verification Test Suite
- * Executable specifications testing all invariants from Document v2 & Post-Review Fixes
+ * Executable specifications testing all invariants from Document v2 & Final N0 Validation:
+ * - Real IndexedDB atomic operations & failure simulation with zero partial state
+ * - Real validateBackupFile invocations for corrupt, incomplete, broken FKs, cycles, duplicate IDs, and unsafe amounts
+ * - Real restore failure test verifying pre-existing data preservation
+ * - Real demo notes isolation & purge test verifying real data is untouched
+ * - Invariant financial formulas & strict money precision tests
  */
 
 import {
@@ -11,8 +16,16 @@ import {
   calculateDashboardSummary,
   checkTreeCycle,
 } from './balance_calculator.ts';
-import { tryToMinorUnits, toMinorUnits, MAX_SAFE_MINOR_AMOUNT } from './money.ts';
-import { AccountModel, CategoryModel, TransactionModel, BackupBundle } from './types.ts';
+import { tryToMinorUnits, MAX_SAFE_MINOR_AMOUNT } from './money.ts';
+import {
+  AccountModel,
+  AttachmentModel,
+  CategoryModel,
+  StickyNoteModel,
+  TransactionModel,
+} from './types.ts';
+import { dbStorage, STORES_DEMO, STORES_REAL } from '../storage/indexed_db.ts';
+import { computeSHA256, validateBackupFile } from '../storage/backup_service.ts';
 
 export interface TestResult {
   id: string;
@@ -23,7 +36,7 @@ export interface TestResult {
   details?: string;
 }
 
-export function runFinancialVerificationSuite(): TestResult[] {
+export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
   const results: TestResult[] = [];
 
   // =========================================================================
@@ -96,7 +109,7 @@ export function runFinancialVerificationSuite(): TestResult[] {
 
     results.push({
       id: 'test-1-reference-example',
-      title: 'اختبار المثال المرجعي الإلزامي (وثيقة v2 بند 4.1)',
+      title: 'اختبار 1: المثال المرجعي الإلزامي (وثيقة v2 بند 4.1)',
       passed: isBalanceCorrect && isStatementOpeningCorrect && isStatementClosingCorrect,
       expected: 'الرصيد النهائي: -30.00 (عليك 30 ر.س)، ورصيد بداية كشف حساب يبدأ من الحركة الأخيرة: +270.00',
       actual: `الرصيد: ${(currentBalance / 100).toFixed(2)} ر.س، رصيد أول الفترة: ${(statementFromLastTx.openingBalanceMinor / 100).toFixed(2)} ر.س، رصيد آخر الفترة: ${(statementFromLastTx.closingBalanceMinor / 100).toFixed(2)} ر.س`,
@@ -152,7 +165,7 @@ export function runFinancialVerificationSuite(): TestResult[] {
 
     results.push({
       id: 'test-2-dashboard-totals',
-      title: 'اختبار تطابق إجماليات لوحة التحكم (لك / عليك / الصافي)',
+      title: 'اختبار 2: تطابق إجماليات لوحة التحكم (لك / عليك / الصافي)',
       passed: isReceivableCorrect && isPayableCorrect && isNetCorrect,
       expected: 'إجمالي لك = 120.00، إجمالي عليك = 70.00، صافي المركز = 50.00',
       actual: `لك = ${(summary.totalReceivableMinor / 100).toFixed(2)}، عليك = ${(summary.totalPayableMinor / 100).toFixed(2)}، الصافي = ${(summary.netBalanceMinor / 100).toFixed(2)}`,
@@ -187,12 +200,11 @@ export function runFinancialVerificationSuite(): TestResult[] {
     };
 
     const summary = calculateDashboardSummary([parentAccount, childAccount], []);
-    // Total should be 50 + 30 = 80, NOT duplicated to (50+30) + 30 = 110
     const passed = summary.totalReceivableMinor === 8000;
 
     results.push({
       id: 'test-3-subaccounts-independence',
-      title: 'اختبار استقلال الحسابات الفرعية ومنع التكرار المالي للأب والأبناء',
+      title: 'اختبار 3: استقلال الحسابات الفرعية ومنع التكرار المالي للأب والأبناء',
       passed,
       expected: 'إجمالي لك = 80.00 (رصيد الأب 50 + رصيد الفرع 30)',
       actual: `إجمالي لك = ${(summary.totalReceivableMinor / 100).toFixed(2)}`,
@@ -245,7 +257,7 @@ export function runFinancialVerificationSuite(): TestResult[] {
 
     results.push({
       id: 'test-4-cycle-prevention',
-      title: 'اختبار كشف ومنع الدورات الحلقية في شجرة الحسابات',
+      title: 'اختبار 4: كشف ومنع الدورات الحلقية في شجرة الحسابات',
       passed,
       expected: 'منع تعيين الحساب أباً لنفسه أو لأي من أحفاده بنجاح',
       actual: `كشف تفرع لنفسه: ${selfCycle ? 'ممنوع' : 'مسموح'}، كشف تفرع لحفيده: ${descendantCycle ? 'ممنوع' : 'مسموح'}`,
@@ -257,7 +269,6 @@ export function runFinancialVerificationSuite(): TestResult[] {
   // TEST 5: Strict Money Input Validation & Boundary Cases (Review Fix #1)
   // =========================================================================
   {
-    // Invalid inputs that MUST be rejected:
     const invalidMultiDot = tryToMinorUnits('10.20.30');
     const invalidLetters = tryToMinorUnits('15a0');
     const invalidExtraDecimals = tryToMinorUnits('12.345');
@@ -268,7 +279,6 @@ export function runFinancialVerificationSuite(): TestResult[] {
     const invalidNaN = tryToMinorUnits(NaN);
     const invalidOverflow = tryToMinorUnits(MAX_SAFE_MINOR_AMOUNT + 100);
 
-    // Valid inputs that MUST be parsed accurately:
     const validExactTwo = tryToMinorUnits('150.25');
     const validExactOne = tryToMinorUnits('150.2');
     const validWhole = tryToMinorUnits('150');
@@ -295,7 +305,7 @@ export function runFinancialVerificationSuite(): TestResult[] {
 
     results.push({
       id: 'test-5-strict-money-validation',
-      title: 'اختبار دقة toMinorUnits ورفض المدخلات المشوهة والكسور الزائدة (إصلاح 1)',
+      title: 'اختبار 5: دقة toMinorUnits ورفض المدخلات المشوهة والكسور الزائدة (إصلاح 1)',
       passed,
       expected: 'رفض قاطع لـ (10.20.30، 15a0، 12.345، NaN، وتجاوز الحدود) وقبول دقيق للأرقام النظامية',
       actual: passed
@@ -306,98 +316,402 @@ export function runFinancialVerificationSuite(): TestResult[] {
   }
 
   // =========================================================================
-  // TEST 6: Atomic Movements and Attachments Transaction Invariants (Review Fix #2)
+  // TEST 6: Real IndexedDB Atomic Save & Simulated Failure Rollback (Requirement 1)
+  // Saves tx + attachment in IndexedDB. Verifies both exist.
+  // Then simulates a failed atomic store and verifies ZERO partial data remains.
   // =========================================================================
-  {
-    // Verifies that a transaction entity and its attachments are tightly coupled
+  try {
+    const successTxId = 'tx_atomic_test_ok';
+    const successAttId = 'att_atomic_test_ok';
+
     const testTx: TransactionModel = {
-      id: 'atomic-tx-1',
-      accountId: 'acc-test-1',
+      id: successTxId,
+      accountId: 'acc-real-1',
       entryType: 'owedByAccount',
-      amountMinor: 50000,
+      amountMinor: 25000,
       date: '2026-11-06',
-      description: 'حركة ذرية تجريبية',
-      attachmentIds: ['att-1', 'att-2'],
-      createdAt: '2026-11-06T10:00:00Z',
-      updatedAt: '2026-11-06T10:00:00Z',
+      description: 'حركة ذرية اختبارية ناجحة',
+      attachmentIds: [successAttId],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    const hasValidIds = testTx.attachmentIds.length === 2 && testTx.amountMinor > 0;
-    const isSignedCorrect = testTx.entryType === 'owedByAccount';
+    const testAtt: AttachmentModel = {
+      id: successAttId,
+      transactionId: successTxId,
+      originalName: 'receipt.pdf',
+      mimeType: 'application/pdf',
+      size: 1024,
+      dataUrl: 'data:application/pdf;base64,VEVTVA==',
+      createdAt: new Date().toISOString(),
+    };
+
+    // 1. Execute real atomic save
+    await dbStorage.saveTransactionAtomic(testTx, [testAtt], false);
+
+    // Verify both were committed
+    const allTxs = await dbStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+    const allAtts = await dbStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS);
+    const txSaved = allTxs.some((t) => t.id === successTxId);
+    const attSaved = allAtts.some((a) => a.id === successAttId);
+
+    // 2. Simulate a failing atomic transaction:
+    // Attempt to save a transaction where attachment causes failure, triggering tx.abort()
+    const failTxId = 'tx_atomic_test_fail';
+    const failAttId = 'att_atomic_test_fail';
+
+    const failTx: TransactionModel = {
+      id: failTxId,
+      accountId: 'acc-real-1',
+      entryType: 'owedByAccount',
+      amountMinor: 30000,
+      date: '2026-11-06',
+      description: 'حركة ذرية يجب أن تتراجع بالكامل',
+      attachmentIds: [failAttId],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Object designed to throw during attachment storage to trigger atomic rollback
+    const badAttachmentList: AttachmentModel[] = [
+      {
+        id: failAttId,
+        transactionId: failTxId,
+        originalName: 'bad.pdf',
+        mimeType: 'application/pdf',
+        size: 512,
+        dataUrl: 'data:application/pdf;base64,RkFJTA==',
+        createdAt: new Date().toISOString(),
+      },
+      {
+        get id(): string {
+          throw new Error('Simulated failure during atomic attachment storage');
+        },
+      } as any,
+    ];
+
+    let atomicRollbackOccurred = false;
+    try {
+      await dbStorage.saveTransactionAtomic(failTx, badAttachmentList, false);
+    } catch {
+      atomicRollbackOccurred = true;
+    }
+
+    // Verify that NEITHER the failing transaction NOR its attachment were saved!
+    const allTxsAfter = await dbStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+    const allAttsAfter = await dbStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS);
+    const failTxLeaked = allTxsAfter.some((t) => t.id === failTxId);
+    const failAttLeaked = allAttsAfter.some((a) => a.id === failAttId);
+
+    // Clean up successful test record
+    await dbStorage.deleteTransactionAtomic(successTxId, [successAttId], false);
+
+    const passed = txSaved && attSaved && atomicRollbackOccurred && !failTxLeaked && !failAttLeaked;
 
     results.push({
-      id: 'test-6-atomic-movements',
-      title: 'اختبار معايير الذرية لحفظ الحركات والمرفقات (إصلاح 2)',
-      passed: hasValidIds && isSignedCorrect,
-      expected: 'اكتمال المعاملة برمتها أو إلغاؤها بالكامل في معاملة IndexedDB واحدة',
-      actual: 'معاملة ذرية واحدة تشمل الجداول وتضمن عدم وجود مرفقات يتيمة عند حدوث أي استثناء',
-      details: 'استخدام transaction([transactions, attachments], readwrite) مع اشتراط oncomplete.',
+      id: 'test-6-real-indexeddb-atomicity',
+      title: 'اختبار 6: التحقق الفعلي من ذرية التخزين في IndexedDB ومحاكاة التراجع التام عند الفشل (متطلب 1)',
+      passed,
+      expected: 'حفظ ناجح متكامل، ثم تراجع كامل عند الفشل مع عدم بقاء أي حركة أو مرفق جزئي في IndexedDB',
+      actual: passed
+        ? 'تم الحفظ والتحقق من وجود الحركة والمرفق، وعند محاكاة الفشل تراجعت المعاملة بالكامل (صفر سجلات مسربة)'
+        : `فشل التحقق: txSaved=${txSaved}, attSaved=${attSaved}, rollback=${atomicRollbackOccurred}, failTxLeaked=${failTxLeaked}, failAttLeaked=${failAttLeaked}`,
+      details: 'تنفيذ فعلي على IndexedDB مع محاكاة الخطأ والتأكد من انعدام البيانات الجزئية.',
+    });
+  } catch (err: any) {
+    results.push({
+      id: 'test-6-real-indexeddb-atomicity',
+      title: 'اختبار 6: التحقق الفعلي من ذرية التخزين في IndexedDB ومحاكاة التراجع التام عند الفشل (متطلب 1)',
+      passed: false,
+      expected: 'نجاح اختبار الذرية على IndexedDB',
+      actual: `استثناء غير متوقع: ${err.message}`,
     });
   }
 
   // =========================================================================
-  // TEST 7: Corrupted / Incompatible Backup Rejection & Data Preservation (Review Fix #3)
+  // TEST 7: Real validateBackupFile Execution & Restore Data Preservation (Requirements 2, 4, 5)
+  // Calls validateBackupFile with corrupt checksum, missing stores, broken FKs,
+  // duplicate IDs, and unsafe amounts.
+  // Then simulates a failed restore and verifies pre-existing canary data is untouched.
   // =========================================================================
-  {
-    // Test that an incompatible schema or broken foreign key is flagged and blocked
-    const testAccounts: AccountModel[] = [
+  try {
+    const validBaseAccounts: AccountModel[] = [
       {
-        id: 'acc-real-1',
-        name: 'عميل حقيقي',
+        id: 'acc-val-1',
+        name: 'عميل معتمد',
         parentId: null,
-        categoryId: 'cat-exists',
-        openingBalanceMinor: 1000,
+        categoryId: 'cat-val-1',
+        openingBalanceMinor: 5000,
         status: 'active',
         createdAt: '2026-11-01T00:00:00Z',
         updatedAt: '2026-11-01T00:00:00Z',
       },
     ];
 
-    // Transaction pointing to non-existent account
-    const orphanTx: TransactionModel = {
-      id: 'tx-orphan',
-      accountId: 'non-existent-account-id',
-      entryType: 'owedByAccount',
-      amountMinor: 2000,
-      date: '2026-11-02',
-      description: 'حركة بحساب مفقود',
-      attachmentIds: [],
-      createdAt: '2026-11-02T00:00:00Z',
-      updatedAt: '2026-11-02T00:00:00Z',
+    const validBaseCategories: CategoryModel[] = [
+      { id: 'cat-val-1', name: 'تصنيف عام', sortOrder: 0 },
+    ];
+
+    const validBaseTransactions: TransactionModel[] = [
+      {
+        id: 'tx-val-1',
+        accountId: 'acc-val-1',
+        entryType: 'owedByAccount',
+        amountMinor: 10000,
+        date: '2026-11-02',
+        description: 'حركة صالحة',
+        attachmentIds: [],
+        createdAt: '2026-11-02T00:00:00Z',
+        updatedAt: '2026-11-02T00:00:00Z',
+      },
+    ];
+
+    const makeBackupBundle = async (overrides: {
+      accounts?: any[];
+      categories?: any[];
+      transactions?: any[];
+      attachments?: any[];
+      notes?: any[];
+      settings?: any;
+      tamperChecksum?: boolean;
+      omitField?: string;
+    }) => {
+      const data: any = {
+        accounts: overrides.accounts ?? validBaseAccounts,
+        categories: overrides.categories ?? validBaseCategories,
+        transactions: overrides.transactions ?? validBaseTransactions,
+        attachments: overrides.attachments ?? [],
+        notes: overrides.notes ?? [],
+        settings: overrides.settings ?? {
+          ownerName: 'راكان',
+          theme: 'dark',
+          currencyCode: 'SAR',
+          currencySymbol: 'ر.س',
+          currencyDecimals: 2,
+        },
+      };
+
+      if (overrides.omitField) {
+        delete data[overrides.omitField];
+      }
+
+      const payloadString = JSON.stringify(data);
+      let checksum = await computeSHA256(payloadString);
+      if (overrides.tamperChecksum) {
+        checksum = '0000000000000000000000000000000000000000000000000000000000000000';
+      }
+
+      return JSON.stringify({
+        manifest: {
+          formatName: 'RAKAN_BALANCE_BACKUP',
+          backupFormatVersion: 2,
+          schemaVersion: 2,
+          exportedAt: new Date().toISOString(),
+          appName: 'راكان بلانس | RAKAN BALANCE',
+          checksum,
+          recordCounts: {
+            accounts: data.accounts ? data.accounts.length : 0,
+            categories: data.categories ? data.categories.length : 0,
+            transactions: data.transactions ? data.transactions.length : 0,
+            attachments: data.attachments ? data.attachments.length : 0,
+            notes: data.notes ? data.notes.length : 0,
+          },
+        },
+        data,
+      });
     };
 
-    const hasOrphanAccount = !testAccounts.some((a) => a.id === orphanTx.accountId);
+    // 1. Corrupt Checksum
+    const corruptChecksumJson = await makeBackupBundle({ tamperChecksum: true });
+    const resChecksum = await validateBackupFile(corruptChecksumJson);
+    const checksumRejected = !resChecksum.isValid && Boolean(resChecksum.error?.includes('SHA-256'));
+
+    // 2. Missing Incomplete Store (omitted categories)
+    const missingStoreJson = await makeBackupBundle({ omitField: 'categories' });
+    const resMissing = await validateBackupFile(missingStoreJson);
+    const missingRejected = !resMissing.isValid && Boolean(resMissing.error?.includes('ناقصة'));
+
+    // 3. Broken Foreign Key (tx pointing to missing account)
+    const orphanTx: TransactionModel = {
+      id: 'tx-orphan',
+      accountId: 'missing-acc-id',
+      entryType: 'owedByAccount',
+      amountMinor: 5000,
+      date: '2026-11-03',
+      description: 'حركة بحساب مفقود',
+      attachmentIds: [],
+      createdAt: '2026-11-03T00:00:00Z',
+      updatedAt: '2026-11-03T00:00:00Z',
+    };
+    const brokenFkJson = await makeBackupBundle({ transactions: [orphanTx] });
+    const resBrokenFk = await validateBackupFile(brokenFkJson);
+    const brokenFkRejected = !resBrokenFk.isValid;
+
+    // 4. Duplicate IDs in Accounts
+    const duplicateAccounts = [
+      ...validBaseAccounts,
+      { ...validBaseAccounts[0], name: 'حساب مكرر بنفس المعرف' },
+    ];
+    const dupIdJson = await makeBackupBundle({ accounts: duplicateAccounts });
+    const resDupId = await validateBackupFile(dupIdJson);
+    const dupIdRejected = !resDupId.isValid && Boolean(resDupId.error?.includes('مكرر'));
+
+    // 5. Unsafe Amount (negative amount in transaction)
+    const unsafeTx: TransactionModel = {
+      id: 'tx-unsafe',
+      accountId: 'acc-val-1',
+      entryType: 'owedByAccount',
+      amountMinor: -500, // Negative amount forbidden!
+      date: '2026-11-03',
+      description: 'حركة بمبلغ غير آمن',
+      attachmentIds: [],
+      createdAt: '2026-11-03T00:00:00Z',
+      updatedAt: '2026-11-03T00:00:00Z',
+    };
+    const unsafeAmountJson = await makeBackupBundle({ transactions: [unsafeTx] });
+    const resUnsafeAmount = await validateBackupFile(unsafeAmountJson);
+    const unsafeAmountRejected = !resUnsafeAmount.isValid;
+
+    // 6. Pre-existing Data Preservation on Failed Restore:
+    // Insert a canary account
+    const canaryAccId = 'acc_canary_preserve_test';
+    const canaryAccount: AccountModel = {
+      id: canaryAccId,
+      name: 'حساب كناري للتحقق من سلامة البيانات السابقة',
+      parentId: null,
+      categoryId: 'cat-val-1',
+      openingBalanceMinor: 77700,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await dbStorage.put(STORES_REAL.ACCOUNTS, canaryAccount);
+
+    // Attempt a bad restore that deliberately throws
+    let restoreFailedSafely = false;
+    try {
+      const corruptDataBundle: any = {
+        accounts: [{ id: 'bad_acc', get name(): string { throw new Error('Simulated restore failure'); } }],
+        categories: [],
+        transactions: [],
+        attachments: [],
+        notes: [],
+      };
+      await dbStorage.atomicRestore(corruptDataBundle);
+    } catch {
+      restoreFailedSafely = true;
+    }
+
+    // Verify canary account is STILL in IndexedDB!
+    const realAccountsAfter = await dbStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS);
+    const canaryStillExists = realAccountsAfter.some((a) => a.id === canaryAccId && a.openingBalanceMinor === 77700);
+
+    // Clean up canary
+    await dbStorage.delete(STORES_REAL.ACCOUNTS, canaryAccId);
+
+    const passed =
+      checksumRejected &&
+      missingRejected &&
+      brokenFkRejected &&
+      dupIdRejected &&
+      unsafeAmountRejected &&
+      restoreFailedSafely &&
+      canaryStillExists;
 
     results.push({
-      id: 'test-7-corrupt-backup-rejection',
-      title: 'اختبار فحص العلاقات والتكامل الهيكلي للنسخ الاحتياطية (إصلاح 3)',
-      passed: hasOrphanAccount,
-      expected: 'اكتشاف ورفض أي نسخة تحتوي على حركات بأطراف مفقودة أو مخطط غير متوافق',
-      actual: 'فحص استباقي شامل للعلاقات والمفاتيح الخارجية قبل السماح بلمس البيانات الحالية',
-      details: 'منع الاستعادة إذا كانت هناك مراجع مفقودة بين الحركات والحسابات والتصنيفات.',
+      id: 'test-7-real-backup-validation-and-preservation',
+      title: 'اختبار 7: التحقق الفعلي من validateBackupFile ورفض التالف والناقص والمكرر وصيانة البيانات السابقة (متطلبات 2، 4، 5)',
+      passed,
+      expected: 'رفض فعلي لـ 5 حالات خبيثة/تالفة، والحفاظ التام على البيانات السابقة عند فشل الاستعادة',
+      actual: passed
+        ? 'تم استدعاء validateBackupFile ورفض جميع الحالات (تلف SHA-256، الجداول الناقصة، المراجع المفقودة، المعرفات المكررة، والمبالغ السالبة) وحُفظت بيانات الكناري دون مساس'
+        : `فشل التحقق: checksum=${checksumRejected}, missing=${missingRejected}, brokenFK=${brokenFkRejected}, dupId=${dupIdRejected}, unsafeAmt=${unsafeAmountRejected}, preserve=${canaryStillExists}`,
+      details: 'فحص حقيقي للتحقق من المخطط، المراجع، المعرفات، وتراجع الاستعادة الذرية.',
+    });
+  } catch (err: any) {
+    results.push({
+      id: 'test-7-real-backup-validation-and-preservation',
+      title: 'اختبار 7: التحقق الفعلي من validateBackupFile ورفض التالف والناقص والمكرر وصيانة البيانات السابقة (متطلبات 2، 4، 5)',
+      passed: false,
+      expected: 'نجاح اختبارات فحص النسخ الاحتياطية',
+      actual: `استثناء غير متوقع: ${err.message}`,
     });
   }
 
   // =========================================================================
-  // TEST 8: Demo Workspace Isolation & Persistence of Demo Notes (Review Fix #5)
+  // TEST 8: Real Demo Notes Isolation & Workspace Purge Verification (Requirement 3)
+  // Saves real and demo notes, queries IndexedDB directly, purges demo space,
+  // and asserts demo is cleared while real notes remain 100% intact.
   // =========================================================================
-  {
-    // Verifies that demo workspace operates in isolated object stores
-    // (demo_accounts, demo_categories, demo_transactions, demo_notes)
-    const demoStores = ['demo_accounts', 'demo_categories', 'demo_transactions', 'demo_notes'];
-    const realStores = ['accounts', 'categories', 'transactions', 'attachments', 'notes'];
+  try {
+    const realNoteId = 'note_real_canary_test';
+    const demoNoteId = 'note_demo_transient_test';
 
-    // Ensure zero overlap in store names
-    const hasOverlap = demoStores.some((s) => realStores.includes(s));
-    const passed = !hasOverlap && demoStores.length === 4;
+    const realNote: StickyNoteModel = {
+      id: realNoteId,
+      title: 'ملاحظة سرية فعلية للمالك',
+      content: 'يجب ألا تمس أو تتأثر بأي عمليات تجريبية',
+      color: 'emerald',
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const demoNote: StickyNoteModel = {
+      id: demoNoteId,
+      title: 'ملاحظة تجريبية مؤقتة',
+      content: 'تخضع للتصفير في مساحة التجربة فقط',
+      color: 'amber',
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Put notes into their respective isolated stores
+    await dbStorage.put(STORES_REAL.NOTES, realNote);
+    await dbStorage.put(STORES_DEMO.NOTES, demoNote);
+
+    // 2. Query stores directly
+    const realBefore = await dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES);
+    const demoBefore = await dbStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES);
+    const bothExist =
+      realBefore.some((n) => n.id === realNoteId) &&
+      demoBefore.some((n) => n.id === demoNoteId);
+
+    // 3. Purge demo workspace
+    await dbStorage.purgeDemoWorkspace();
+
+    // 4. Query stores again
+    const realAfter = await dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES);
+    const demoAfter = await dbStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES);
+
+    const demoWasPurged = !demoAfter.some((n) => n.id === demoNoteId);
+    const realRemainedIntact = realAfter.some(
+      (n) => n.id === realNoteId && n.title === realNote.title
+    );
+
+    // Clean up canary real note
+    await dbStorage.delete(STORES_REAL.NOTES, realNoteId);
+
+    const passed = bothExist && demoWasPurged && realRemainedIntact;
 
     results.push({
-      id: 'test-8-demo-isolation-notes',
-      title: 'اختبار العزل الهيكلي التام لمساحة التجربة وملاحظاتها (إصلاح 5)',
+      id: 'test-8-real-notes-isolation-and-purge',
+      title: 'اختبار 8: التحقق الفعلي من عزل الملاحظات التجريبية وتصفيرها دون المساس بالملاحظات الفعلية (متطلب 3)',
       passed,
-      expected: 'تخصيص مخازن منفصلة لبيانات وملاحظات التجربة وضمان عدم تداخلها مع السجلات الحقيقية',
-      actual: `المخازن التجريبية المعزولة: ${demoStores.join(', ')} (صفر تداخل مع البيانات الحقيقية)`,
-      details: 'الملاحظات التجريبية تُحفظ في demo_notes وتستمر بعد إعادة التحميل دون المساس بالملاحظات الفعلية.',
+      expected: 'تصفير الملاحظات التجريبية بالكامل مع بقاء الملاحظة الفعلية سالمة 100% في مخزنها الحقيقي',
+      actual: passed
+        ? 'تم حفظ الملاحظتين في مخزنين منفصلين، وتصفير التجربة بنجاح، وظلت الملاحظة الفعلية سليمة دون تغيير'
+        : `فشل التحقق: bothExist=${bothExist}, demoPurged=${demoWasPurged}, realIntact=${realRemainedIntact}`,
+      details: 'عزل مادي كامل بين STORES_DEMO.NOTES و STORES_REAL.NOTES.',
+    });
+  } catch (err: any) {
+    results.push({
+      id: 'test-8-real-notes-isolation-and-purge',
+      title: 'اختبار 8: التحقق الفعلي من عزل الملاحظات التجريبية وتصفيرها دون المساس بالملاحظات الفعلية (متطلب 3)',
+      passed: false,
+      expected: 'نجاح اختبار العزل والتصفير',
+      actual: `استثناء غير متوقع: ${err.message}`,
     });
   }
 

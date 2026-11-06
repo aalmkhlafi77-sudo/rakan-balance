@@ -5,7 +5,7 @@
  * Interactive in-app test runner executing the 6 invariant test cases
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { runFinancialVerificationSuite, TestResult } from '../domain/financial_rules_spec.ts';
 import {
   CheckCircle2,
@@ -18,19 +18,35 @@ import {
 } from 'lucide-react';
 
 export const VerificationModal: React.FC = () => {
-  const [testResults, setTestResults] = useState<TestResult[]>(runFinancialVerificationSuite());
-  const [isRunning, setIsRunning] = useState(false);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
+  const [isRunning, setIsRunning] = useState(true);
 
-  const handleRerun = () => {
+  const executeTests = async () => {
     setIsRunning(true);
-    setTimeout(() => {
-      const results = runFinancialVerificationSuite();
+    try {
+      const results = await runFinancialVerificationSuite();
       setTestResults(results);
+    } catch (err) {
+      console.error('Error running test suite:', err);
+    } finally {
       setIsRunning(false);
-    }, 200);
+    }
   };
 
-  const allPassed = testResults.every((t) => t.passed);
+  useEffect(() => {
+    let mounted = true;
+    runFinancialVerificationSuite().then((results) => {
+      if (mounted) {
+        setTestResults(results);
+        setIsRunning(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const allPassed = testResults.length > 0 && testResults.every((t) => t.passed);
 
   return (
     <div className="space-y-6 max-w-4xl" dir="rtl">
@@ -58,7 +74,7 @@ export const VerificationModal: React.FC = () => {
 
         <button
           type="button"
-          onClick={handleRerun}
+          onClick={executeTests}
           disabled={isRunning}
           className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm shadow-emerald-600/30 cursor-pointer transition-all"
         >
