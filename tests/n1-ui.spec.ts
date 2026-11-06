@@ -1,12 +1,18 @@
 import { expect, test } from '@playwright/test';
 
-test('inter-account transfer can be created, edited and deleted in isolated demo workspace', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name.startsWith('mobile'), 'Full ledger table workflow verified on desktop; mobile has its own smoke test.');
+test('inter-account transfer can be created, edited and deleted in isolated demo workspace', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
   await expect(page.getByText('وضع المعاينة التجريبية')).toBeVisible();
 
-  await page.getByRole('button', { name: 'حركة بينية', exact: true }).click();
+  const isMobile = page.viewportSize()!.width < 1024;
+  if (isMobile) {
+    await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
+    await page.getByRole('navigation').getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
+    await page.getByRole('button', { name: 'حركة بينية (نقل مديونية)', exact: true }).click();
+  } else {
+    await page.getByRole('button', { name: 'حركة بينية', exact: true }).click();
+  }
   const form = page.locator('form').filter({ hasText: 'المبلغ المراد نقله' });
   await expect(form).toBeVisible();
   await form.locator('select').nth(0).selectOption('demo-acc-1');
@@ -16,7 +22,10 @@ test('inter-account transfer can be created, edited and deleted in isolated demo
   await form.getByRole('button', { name: 'تأكيد وحفظ الحركة البينية' }).click();
   await expect(form).toBeHidden();
 
-  await page.getByRole('button', { name: 'دفتر الحركات', exact: true }).click();
+  if (isMobile) {
+    await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
+  }
+  await page.getByRole('navigation').getByRole('button', { name: 'دفتر الحركات', exact: true }).click();
   const transferRows = page.locator('tr').filter({ hasText: 'اختبار متصفح لنقل المديونية' });
   await expect(transferRows).toHaveCount(2);
 
