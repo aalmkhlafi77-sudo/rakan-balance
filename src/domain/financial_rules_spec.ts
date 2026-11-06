@@ -861,8 +861,16 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
     // =========================================================================
     try {
       await testStorage.destroyDatabase();
-    } catch {
-      // Ignored: cleanup best effort
+    } catch (cleanupError: unknown) {
+      const reason = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      results.push({
+        id: 'test-isolated-database-cleanup-failure',
+        title: 'فشل تنظيف قاعدة بيانات الاختبار المعزولة',
+        passed: false,
+        expected: 'حذف قاعدة بيانات الاختبار المؤقتة بعد انتهاء جميع الاختبارات',
+        actual: `تعذر حذف قاعدة بيانات الاختبار: ${reason}`,
+        details: 'يجب اعتبار إخفاق التنظيف فشلاً صريحاً في حزمة التحقق.',
+      });
     }
   }
 
