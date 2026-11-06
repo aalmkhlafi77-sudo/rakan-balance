@@ -38,7 +38,7 @@ test('account-private notes only appear in account details, not account search',
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   }
   await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
-  await page.getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
+  await page.getByRole('navigation').getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
 
   const secret = 'ملاحظة-خصوصية-للاختبار-التفاعلي-2026';
   await page.locator('button[title="تفاصيل الحساب والملاحظات الخاصة"]').first().click();
