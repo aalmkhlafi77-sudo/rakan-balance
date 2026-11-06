@@ -33,7 +33,9 @@ jobs:
       - name: Check toolchain
         run: flutter --version
       - name: Generate missing standard Android and iOS Flutter host scaffolds
-        run: flutter create --platforms=android,ios --project-name=rakan_balance_mobile --org=com.rakanbalance .
+        run: |
+          flutter create --no-pub --platforms=android,ios --project-name=rakan_balance_mobile --org=com.rakanbalance .
+          rm -f test/widget_test.dart
       - name: Install packages
         run: flutter pub get
       - name: Static analysis
