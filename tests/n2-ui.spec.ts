@@ -5,7 +5,7 @@ async function openDemoDues(page: import('@playwright/test').Page) {
   if (page.viewportSize()!.width < 1024) await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
   await page.getByRole('navigation').getByRole('button', { name: 'الاستحقاقات والتذكيرات' }).click();
-  await expect(page.getByRole('heading', { name: 'الاستحقاقات والسداد والتذكيرات' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'الاستحقاقات والسداد والتذكيرات' })).toBeVisible();
 }
 
 async function snapshotDemo(page: import('@playwright/test').Page) {
@@ -75,7 +75,7 @@ for (const device of ['desktop', 'mobile'] as const) {
     await page.reload();
     if (page.viewportSize()!.width < 1024) await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
     await page.getByRole('navigation').getByRole('button', { name: 'الاستحقاقات والتذكيرات' }).click();
-    await expect(page.getByRole('heading', { name: 'الاستحقاقات والسداد والتذكيرات' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'الاستحقاقات والسداد والتذكيرات' })).toBeVisible();
     await expect(page.locator('article').filter({ hasText: '2026-12-30' })).toContainText('100.00');
   });
 }
