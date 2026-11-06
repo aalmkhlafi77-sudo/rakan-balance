@@ -59,16 +59,14 @@ class InterAccountTransferEngine {
     required String destinationAccountName,
   }) {
     final now = DateTime.now().toIso8601String();
-    final userDesc = input.description.trim();
-    final descPrefix = userDesc.isNotEmpty ? '$userDesc | ' : '';
 
     final sourceTx = TransactionModel(
-      id: 'tx_src_${DateTime.now().millisecondsSinceEpoch}_${transferId.substring(0, 4)}',
+      id: 'tx_src_$transferId',
       accountId: input.sourceAccountId,
       entryType: EntryType.owedToAccount,
       amountMinor: input.amountMinor,
       date: input.date,
-      description: '$descPrefixتحويل مديونية إلى: $destinationAccountName',
+      description: input.description.trim(),
       attachmentIds: [],
       transferId: transferId,
       transferRole: TransferRole.source,
@@ -78,12 +76,12 @@ class InterAccountTransferEngine {
     );
 
     final destTx = TransactionModel(
-      id: 'tx_dst_${DateTime.now().millisecondsSinceEpoch}_${transferId.substring(0, 4)}',
+      id: 'tx_dst_$transferId',
       accountId: input.destinationAccountId,
       entryType: EntryType.owedByAccount,
       amountMinor: input.amountMinor,
       date: input.date,
-      description: '$descPrefixتحويل مديونية من: $sourceAccountName',
+      description: input.description.trim(),
       attachmentIds: [],
       transferId: transferId,
       transferRole: TransferRole.destination,
