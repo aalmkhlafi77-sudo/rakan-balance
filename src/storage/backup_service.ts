@@ -235,6 +235,10 @@ export async function validateBackupFile(fileContent: string): Promise<{
       attachments,
       notes,
     };
+    // Preserve the exact JSON key insertion order of both legacy N1 and N2 exports.
+    if (data.dues !== undefined) payloadToHash.dues = data.dues;
+    if (data.allocations !== undefined) payloadToHash.allocations = data.allocations;
+    if (data.reminders !== undefined) payloadToHash.reminders = data.reminders;
     if (data.settings !== undefined) {
       payloadToHash.settings = data.settings;
     }
