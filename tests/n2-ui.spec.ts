@@ -50,6 +50,13 @@ for (const device of ['desktop', 'mobile'] as const) {
     const row = page.locator('article').filter({ hasText: '2026-12-30' }).first();
     await expect(row).toContainText('150.25');
     await row.getByRole('button', { name: 'تسجيل سداد جزئي / كامل' }).click();
+    await row.locator('input[inputmode="decimal"]').fill('200.00');
+    await row.getByRole('button', { name: 'تأكيد السداد' }).click();
+    await expect(page.getByRole('alert')).toContainText('تتجاوز المتبقي');
+    const afterRejectedPayment = await snapshotDemo(page);
+    expect(afterRejectedPayment.transactions).toHaveLength(before.transactions.length);
+    expect(afterRejectedPayment.allocations).toHaveLength(before.allocations.length);
+    expect(afterRejectedPayment.dues.find(d => d.id === due.id)?.settledAmountMinor).toBe(0);
     await row.locator('input[inputmode="decimal"]').fill('50.25');
     await row.getByRole('button', { name: 'تأكيد السداد' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'حركة سداد واحدة' })).toBeVisible();
