@@ -29,6 +29,7 @@ import {
   getSidebarCollapsedPref,
   getThemePref,
 } from './local_storage.ts';
+import { validateTransferPairs } from '../domain/inter_account_transfer.ts';
 
 /**
  * Computes a standard SHA-256 checksum string for any text or payload.
@@ -331,6 +332,15 @@ export async function validateBackupFile(fileContent: string): Promise<{
         return { isValid: false, error: `تاريخ الحركة "${tx.description}" غير صالح (${tx.date}).` };
       }
       transactionIds.add(tx.id);
+    }
+
+    // Validate Inter-Account Transfer Pairs (Milestone N1)
+    const transferValidation = validateTransferPairs(transactions);
+    if (!transferValidation.isValid) {
+      return {
+        isValid: false,
+        error: transferValidation.error || 'فشل فحص سلامة الحركات البينية في النسخة الاحتياطية.',
+      };
     }
 
     // D. Attachments: Validate, Check Duplicate IDs, and Links to Transactions

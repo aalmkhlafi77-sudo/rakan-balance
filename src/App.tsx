@@ -18,6 +18,7 @@ import { VerificationModal } from './components/VerificationModal.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { LockScreen } from './components/LockScreen.tsx';
 import { QuickTransactionModal } from './components/QuickTransactionModal.tsx';
+import { InterAccountTransferModal } from './components/InterAccountTransferModal.tsx';
 import { TransactionModel } from './domain/types.ts';
 
 const AppContent: React.FC = () => {
@@ -30,6 +31,11 @@ const AppContent: React.FC = () => {
   const [quickTxOpen, setQuickTxOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<TransactionModel | null>(null);
   const [quickTxAccountId, setQuickTxAccountId] = useState<string | undefined>(undefined);
+
+  // Inter-Account Transfer Modal State (Milestone N1)
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferSourceAccountId, setTransferSourceAccountId] = useState<string | undefined>(undefined);
+  const [editingTransferId, setEditingTransferId] = useState<string | undefined>(undefined);
 
   // Pre-selected account for statement tab
   const [statementAccountId, setStatementAccountId] = useState<string | undefined>(undefined);
@@ -44,6 +50,18 @@ const AppContent: React.FC = () => {
     setEditingTx(tx);
     setQuickTxAccountId(tx.accountId);
     setQuickTxOpen(true);
+  };
+
+  const handleOpenTransfer = (sourceAccountId?: string) => {
+    setEditingTransferId(undefined);
+    setTransferSourceAccountId(sourceAccountId);
+    setTransferModalOpen(true);
+  };
+
+  const handleEditTransfer = (transferId: string) => {
+    setEditingTransferId(transferId);
+    setTransferSourceAccountId(undefined);
+    setTransferModalOpen(true);
   };
 
   const handleOpenStatementForAccount = (accountId: string) => {
@@ -85,6 +103,7 @@ const AppContent: React.FC = () => {
           currentTab={currentTab}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           onOpenQuickTransaction={() => handleOpenQuickTx()}
+          onOpenInterAccountTransfer={() => handleOpenTransfer()}
         />
 
         {/* Viewport Canvas */}
@@ -101,6 +120,7 @@ const AppContent: React.FC = () => {
             <AccountsView
               onOpenStatementForAccount={handleOpenStatementForAccount}
               onOpenQuickTx={handleOpenQuickTx}
+              onOpenInterAccountTransfer={handleOpenTransfer}
             />
           )}
 
@@ -109,6 +129,8 @@ const AppContent: React.FC = () => {
               onOpenQuickTx={handleOpenQuickTx}
               onEditTransaction={handleEditTx}
               onOpenStatementForAccount={handleOpenStatementForAccount}
+              onOpenInterAccountTransfer={() => handleOpenTransfer()}
+              onEditInterAccountTransfer={handleEditTransfer}
             />
           )}
 
@@ -132,6 +154,14 @@ const AppContent: React.FC = () => {
         onClose={() => setQuickTxOpen(false)}
         editingTransaction={editingTx}
         defaultAccountId={quickTxAccountId}
+      />
+
+      {/* Inter-Account Transfer Modal (Milestone N1) */}
+      <InterAccountTransferModal
+        isOpen={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        initialSourceAccountId={transferSourceAccountId}
+        initialTransferId={editingTransferId}
       />
     </div>
   );

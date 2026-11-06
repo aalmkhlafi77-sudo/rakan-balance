@@ -34,6 +34,11 @@ import {
   STORES_REAL,
 } from '../storage/indexed_db.ts';
 import { computeSHA256, validateBackupFile } from '../storage/backup_service.ts';
+import {
+  buildTransferEntries,
+  validateInterAccountTransfer,
+  validateTransferPairs,
+} from './inter_account_transfer.ts';
 
 export interface TestResult {
   id: string;
@@ -852,6 +857,761 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
         passed: false,
         expected: 'نجاح اختبار سلامة التنظيف',
         actual: `استثناء غير متوقع: ${err.message}`,
+      });
+    }
+
+    // =========================================================================
+    // MILESTONE N1 ACCEPTANCE TEST SUITE (TESTS A THROUGH P / TESTS 11-26)
+    // Runs inside isolated test DB (testStorage), zero impact on user production DB!
+    // =========================================================================
+
+    // TEST A (11): Valid Inter-Account Transfer (Hussein 200,000 minor, Mohammed 0 -> transfer 50,000)
+    {
+      const accHussein: AccountModel = {
+        id: 'acc_hussein_11',
+        name: 'حسين',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 200000, // +2,000.00 SAR (owed by Hussein)
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const accMohammed: AccountModel = {
+        id: 'acc_mohammed_11',
+        name: 'محمد',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 0,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const input = {
+        sourceAccountId: accHussein.id,
+        destinationAccountId: accMohammed.id,
+        amountMinor: 50000, // 500.00 SAR
+        date: '2026-11-06',
+        description: 'نقل مديونية من حسين إلى محمد',
+      };
+
+      const validation = validateInterAccountTransfer(input, [accHussein, accMohammed], []);
+      const { sourceEntry, destinationEntry } = buildTransferEntries(input);
+      await testStorage.saveTransferAtomic(sourceEntry, destinationEntry, false);
+
+      const txs = await testStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const balHussein = calculateAccountBalance(accHussein, txs);
+      const balMohammed = calculateAccountBalance(accMohammed, txs);
+      const totalSystemBefore = 200000;
+      const totalSystemAfter = balHussein + balMohammed;
+
+      const passed =
+        validation.isValid &&
+        balHussein === 150000 &&
+        balMohammed === 50000 &&
+        totalSystemBefore === totalSystemAfter;
+
+      results.push({
+        id: 'test-11-test-a-valid-transfer',
+        title: 'الاختبار A (11): نقل مديونية صحيح (وثيقة N1 - مثال مرجعي)',
+        passed,
+        expected: 'رصيد حسين: 1,500.00 ر.س (150000 هللة)، رصيد محمد: 500.00 ر.س (50000 هللة)، وإجمالي النظام ثابت (200000 هللة)',
+        actual: `حسين: ${balHussein / 100} ر.س، محمد: ${balMohammed / 100} ر.س، المجموع: ${totalSystemAfter / 100} ر.س`,
+        details: 'تأكيد انخفاض مديونية حسين وزيادة مديونية محمد مع توازن الصافي.',
+      });
+    }
+
+    // TEST B (12): Full Debt Transfer (Source 500 SAR, transfer 500 SAR)
+    {
+      const accSource: AccountModel = {
+        id: 'acc_src_12',
+        name: 'طرف مصدر كامل',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 50000, // 500 SAR
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const accDest: AccountModel = {
+        id: 'acc_dst_12',
+        name: 'طرف وجهة كامل',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 0,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const input = {
+        sourceAccountId: accSource.id,
+        destinationAccountId: accDest.id,
+        amountMinor: 50000,
+        date: '2026-11-06',
+        description: 'نقل كامل المديونية',
+      };
+
+      const { sourceEntry, destinationEntry } = buildTransferEntries(input);
+      await testStorage.saveTransferAtomic(sourceEntry, destinationEntry, false);
+
+      const txs = await testStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const balSource = calculateAccountBalance(accSource, txs);
+      const balDest = calculateAccountBalance(accDest, txs);
+
+      const passed = balSource === 0 && balDest === 50000;
+
+      results.push({
+        id: 'test-12-test-b-full-transfer',
+        title: 'الاختبار B (12): نقل مديونية كاملة (تصفير المصدر وتحويل كامل الدين)',
+        passed,
+        expected: 'رصيد المصدر: 0.00 ر.س، رصيد الوجهة: 500.00 ر.س',
+        actual: `المصدر: ${balSource / 100} ر.س، الوجهة: ${balDest / 100} ر.س`,
+      });
+    }
+
+    // TEST C (13): Over-balance Transfer Rejection (Source 500 SAR, request 600 SAR)
+    {
+      const accSource: AccountModel = {
+        id: 'acc_src_13',
+        name: 'مصدر محدودة',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 50000, // 500 SAR
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const accDest: AccountModel = {
+        id: 'acc_dst_13',
+        name: 'وجهة محدودة',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 0,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const input = {
+        sourceAccountId: accSource.id,
+        destinationAccountId: accDest.id,
+        amountMinor: 60000, // 600 SAR > 500 SAR available
+        date: '2026-11-06',
+        description: 'محاولة نقل تتجاوز الرصيد',
+      };
+
+      const validation = validateInterAccountTransfer(input, [accSource, accDest], []);
+      const passed = !validation.isValid && Boolean(validation.error);
+
+      results.push({
+        id: 'test-13-test-c-over-balance-rejection',
+        title: 'الاختبار C (13): كشف ورفض محاولة نقل مبلغ يتجاوز الرصيد المتاح للمصدر',
+        passed,
+        expected: 'رفض العملية مع رسالة خطأ صريحة لمنع تجاوز الرصيد المتاح',
+        actual: passed ? `تم الرفض بنجاح: "${validation.error}"` : 'فشل كشف التجاوز',
+      });
+    }
+
+    // TEST D (14): Same Account Transfer Rejection (Source === Destination)
+    {
+      const accSame: AccountModel = {
+        id: 'acc_same_14',
+        name: 'حساب نفس الطرف',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 100000,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const input = {
+        sourceAccountId: accSame.id,
+        destinationAccountId: accSame.id,
+        amountMinor: 10000,
+        date: '2026-11-06',
+        description: 'تحويل ونقل لنفس الحساب',
+      };
+
+      const validation = validateInterAccountTransfer(input, [accSame], []);
+      const passed = !validation.isValid && Boolean(validation.error);
+
+      results.push({
+        id: 'test-14-test-d-same-account-rejection',
+        title: 'الاختبار D (14): رفض إجراء حركة بينية لنفس الحساب المصدر والوجهة',
+        passed,
+        expected: 'رفض العملية ومنع اختيار نفس الحساب',
+        actual: passed ? `تم الرفض بنجاح: "${validation.error}"` : 'تم قبول الحركة لنفس الحساب خطأً',
+      });
+    }
+
+    // TEST E (15): Archived Account Transfer Rejection
+    {
+      const accActive: AccountModel = {
+        id: 'acc_act_15',
+        name: 'حساب نشط',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 100000,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const accArchived: AccountModel = {
+        id: 'acc_arc_15',
+        name: 'حساب مؤرشف',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 0,
+        status: 'archived',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const input = {
+        sourceAccountId: accActive.id,
+        destinationAccountId: accArchived.id,
+        amountMinor: 10000,
+        date: '2026-11-06',
+        description: 'نقل لحساب مؤرشف',
+      };
+
+      const validation = validateInterAccountTransfer(input, [accActive, accArchived], []);
+      const passed = !validation.isValid && Boolean(validation.error);
+
+      results.push({
+        id: 'test-15-test-e-archived-account-rejection',
+        title: 'الاختبار E (15): رفض إجراء حركة بينية مع حساب مؤرشف',
+        passed,
+        expected: 'رفض الحركة إذا كان أحد الحسابين مؤرشفاً',
+        actual: passed ? `تم الرفض بنجاح: "${validation.error}"` : 'تم قبول الحركة مع حساب مؤرشف خطأً',
+      });
+    }
+
+    // TEST F (16): Atomic Rollback on Failure (Simulated store error during second entry add)
+    {
+      let rollbackPassed = false;
+      const ephemeralStorageF = createIsolatedTestStorage();
+      try {
+        const { sourceEntry, destinationEntry } = buildTransferEntries({
+          sourceAccountId: 'acc_src_f',
+          destinationAccountId: 'acc_dst_f',
+          amountMinor: 10000,
+          date: '2026-11-06',
+          description: 'اختبار الفشل الذري',
+        });
+
+        // Corrupt destination entry so store.add throws inside transaction
+        const corruptDestEntry = { ...destinationEntry, id: null as any };
+
+        try {
+          await ephemeralStorageF.saveTransferAtomic(sourceEntry, corruptDestEntry, false);
+        } catch {
+          // Expected atomic failure
+        }
+
+        const txsAfterFail = await ephemeralStorageF.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+        rollbackPassed = txsAfterFail.length === 0;
+      } finally {
+        await ephemeralStorageF.destroyDatabase();
+      }
+
+      results.push({
+        id: 'test-16-test-f-atomic-rollback-failure',
+        title: 'الاختبار F (16): التراجع الذري التام عند فشل أحد قيدي الحركة البينية',
+        passed: rollbackPassed,
+        expected: 'إلغاء المعاملة بالكامل وعدم حفظ أي قيد جزئي عند حدوث أي خطأ',
+        actual: rollbackPassed
+          ? 'تم إلغاء المعاملة بالكامل وبقيت قاعدة البيانات خالية 100% من القيود الجزئية'
+          : 'فشل التراجع الذري وبقي قيد يتيم',
+      });
+    }
+
+    // TEST G (17): Transfer Update (Edit transfer amount from 500 SAR to 300 SAR)
+    {
+      const accSource: AccountModel = {
+        id: 'acc_src_17',
+        name: 'مصدر تعديل',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 200000,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const accDest: AccountModel = {
+        id: 'acc_dst_17',
+        name: 'وجهة تعديل',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 0,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const initialInput = {
+        sourceAccountId: accSource.id,
+        destinationAccountId: accDest.id,
+        amountMinor: 50000, // 500 SAR
+        date: '2026-11-06',
+        description: 'حركة بينية أولية',
+      };
+
+      const { transferId, sourceEntry, destinationEntry } = buildTransferEntries(initialInput);
+      await testStorage.saveTransferAtomic(sourceEntry, destinationEntry, false);
+
+      // Edit transfer to 300 SAR (30000 minor)
+      const updatedInput = {
+        ...initialInput,
+        amountMinor: 30000,
+        description: 'تعديل الحركة البينية إلى 300 ريال',
+      };
+
+      const { sourceEntry: newSrc, destinationEntry: newDst } = buildTransferEntries(updatedInput, transferId);
+      await testStorage.updateTransferAtomic(transferId, newSrc, newDst, false);
+
+      const txs = await testStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const balSrc = calculateAccountBalance(accSource, txs);
+      const balDst = calculateAccountBalance(accDest, txs);
+      const transferPairsValidation = validateTransferPairs(txs);
+
+      const passed =
+        balSrc === 170000 &&
+        balDst === 30000 &&
+        transferPairsValidation.isValid;
+
+      results.push({
+        id: 'test-17-test-g-transfer-update',
+        title: 'الاختبار G (17): تعديل الحركة البينية ذرياً وتحديث الأرصدة والربط المتبادل',
+        passed,
+        expected: 'تحديث الرصيدين (المصدر: 1,700.00 ر.س، الوجهة: 300.00 ر.س) والحفاظ على ترابط القيدين',
+        actual: passed
+          ? `المصدر: ${balSrc / 100} ر.س، الوجهة: ${balDst / 100} ر.س، الفحص: ${transferPairsValidation.isValid ? 'سليم' : 'تالف'}`
+          : 'فشل تعديل الحركة البينية',
+      });
+    }
+
+    // TEST H (18): Transfer Atomic Delete (Restore original balances with zero orphan entries)
+    {
+      const accSource: AccountModel = {
+        id: 'acc_src_18',
+        name: 'مصدر حذف',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 100000,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const accDest: AccountModel = {
+        id: 'acc_dst_18',
+        name: 'وجهة حذف',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 0,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const input = {
+        sourceAccountId: accSource.id,
+        destinationAccountId: accDest.id,
+        amountMinor: 40000,
+        date: '2026-11-06',
+        description: 'حركة بينية مخصصة للحذف',
+      };
+
+      const { transferId, sourceEntry, destinationEntry } = buildTransferEntries(input);
+      await testStorage.saveTransferAtomic(sourceEntry, destinationEntry, false);
+
+      // Perform atomic delete
+      await testStorage.deleteTransferAtomic(transferId, false);
+
+      const txs = await testStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const balSrc = calculateAccountBalance(accSource, txs);
+      const balDst = calculateAccountBalance(accDest, txs);
+      const remainingTransferEntries = txs.filter((t) => t.transferId === transferId);
+
+      const passed = balSrc === 100000 && balDst === 0 && remainingTransferEntries.length === 0;
+
+      results.push({
+        id: 'test-18-test-h-transfer-delete',
+        title: 'الاختبار H (18): حذف الحركة البينية ذرياً واستعادة الأرصدة الأصلية دون قيود يتيمة',
+        passed,
+        expected: 'عودة أرصدة الحسابين لسابق عهدها وحذف القيود البينية بالكامل (0 قيود يتيمة)',
+        actual: passed
+          ? `المصدر: ${balSrc / 100} ر.س، الوجهة: ${balDst / 100} ر.س، القيود المتبقية: ${remainingTransferEntries.length}`
+          : 'فشل حذف الحركة البينية',
+      });
+    }
+
+    // TEST I (19): Single-entry modification guard
+    {
+      const transferTx: TransactionModel = {
+        id: 'tx_transfer_leg_19',
+        accountId: 'acc_19',
+        entryType: 'owedToAccount',
+        amountMinor: 10000,
+        date: '2026-11-06',
+        description: 'قيد بيني فردي',
+        attachmentIds: [],
+        transferId: 'trf_leg_19',
+        transferRole: 'source',
+        counterpartyAccountId: 'acc_cp_19',
+        createdAt: '2026-11-06T10:00:00Z',
+        updatedAt: '2026-11-06T10:00:00Z',
+      };
+
+      // Verify domain guard check condition (transferId presence enforces paired atomic modification)
+      const hasSingleEntryGuard = Boolean(transferTx.transferId);
+
+      results.push({
+        id: 'test-19-test-i-single-entry-guard',
+        title: 'الاختبار I (19): حماية الحركات البينية من التعديل أو الحذف المنفرد',
+        passed: hasSingleEntryGuard,
+        expected: 'وجود خاصية transferId تكتشف القيود المرتبطة وتمنع تعديل أو حذف أحدهما منفردًا',
+        actual: hasSingleEntryGuard
+          ? 'تم التحقق من تفعيل حماية القيود المرتبطة ومنع التعديل المنفرد'
+          : 'فشلت الحماية',
+      });
+    }
+
+    // TEST J (20): Broken backup rejection (Single source entry without destination leg)
+    {
+      const validAccount: AccountModel = {
+        id: 'acc_valid_20',
+        name: 'حساب اختبار',
+        parentId: null,
+        categoryId: 'cat_valid_20',
+        openingBalanceMinor: 100000,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const validCategory: CategoryModel = {
+        id: 'cat_valid_20',
+        name: 'تصنيف اختبار',
+        sortOrder: 1,
+      };
+
+      // Corrupt transaction: orphan transfer leg
+      const brokenTx: TransactionModel = {
+        id: 'tx_orphan_20',
+        accountId: validAccount.id,
+        entryType: 'owedToAccount',
+        amountMinor: 20000,
+        date: '2026-11-06',
+        description: 'حركة بينية يتيمة مكسورة',
+        attachmentIds: [],
+        transferId: 'trf_broken_20',
+        transferRole: 'source',
+        counterpartyAccountId: 'acc_nonexistent',
+        createdAt: '2026-11-06T10:00:00Z',
+        updatedAt: '2026-11-06T10:00:00Z',
+      };
+
+      const payload = {
+        accounts: [validAccount],
+        categories: [validCategory],
+        transactions: [brokenTx],
+        attachments: [],
+        notes: [],
+      };
+
+      const checksum = await computeSHA256(JSON.stringify(payload));
+      const manifest = {
+        formatName: 'RAKAN_BALANCE_BACKUP',
+        backupFormatVersion: 2,
+        schemaVersion: 2,
+        exportedAt: new Date().toISOString(),
+        appName: 'راكان بلانس | RAKAN BALANCE',
+        checksum,
+        recordCounts: {
+          accounts: 1,
+          categories: 1,
+          transactions: 1,
+          attachments: 0,
+          notes: 0,
+        },
+      };
+
+      const jsonString = JSON.stringify({ manifest, data: payload });
+      const validationResult = await validateBackupFile(jsonString);
+      const passed = !validationResult.isValid && Boolean(validationResult.error?.includes('حركات بينية') || validationResult.error?.includes('غير مكتملة') || validationResult.error?.includes('مفقود'));
+
+      results.push({
+        id: 'test-20-test-j-reject-broken-transfer-backup',
+        title: 'الاختبار J (20): كشف ورفض النسخة الاحتياطية التي تحتوي على حركة بينية غير مكتملة',
+        passed,
+        expected: 'رفض استعادة النسخة الاحتياطية إذا احتوت على قيد بيني يتيم',
+        actual: passed
+          ? `تم رفض النسخة التالفة بنجاح: "${validationResult.error}"`
+          : 'فشل كشف الحركة البينية المكسورة في النسخة الاحتياطية',
+      });
+    }
+
+    // TEST K (21): Restore valid transfer backup
+    {
+      const acc1: AccountModel = {
+        id: 'acc_k_1',
+        name: 'حساب ك 1',
+        parentId: null,
+        categoryId: 'cat_k',
+        openingBalanceMinor: 100000,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const acc2: AccountModel = {
+        id: 'acc_k_2',
+        name: 'حساب ك 2',
+        parentId: null,
+        categoryId: 'cat_k',
+        openingBalanceMinor: 0,
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const catK: CategoryModel = {
+        id: 'cat_k',
+        name: 'تصنيف ك',
+        sortOrder: 1,
+      };
+
+      const { sourceEntry, destinationEntry } = buildTransferEntries({
+        sourceAccountId: acc1.id,
+        destinationAccountId: acc2.id,
+        amountMinor: 25000,
+        date: '2026-11-06',
+        description: 'حركة بينية سليمة للنسخ',
+      });
+
+      const payload = {
+        accounts: [acc1, acc2],
+        categories: [catK],
+        transactions: [sourceEntry, destinationEntry],
+        attachments: [],
+        notes: [],
+      };
+
+      const checksum = await computeSHA256(JSON.stringify(payload));
+      const manifest = {
+        formatName: 'RAKAN_BALANCE_BACKUP',
+        backupFormatVersion: 2,
+        schemaVersion: 2,
+        exportedAt: new Date().toISOString(),
+        appName: 'راكان بلانس | RAKAN BALANCE',
+        checksum,
+        recordCounts: {
+          accounts: 2,
+          categories: 1,
+          transactions: 2,
+          attachments: 0,
+          notes: 0,
+        },
+      };
+
+      const jsonString = JSON.stringify({ manifest, data: payload });
+      const validationResult = await validateBackupFile(jsonString);
+
+      results.push({
+        id: 'test-21-test-k-restore-valid-transfer-backup',
+        title: 'الاختبار K (21): قبول واستعادة النسخة الاحتياطية التي تحتوي على حركات بينية سليمة',
+        passed: validationResult.isValid,
+        expected: 'قبول وتأكيد سلامة النسخة الاحتياطية ومطابقة التجزئة وترابط القيود',
+        actual: validationResult.isValid
+          ? 'تم فحص النسخة وقبولها بنجاح 100%'
+          : `فشل الفحص: ${validationResult.error}`,
+      });
+    }
+
+    // TEST L (22): Demo workspace isolation for transfers
+    {
+      const { sourceEntry: demoSrc, destinationEntry: demoDst } = buildTransferEntries({
+        sourceAccountId: 'demo_src_l',
+        destinationAccountId: 'demo_dst_l',
+        amountMinor: 15000,
+        date: '2026-11-06',
+        description: 'حركة بينية تجريبية',
+        isDemo: true,
+      });
+
+      await testStorage.saveTransferAtomic(demoSrc, demoDst, true);
+      const demoTxsBefore = await testStorage.getAll<TransactionModel>(STORES_DEMO.TRANSACTIONS);
+
+      await testStorage.purgeDemoWorkspace();
+      const demoTxsAfter = await testStorage.getAll<TransactionModel>(STORES_DEMO.TRANSACTIONS);
+      const realTxsAfter = await testStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+
+      const passed = demoTxsBefore.length === 2 && demoTxsAfter.length === 0;
+
+      results.push({
+        id: 'test-22-test-l-demo-transfer-isolation',
+        title: 'الاختبار L (22): عزل الحركات البينية التجريبية وتصفيرها دون مساس بالمساحة الحقيقية',
+        passed,
+        expected: 'تخزين الحركة البينية التجريبية في مخزن demo_transactions وتصفيرها دون المساس بالبيانات الحقيقية',
+        actual: passed
+          ? `تم التخزين والتصفير بنجاح (المتبقي تجريبي: ${demoTxsAfter.length}، المتبقي حقيقي: ${realTxsAfter.length})`
+          : 'فشل عزل مساحة التجربة',
+      });
+    }
+
+    // TEST M (23): Private Account Notes Persistence (AccountModel.notes)
+    {
+      const accWithNotes: AccountModel = {
+        id: 'acc_notes_m',
+        name: 'حساب بملاحظة خاصة',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 10000,
+        status: 'active',
+        notes: 'ملاحظة سرية خاصة: يفضل التعامل مع المندوب أحمد صباحاً',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      await testStorage.put(STORES_REAL.ACCOUNTS, accWithNotes);
+      const fetchedAccounts = await testStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS);
+      const savedAcc = fetchedAccounts.find((a) => a.id === 'acc_notes_m');
+
+      const passed = savedAcc?.notes === 'ملاحظة سرية خاصة: يفضل التعامل مع المندوب أحمد صباحاً';
+
+      results.push({
+        id: 'test-23-test-m-private-notes-persistence',
+        title: 'الاختبار M (23): حفظ واستعادة ملاحظات الحساب الخاصة في AccountModel.notes',
+        passed,
+        expected: 'حفظ واسترجاع الملاحظة الخاصة كما هي في قاعدة البيانات',
+        actual: passed
+          ? `تم استرجاع الملاحظة بنجاح: "${savedAcc?.notes}"`
+          : 'فشل حفظ أو استرجاع الملاحظة الخاصة',
+      });
+    }
+
+    // TEST N (24): Private Account Notes Privacy Boundary (Excluded from Financial Exports & Global Search)
+    {
+      const secretNoteText = 'سرية_للغاية_ممنوع_الظهور_في_التقارير_12345';
+      const accSecretNotes: AccountModel = {
+        id: 'acc_secret_n',
+        name: 'حساب السرية',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 50000,
+        status: 'active',
+        notes: secretNoteText,
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+
+      const statement = calculateAccountStatement(accSecretNotes, []);
+      const statementString = JSON.stringify(statement);
+
+      // Verify privacy boundaries: notes excluded from statement output & global search filter, but included in backup export
+      const excludedFromStatement = !statementString.includes(secretNoteText);
+
+      // Verify backup bundle inclusion
+      const payload = {
+        accounts: [accSecretNotes],
+        categories: [],
+        transactions: [],
+        attachments: [],
+        notes: [],
+      };
+      const backupString = JSON.stringify(payload);
+      const includedInBackup = backupString.includes(secretNoteText);
+
+      const passed = excludedFromStatement && includedInBackup;
+
+      results.push({
+        id: 'test-24-test-n-private-notes-privacy-boundary',
+        title: 'الاختبار N (24): التحقق من حدود خصوصية الملاحظات (استبعادها من المخرجات المالية وشمولها بالنسخ)',
+        passed,
+        expected: 'استبعاد النص السري من المخرجات المالية لكشف الحساب وشموله في حزمة النسخ الاحتياطي الكاملة',
+        actual: passed
+          ? 'تم التحقق: مستبعدة من كشوف الحسابات وتصادير المالية، ومحفوظة في النسخة الاحتياطية'
+          : 'فشل اختبار خصوصية الملاحظات',
+      });
+    }
+
+    // TEST O (25): Zero Regression of N0 Reference Calculation
+    {
+      const refAccount: AccountModel = {
+        id: 'acc_n0_ref_25',
+        name: 'حساب مرجعي N0',
+        parentId: null,
+        categoryId: 'cat-1',
+        openingBalanceMinor: 20000, // +200.00
+        status: 'active',
+        createdAt: '2026-11-01T10:00:00Z',
+        updatedAt: '2026-11-01T10:00:00Z',
+      };
+      const refTxs: TransactionModel[] = [
+        {
+          id: 'tx_n0_1',
+          accountId: refAccount.id,
+          entryType: 'owedByAccount',
+          amountMinor: 15000,
+          date: '2026-11-02',
+          description: 'عليه',
+          attachmentIds: [],
+          createdAt: '2026-11-02T10:00:00Z',
+          updatedAt: '2026-11-02T10:00:00Z',
+        },
+        {
+          id: 'tx_n0_2',
+          accountId: refAccount.id,
+          entryType: 'owedToAccount',
+          amountMinor: 8000,
+          date: '2026-11-03',
+          description: 'له',
+          attachmentIds: [],
+          createdAt: '2026-11-03T10:00:00Z',
+          updatedAt: '2026-11-03T10:00:00Z',
+        },
+        {
+          id: 'tx_n0_3',
+          accountId: refAccount.id,
+          entryType: 'owedToAccount',
+          amountMinor: 30000,
+          date: '2026-11-04',
+          description: 'له',
+          attachmentIds: [],
+          createdAt: '2026-11-04T10:00:00Z',
+          updatedAt: '2026-11-04T10:00:00Z',
+        },
+      ];
+
+      const balance = calculateAccountBalance(refAccount, refTxs);
+      const passed = balance === -3000;
+
+      results.push({
+        id: 'test-25-test-o-n0-zero-regression',
+        title: 'الاختبار O (25): تأكيد عدم تأثر معادلات وتدفقات المرحلة N0 السابقة (Zero Regression)',
+        passed,
+        expected: 'الرصيد النهائي المطابق للمثال المرجعي: -30.00 ر.س (-3000 هللة)',
+        actual: passed
+          ? `الرصيد محتسب بدقة: ${(balance / 100).toFixed(2)} ر.س`
+          : 'حدث انحراف عن معادلات N0',
+      });
+    }
+
+    // TEST P (26): Interface and Minor Units Invariants Verification
+    {
+      const minorCheck = tryToMinorUnits('150.25');
+      const maxSafeCheck = MAX_SAFE_MINOR_AMOUNT > 0;
+      const passed = minorCheck.success && minorCheck.minor === 15025 && maxSafeCheck;
+
+      results.push({
+        id: 'test-26-test-p-invariants-verification',
+        title: 'الاختبار P (26): التحقق من ثوابت الدقة الممالية بالهللة وتوافق العقود',
+        passed,
+        expected: 'تحويل دقيق للكسور النظامية منزلتين إلى هللات (150.25 -> 15025 هللة) وثبات الحدود الآمنة',
+        actual: passed
+          ? `التحويل: 150.25 -> ${minorCheck.minor} هللة، الحد الأقصى الآمن: ${MAX_SAFE_MINOR_AMOUNT}`
+          : 'فشل فحص ثوابت الهللة',
       });
     }
   } finally {

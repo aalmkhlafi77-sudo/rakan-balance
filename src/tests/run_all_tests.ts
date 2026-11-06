@@ -26,7 +26,7 @@ import {
 
 async function main(): Promise<number> {
   console.log('='.repeat(80));
-  console.log('   RAKAN BALANCE — AUTOMATED VERIFICATION TEST SUITE (N0 MILESTONE)   ');
+  console.log('   RAKAN BALANCE — AUTOMATED VERIFICATION TEST SUITE (N1 MILESTONE)   ');
   console.log('='.repeat(80));
   console.log(`Production Database Name: ${DB_NAME}`);
   console.log('Testing data fingerprint isolation using dedicated simulated user environment...\n');

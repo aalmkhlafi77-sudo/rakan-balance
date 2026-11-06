@@ -406,6 +406,169 @@ export class IndexedDBStorage {
   }
 
   // =========================================================================
+  // Atomic Operations for Inter-Account Transfers (Milestone N1)
+  // Ensures both sides of the transfer are saved, updated, or deleted together
+  // in ONE transaction using store.add() to prevent key collisions.
+  // =========================================================================
+
+  /**
+   * Atomically saves both entries of an inter-account transfer in a SINGLE transaction.
+   * If saving either source or destination fails, the transaction aborts with zero partial data.
+   */
+  public async saveTransferAtomic(
+    sourceEntry: TransactionModel,
+    destinationEntry: TransactionModel,
+    isDemo: boolean
+  ): Promise<void> {
+    const db = await this.getDB();
+    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(txStoreName, 'readwrite');
+
+      tx.onerror = () => {
+        reject(
+          new Error(
+            `فشلت المعاملة الذرية لتسجيل الحركة البينية: ${tx.error?.message || 'خطأ غير معروف'}`
+          )
+        );
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء تسجيل الحركة البينية ولم يُحفظ أي طرف جزئي منها.'));
+      };
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+
+      try {
+        const store = tx.objectStore(txStoreName);
+        // store.add guarantees rejection if ID collides, preventing accidental overwrites
+        store.add(sourceEntry);
+        store.add(destinationEntry);
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
+  }
+
+  /**
+   * Atomically updates an inter-account transfer in a SINGLE transaction:
+   * Deletes old pair entries and adds new pair entries.
+   */
+  public async updateTransferAtomic(
+    oldTransferId: string,
+    newSourceEntry: TransactionModel,
+    newDestinationEntry: TransactionModel,
+    isDemo: boolean
+  ): Promise<void> {
+    const db = await this.getDB();
+    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(txStoreName, 'readwrite');
+
+      tx.onerror = () => {
+        reject(
+          new Error(
+            `فشلت المعاملة الذرية لتعديل الحركة البينية: ${tx.error?.message || 'خطأ غير معروف'}`
+          )
+        );
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء تعديل الحركة البينية وبقيت البيانات السابقة كما هي دون مساس.'));
+      };
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+
+      try {
+        const store = tx.objectStore(txStoreName);
+        const req = store.openCursor();
+
+        req.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+          if (cursor) {
+            const val = cursor.value as TransactionModel;
+            if (val && val.transferId === oldTransferId) {
+              cursor.delete();
+            }
+            cursor.continue();
+          } else {
+            // Once all old records for this transfer are purged, add both new entries
+            store.add(newSourceEntry);
+            store.add(newDestinationEntry);
+          }
+        };
+
+        req.onerror = () => {
+          tx.abort();
+          reject(req.error);
+        };
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
+  }
+
+  /**
+   * Atomically deletes both entries of an inter-account transfer in a SINGLE transaction.
+   */
+  public async deleteTransferAtomic(transferId: string, isDemo: boolean): Promise<void> {
+    const db = await this.getDB();
+    const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(txStoreName, 'readwrite');
+
+      tx.onerror = () => {
+        reject(
+          new Error(
+            `فشلت المعاملة الذرية لحذف الحركة البينية: ${tx.error?.message || 'خطأ غير معروف'}`
+          )
+        );
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء المعاملة الذرية لحذف الحركة البينية وبقيت البيانات دون تعديل.'));
+      };
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+
+      try {
+        const store = tx.objectStore(txStoreName);
+        const req = store.openCursor();
+
+        req.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+          if (cursor) {
+            const val = cursor.value as TransactionModel;
+            if (val && val.transferId === transferId) {
+              cursor.delete();
+            }
+            cursor.continue();
+          }
+        };
+
+        req.onerror = () => {
+          tx.abort();
+          reject(req.error);
+        };
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
+  }
+
+  // =========================================================================
   // Demo Workspace Isolation & Safe Purge (Review Fix #5)
   // Guaranteed NEVER to touch Real data stores!
   // =========================================================================

@@ -26,16 +26,21 @@ import {
   X,
   Check,
   CornerDownLeft,
+  ArrowLeftRight,
+  Shield,
+  Info,
 } from 'lucide-react';
 
 interface AccountsViewProps {
   onOpenStatementForAccount: (accountId: string) => void;
   onOpenQuickTx: (accountId: string) => void;
+  onOpenInterAccountTransfer?: (sourceAccountId?: string) => void;
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({
   onOpenStatementForAccount,
   onOpenQuickTx,
+  onOpenInterAccountTransfer,
 }) => {
   const {
     accounts,
@@ -72,7 +77,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [isAddCatOpen, setIsAddCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
 
-  // Filtered accounts
+  // Account Details & Private Notes Modal State (Milestone N1)
+  const [viewingDetailsAccount, setViewingDetailsAccount] = useState<AccountModel | null>(null);
+  const [privateNotesDraft, setPrivateNotesDraft] = useState<string>('');
+  const [saveNotesSuccess, setSaveNotesSuccess] = useState<boolean>(false);
+
+  // Filtered accounts (Notes are strictly private and excluded from search query)
   const filteredAccounts = useMemo(() => {
     return accounts.filter((acc) => {
       if (acc.status !== statusFilter) return false;
@@ -81,8 +91,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         const q = searchQuery.toLowerCase();
         const matchesName = acc.name.toLowerCase().includes(q);
         const matchesPhone = acc.phone?.toLowerCase().includes(q);
-        const matchesNotes = acc.notes?.toLowerCase().includes(q);
-        if (!matchesName && !matchesPhone && !matchesNotes) return false;
+        if (!matchesName && !matchesPhone) return false;
       }
       return true;
     });
@@ -255,12 +264,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       </span>
                     </>
                   )}
-                  {acc.notes && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-slate-400 truncate max-w-xs">{acc.notes}</span>
-                    </>
-                  )}
                 </div>
               </div>
             </div>
@@ -287,6 +290,17 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-1">
+                {acc.status === 'active' && balance > 0 && onOpenInterAccountTransfer && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenInterAccountTransfer(acc.id)}
+                    className="p-1.5 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/50 cursor-pointer"
+                    title="نقل مديونية من هذا الحساب (حركة بينية)"
+                  >
+                    <ArrowLeftRight className="w-4 h-4" />
+                  </button>
+                )}
+
                 {acc.status === 'active' && (
                   <button
                     type="button"
@@ -305,6 +319,19 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   title="عرض كشف الحساب التفصيلي"
                 >
                   <FileSpreadsheet className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewingDetailsAccount(acc);
+                    setPrivateNotesDraft(acc.notes || '');
+                    setSaveNotesSuccess(false);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="تفاصيل الحساب والملاحظات الخاصة"
+                >
+                  <Info className="w-4 h-4" />
                 </button>
 
                 <button
@@ -373,6 +400,16 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenInterAccountTransfer && (
+            <button
+              type="button"
+              onClick={() => onOpenInterAccountTransfer()}
+              className="py-2 px-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-purple-600/30 cursor-pointer"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+              <span>حركة بينية (نقل مديونية)</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setIsAddCatOpen(true)}
@@ -397,7 +434,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         <div className="relative w-full md:w-72">
           <input
             type="text"
-            placeholder="البحث بالاسم، الهاتف، الملاحظات..."
+            placeholder="البحث بالاسم أو رقم الهاتف..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-9 px-3 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
@@ -690,6 +727,150 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Account Details & Private Notes Modal (Milestone N1) */}
+      {viewingDetailsAccount && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold">
+                  {viewingDetailsAccount.name.charAt(0)}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    {viewingDetailsAccount.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {categories.find((c) => c.id === viewingDetailsAccount.categoryId)?.name || 'عام'} ·{' '}
+                    {viewingDetailsAccount.status === 'active' ? 'حساب نشط' : 'حساب مؤرشف'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingDetailsAccount(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Financial Overview */}
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-xs font-mono">
+              <div>
+                <span className="text-slate-500 font-sans block text-[11px]">الرصيد الافتتاحي:</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {formatCurrency(viewingDetailsAccount.openingBalanceMinor, { showSign: true })}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 font-sans block text-[11px]">الرصيد الحالي المباشر:</span>
+                <span
+                  className={`font-bold ${
+                    getAccountBalance(viewingDetailsAccount.id) > 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : getAccountBalance(viewingDetailsAccount.id) < 0
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  {formatCurrency(getAccountBalance(viewingDetailsAccount.id), { showSign: true })}
+                </span>
+              </div>
+            </div>
+
+            {/* Private Account Notes Section */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>ملاحظات الحساب الخاصة (سرية):</span>
+                </label>
+                {saveNotesSuccess && (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium animate-pulse flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>تم حفظ الملاحظات</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-900/40 text-[11px] text-purple-800 dark:text-purple-300 leading-relaxed">
+                ملاحظات سرية لا تظهر إطلاقاً في كشوف الحسابات أو فواتير الحركات أو التقارير المالية أو القوائم العامة، وتُحفظ بأمان داخل النسخ الاحتياطي التابع لك.
+              </div>
+
+              <textarea
+                rows={4}
+                value={privateNotesDraft}
+                onChange={(e) => setPrivateNotesDraft(e.target.value)}
+                placeholder="اكتب ملاحظات خاصة وسرية حول هذا الطرف أو شروط الاتفاق معه..."
+                className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-500/50"
+              />
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await updateAccount({
+                      ...viewingDetailsAccount,
+                      notes: privateNotesDraft.trim() || undefined,
+                    });
+                    setSaveNotesSuccess(true);
+                    setTimeout(() => setSaveNotesSuccess(false), 2000);
+                  }}
+                  className="py-1.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>حفظ الملاحظات الخاصة</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Actions Footer */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = viewingDetailsAccount.id;
+                    setViewingDetailsAccount(null);
+                    onOpenStatementForAccount(id);
+                  }}
+                  className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1 cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>كشف الحساب</span>
+                </button>
+
+                {viewingDetailsAccount.status === 'active' &&
+                  getAccountBalance(viewingDetailsAccount.id) > 0 &&
+                  onOpenInterAccountTransfer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = viewingDetailsAccount.id;
+                        setViewingDetailsAccount(null);
+                        onOpenInterAccountTransfer(id);
+                      }}
+                      className="py-1.5 px-3 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 text-xs font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                      <span>نقل مديونية</span>
+                    </button>
+                  )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingDetailsAccount(null)}
+                className="py-1.5 px-4 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
           </div>
         </div>
       )}

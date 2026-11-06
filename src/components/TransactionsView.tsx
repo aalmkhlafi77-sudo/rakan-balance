@@ -23,20 +23,31 @@ import {
   Download,
   X,
   FileSpreadsheet,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface TransactionsViewProps {
   onOpenQuickTx: (accountId?: string) => void;
   onEditTransaction: (tx: TransactionModel) => void;
   onOpenStatementForAccount: (accountId: string) => void;
+  onOpenInterAccountTransfer?: () => void;
+  onEditInterAccountTransfer?: (transferId: string) => void;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
   onOpenQuickTx,
   onEditTransaction,
   onOpenStatementForAccount,
+  onOpenInterAccountTransfer,
+  onEditInterAccountTransfer,
 }) => {
-  const { transactions, accounts, attachments, deleteTransaction } = useApp();
+  const {
+    transactions,
+    accounts,
+    attachments,
+    deleteTransaction,
+    deleteInterAccountTransfer,
+  } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('all');
@@ -44,8 +55,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
-  // Delete confirmation
+  // Delete confirmations
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
+  const [deletingTransferId, setDeletingTransferId] = useState<string | null>(null);
 
   // Attachment Preview Modal
   const [previewAttachment, setPreviewAttachment] = useState<{
@@ -116,14 +128,26 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onOpenQuickTx()}
-          className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-600/30 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>تسجيل حركة جديدة</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenInterAccountTransfer && (
+            <button
+              type="button"
+              onClick={() => onOpenInterAccountTransfer()}
+              className="py-2 px-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-purple-600/30 cursor-pointer"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+              <span>حركة بينية جديدة</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenQuickTx()}
+            className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-600/30 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>تسجيل حركة جديدة</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -254,6 +278,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 {filteredTransactions.map((tx) => {
                   const acc = accounts.find((a) => a.id === tx.accountId);
                   const isOwedBy = tx.entryType === 'owedByAccount';
+                  const isTransfer = Boolean(tx.transferId);
+                  const counterparty = isTransfer && tx.counterpartyAccountId
+                    ? accounts.find((a) => a.id === tx.counterpartyAccountId)
+                    : null;
                   const txAttachments = attachments.filter((att) =>
                     tx.attachmentIds?.includes(att.id)
                   );
@@ -279,7 +307,24 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
-                        <div>{tx.description}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{tx.description}</span>
+                          {isTransfer && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300">
+                              <ArrowLeftRight className="w-3 h-3" />
+                              <span>حركة بينية</span>
+                            </span>
+                          )}
+                        </div>
+                        {isTransfer && counterparty && (
+                          <div className="text-[11px] text-purple-700 dark:text-purple-400 font-medium mt-0.5">
+                            {tx.transferRole === 'source' ? (
+                              <span>نقل مديونية إلى: <strong>{counterparty.name}</strong></span>
+                            ) : (
+                              <span>مديونية محولة من: <strong>{counterparty.name}</strong></span>
+                            )}
+                          </div>
+                        )}
                         {tx.notes && (
                           <div className="text-[10px] text-slate-400 mt-0.5">{tx.notes}</div>
                         )}
@@ -349,22 +394,45 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onEditTransaction(tx)}
-                            className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                            title="تعديل الحركة"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingTxId(tx.id)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                            title="حذف الحركة"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isTransfer ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditInterAccountTransfer?.(tx.transferId!)}
+                                className="p-1 rounded-lg text-purple-600 hover:text-purple-900 dark:hover:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/50 cursor-pointer"
+                                title="تعديل الحركة البينية لكلا الطرفين"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingTransferId(tx.transferId!)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                title="حذف الحركة البينية لكلا الطرفين"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditTransaction(tx)}
+                                className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                title="تعديل الحركة"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingTxId(tx.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                title="حذف الحركة"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -376,7 +444,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Regular Transaction Delete Confirmation Modal */}
       {deletingTxId && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 text-center">
@@ -400,6 +468,46 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 className="py-2 px-5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs cursor-pointer shadow-sm shadow-rose-600/30"
               >
                 تأكيد الحذف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Delete Confirmation Modal (Milestone N1) */}
+      {deletingTransferId && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <ArrowLeftRight className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                تأكيد حذف الحركة البينية
+              </h4>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                هذه حركة بينية مترابطة بين حسابين. سيتم حذف طرفي الحركة معاً واستعادة الأرصدة السابقة قبل الحوالة في كلا الحسابين للحفاظ على توازن المركز المالي. هل ترغب بالتأكيد؟
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingTransferId(null)}
+                className="py-2.5 px-4 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (deletingTransferId) {
+                    await deleteInterAccountTransfer(deletingTransferId);
+                    setDeletingTransferId(null);
+                  }
+                }}
+                className="py-2.5 px-5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs cursor-pointer shadow-sm shadow-rose-600/30"
+              >
+                حذف طرفي الحركة معاً
               </button>
             </div>
           </div>

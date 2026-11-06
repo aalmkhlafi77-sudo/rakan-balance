@@ -11,6 +11,7 @@ import {
   AttachmentModel,
   BackupBundle,
   CategoryModel,
+  InterAccountTransferInput,
   StickyNoteModel,
   TransactionModel,
   UserSettings,
@@ -41,6 +42,10 @@ import {
 } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
+import {
+  buildTransferEntries,
+  validateInterAccountTransfer,
+} from '../domain/inter_account_transfer.ts';
 
 interface AppContextType {
   // Data
@@ -68,6 +73,11 @@ interface AppContextType {
   addTransaction: (txData: Omit<TransactionModel, 'id' | 'createdAt' | 'updatedAt' | 'isDemo'>, newAttachments?: AttachmentModel[]) => Promise<string>;
   updateTransaction: (tx: TransactionModel, newAttachments?: AttachmentModel[], removedAttachmentIds?: string[]) => Promise<void>;
   deleteTransaction: (transactionId: string) => Promise<void>;
+
+  // Inter-Account Transfer actions (Milestone N1)
+  createInterAccountTransfer: (input: InterAccountTransferInput) => Promise<string>;
+  updateInterAccountTransfer: (transferId: string, input: InterAccountTransferInput) => Promise<void>;
+  deleteInterAccountTransfer: (transferId: string) => Promise<void>;
 
   // Category actions
   addCategory: (name: string) => Promise<void>;
@@ -287,14 +297,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     txData: Omit<TransactionModel, 'id' | 'createdAt' | 'updatedAt' | 'isDemo'>,
     newAttachments?: AttachmentModel[]
   ): Promise<string> => {
+    // Sanitize input so regular transaction creation cannot inject arbitrary transfer metadata
+    const {
+      transferId: _tid,
+      transferRole: _trole,
+      counterpartyAccountId: _cpid,
+      ...sanitizedData
+    } = txData as any;
+
     // Centralized strict validation: positive integer halalas, account exists & is active, valid date/desc
     const validation = validateTransactionInput(
       {
-        accountId: txData.accountId,
-        entryType: txData.entryType,
-        amountMinor: txData.amountMinor,
-        date: txData.date,
-        description: txData.description,
+        accountId: sanitizedData.accountId,
+        entryType: sanitizedData.entryType,
+        amountMinor: sanitizedData.amountMinor,
+        date: sanitizedData.date,
+        description: sanitizedData.description,
       },
       accounts
     );
@@ -322,7 +340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const newTx: TransactionModel = {
-      ...txData,
+      ...sanitizedData,
       id: txId,
       attachmentIds: attIds,
       isDemo,
@@ -346,6 +364,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newAttachments?: AttachmentModel[],
     removedAttachmentIds?: string[]
   ): Promise<void> => {
+    // Single-entry protection: reject modifying an inter-account transfer leg individually
+    if (tx.transferId) {
+      throw new Error(
+        'لا يمكن تعديل طرف واحد من حركة بينية بشكل منفصل. يرجى استخدام شاشة تعديل الحركة البينية.'
+      );
+    }
+
     // Centralized strict validation for updated transaction
     const validation = validateTransactionInput(
       {
@@ -405,6 +430,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const tx = transactions.find((t) => t.id === transactionId);
     if (!tx) return;
 
+    // Single-entry protection: reject deleting an inter-account transfer leg individually
+    if (tx.transferId) {
+      throw new Error(
+        'لا يمكن حذف طرف واحد من حركة بينية بشكل منفصل. يرجى حذف الحركة البينية ككل.'
+      );
+    }
+
     const isDemo = activeScope === 'demo';
     const attIds = tx.attachmentIds || [];
 
@@ -416,6 +448,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!isDemo && attIds.length > 0) {
       setAttachments((prev) => prev.filter((a) => !attIds.includes(a.id)));
     }
+  };
+
+  // =========================================================================
+  // Inter-Account Transfer Actions (Milestone N1)
+  // Atomic generation, modification, and deletion of paired transfer entries
+  // =========================================================================
+
+  const createInterAccountTransfer = async (
+    input: InterAccountTransferInput
+  ): Promise<string> => {
+    const isDemo = activeScope === 'demo';
+    const scopedInput: InterAccountTransferInput = { ...input, isDemo };
+
+    // 1. Strict Domain Validation
+    const validation = validateInterAccountTransfer(scopedInput, accounts, transactions);
+    if (!validation.isValid) {
+      throw new Error(validation.error || 'بيانات الحركة البينية غير صالحة.');
+    }
+
+    // 2. Build paired transfer entries
+    const { transferId, sourceEntry, destinationEntry } = buildTransferEntries(scopedInput);
+
+    // 3. Atomically persist both entries inside ONE IndexedDB transaction using store.add()
+    await dbStorage.saveTransferAtomic(sourceEntry, destinationEntry, isDemo);
+
+    // 4. Update memory state upon complete transaction success
+    setTransactions((prev) => [sourceEntry, destinationEntry, ...prev]);
+
+    return transferId;
+  };
+
+  const updateInterAccountTransfer = async (
+    transferId: string,
+    input: InterAccountTransferInput
+  ): Promise<void> => {
+    const isDemo = activeScope === 'demo';
+    const scopedInput: InterAccountTransferInput = { ...input, isDemo };
+
+    // 1. Validate against current transactions with editingTransferId specified
+    const validation = validateInterAccountTransfer(
+      scopedInput,
+      accounts,
+      transactions,
+      transferId
+    );
+    if (!validation.isValid) {
+      throw new Error(validation.error || 'بيانات تعديل الحركة البينية غير صالحة.');
+    }
+
+    // 2. Build updated paired transfer entries
+    const { sourceEntry, destinationEntry } = buildTransferEntries(scopedInput, transferId);
+
+    // 3. Atomically update in ONE transaction
+    await dbStorage.updateTransferAtomic(transferId, sourceEntry, destinationEntry, isDemo);
+
+    // 4. Update state upon complete transaction success
+    setTransactions((prev) => [
+      sourceEntry,
+      destinationEntry,
+      ...prev.filter((t) => t.transferId !== transferId),
+    ]);
+  };
+
+  const deleteInterAccountTransfer = async (transferId: string): Promise<void> => {
+    const isDemo = activeScope === 'demo';
+
+    // 1. Atomically delete both entries in ONE transaction
+    await dbStorage.deleteTransferAtomic(transferId, isDemo);
+
+    // 2. Update state upon complete transaction success
+    setTransactions((prev) => prev.filter((t) => t.transferId !== transferId));
   };
 
   // =========================================================================
@@ -648,6 +751,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addTransaction,
         updateTransaction,
         deleteTransaction,
+        createInterAccountTransfer,
+        updateInterAccountTransfer,
+        deleteInterAccountTransfer,
         addCategory,
         updateCategory,
         deleteCategory,

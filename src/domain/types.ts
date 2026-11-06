@@ -8,6 +8,24 @@ export type EntryType = 'owedByAccount' | 'owedToAccount';
 
 export type AccountStatus = 'active' | 'archived';
 
+export type TransferRole = 'source' | 'destination';
+
+export interface InterAccountTransferInput {
+  sourceAccountId: string;
+  destinationAccountId: string;
+  amountMinor: number;
+  date: string;
+  description: string;
+  notes?: string;
+  isDemo?: boolean;
+}
+
+export interface InterAccountTransferMeta {
+  transferId: string;
+  transferRole: TransferRole;
+  counterpartyAccountId: string;
+}
+
 /**
  * Core Account Entity
  * Follows Document v2 Section 5 & 15
@@ -20,7 +38,7 @@ export interface AccountModel {
   openingBalanceMinor: number; // Signed integer (halalas)
   status: AccountStatus;
   phone?: string;
-  notes?: string;
+  notes?: string; // Private account notes (strictly hidden from statements, lists, CSVs, and global search)
   isDemo?: boolean;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
@@ -41,6 +59,9 @@ export interface CategoryModel {
  * Follows Document v2 Section 3: A transaction links to ONE account only
  * owedByAccount = +amountMinor (عليه - يزيد الرصيد)
  * owedToAccount = -amountMinor (له - ينقص الرصيد)
+ * For inter-account transfers:
+ * - Source account: owedToAccount (-amountMinor) reduces debt
+ * - Destination account: owedByAccount (+amountMinor) increases debt
  */
 export interface TransactionModel {
   id: string;
@@ -52,6 +73,9 @@ export interface TransactionModel {
   notes?: string;
   attachmentIds: string[];
   isDemo?: boolean;
+  transferId?: string;
+  transferRole?: TransferRole;
+  counterpartyAccountId?: string;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
 }

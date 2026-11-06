@@ -2,5 +2,7 @@
   "name": "راكان بلانس | RAKAN BALANCE",
   "description": "نواة تطبيق مستقل للذمم الشخصية والمالية بدقة الهللة، متوافق مع مبدأ المالك الواحد والعملة المحلية الموحدة وفق وثيقة العمل الهندسية v2.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

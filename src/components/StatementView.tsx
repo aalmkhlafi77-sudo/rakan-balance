@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Filter,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface StatementViewProps {
@@ -84,7 +85,15 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
       const owedByStr = isOwedBy ? (row.transaction.amountMinor / 100).toFixed(2) : '0.00';
       const owedToStr = !isOwedBy ? (row.transaction.amountMinor / 100).toFixed(2) : '0.00';
       const balanceStr = (row.runningBalanceMinor / 100).toFixed(2);
-      const safeDesc = `"${row.transaction.description.replace(/"/g, '""')}"`;
+
+      let descText = row.transaction.description;
+      if (row.transaction.transferId && row.transaction.counterpartyAccountId) {
+        const counterparty = accounts.find((a) => a.id === row.transaction.counterpartyAccountId);
+        if (counterparty) {
+          descText += ` (${row.transaction.transferRole === 'source' ? 'نقل مديونية إلى: ' : 'مديونية محولة من: '}${counterparty.name})`;
+        }
+      }
+      const safeDesc = `"${descText.replace(/"/g, '""')}"`;
 
       csvContent += `${idx + 1},${row.transaction.date},${safeDesc},${owedByStr},${owedToStr},${balanceStr}\n`;
     });
@@ -348,10 +357,39 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
                         {row.transaction.date}
                       </td>
                       <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">
-                        <div>{row.transaction.description}</div>
-                        {row.transaction.notes && (
-                          <div className="text-[10px] text-slate-400">{row.transaction.notes}</div>
-                        )}
+                        {(() => {
+                          const isTransfer = Boolean(row.transaction.transferId);
+                          const counterparty =
+                            isTransfer && row.transaction.counterpartyAccountId
+                              ? accounts.find((a) => a.id === row.transaction.counterpartyAccountId)
+                              : null;
+
+                          return (
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{row.transaction.description}</span>
+                                {isTransfer && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300">
+                                    <ArrowLeftRight className="w-3 h-3" />
+                                    <span>حركة بينية</span>
+                                  </span>
+                                )}
+                              </div>
+                              {isTransfer && counterparty && (
+                                <div className="text-[11px] text-purple-700 dark:text-purple-400 font-medium mt-0.5">
+                                  {row.transaction.transferRole === 'source' ? (
+                                    <span>نقل مديونية إلى: <strong>{counterparty.name}</strong></span>
+                                  ) : (
+                                    <span>مديونية محولة من: <strong>{counterparty.name}</strong></span>
+                                  )}
+                                </div>
+                              )}
+                              {row.transaction.notes && (
+                                <div className="text-[10px] text-slate-400">{row.transaction.notes}</div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-2.5 px-3 text-left font-mono text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums">
                         {isOwedBy ? `+${formatMinorAmount(row.transaction.amountMinor)}` : '—'}

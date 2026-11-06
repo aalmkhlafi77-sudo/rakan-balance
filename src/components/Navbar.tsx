@@ -13,12 +13,14 @@ interface NavbarProps {
   currentTab: TabView;
   onOpenMobileSidebar: () => void;
   onOpenQuickTransaction: () => void;
+  onOpenInterAccountTransfer?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   onOpenMobileSidebar,
   onOpenQuickTransaction,
+  onOpenInterAccountTransfer,
 }) => {
   const { settings, activeScope, switchScope } = useApp();
 
@@ -78,7 +80,17 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Right: Quick Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {onOpenInterAccountTransfer && (
+            <button
+              type="button"
+              onClick={onOpenInterAccountTransfer}
+              className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-purple-600/30 cursor-pointer"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+              <span className="hidden sm:inline">حركة بينية</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenQuickTransaction}
