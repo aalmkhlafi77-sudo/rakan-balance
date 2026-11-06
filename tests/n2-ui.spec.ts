@@ -79,3 +79,27 @@ for (const device of ['desktop', 'mobile'] as const) {
     await expect(page.locator('article').filter({ hasText: '2026-12-30' })).toContainText('100.00');
   });
 }
+
+
+test('N2: deleting unpaid due removes reminders without financial movements', async ({ page }) => {
+  await openDemoDues(page);
+  const before = await snapshotDemo(page);
+  const add = page.locator('form').filter({ has: page.getByRole('button', { name: 'حفظ الاستحقاق' }) });
+  await add.locator('select').nth(0).selectOption('demo-acc-1');
+  await add.getByPlaceholder('مثال: 150.25').fill('20.00');
+  await add.locator('input[type="date"]').fill('2026-12-20');
+  await add.getByRole('button', { name: 'حفظ الاستحقاق' }).click();
+  const row = page.locator('article').filter({ hasText: '2026-12-20' }).first();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'تذكير يدوي' }).click();
+  await row.getByRole('button', { name: 'حفظ التذكير للمراجعة اليدوية' }).click();
+  expect((await snapshotDemo(page)).reminders).toHaveLength(before.reminders.length + 1);
+  page.once('dialog', dialog => dialog.accept());
+  await row.getByRole('button', { name: 'حذف الاستحقاق' }).click();
+  await expect(row).toHaveCount(0);
+  const after = await snapshotDemo(page);
+  expect(after.dues).toHaveLength(before.dues.length);
+  expect(after.reminders).toHaveLength(before.reminders.length);
+  expect(after.transactions).toHaveLength(before.transactions.length);
+  expect(after.allocations).toHaveLength(before.allocations.length);
+});
