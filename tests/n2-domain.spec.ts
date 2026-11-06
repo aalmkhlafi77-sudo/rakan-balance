@@ -30,6 +30,7 @@ test('N2 domain: linked payment is one movement, due balance is follow-up only',
   expect(() => validateDueLedger([due], [allocation], [reminder], [account], [payment])).not.toThrow();
   expect(dueRemaining(due)).toBe(15000);
   expect(dueDisplayStatus(due, '2026-11-07')).toBe('partially_settled');
+  expect(dueDisplayStatus(due, '2026-12-30')).toBe('today');
   expect(dueDisplayStatus(due, '2026-12-31')).toBe('overdue');
   expect(dueDisplayStatus({ ...due, settledAmountMinor: due.originalAmountMinor }, '2027-01-01')).toBe('settled');
 });
