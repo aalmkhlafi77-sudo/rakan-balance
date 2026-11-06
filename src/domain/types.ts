@@ -161,6 +161,9 @@ export interface BackupBundle {
     transactions: TransactionModel[];
     attachments: AttachmentModel[];
     notes: StickyNoteModel[];
+    dues?: DueItemContract[];
+    allocations?: PaymentAllocationContract[];
+    reminders?: ReminderContract[];
     settings?: Partial<UserSettings>;
   };
 }
@@ -173,19 +176,22 @@ export interface BackupBundle {
  * =========================================================================
  */
 
-/** Contract for future DueItem (Section 15 in Blueprint v2) */
+/** N2: a due item is a non-financial follow-up record, not a ledger movement. */
 export interface DueItemContract {
   id: string;
   accountId: string;
   sourceTransactionId?: string;
+  entryType: EntryType;
   dueDate: string;
   originalAmountMinor: number;
   settledAmountMinor: number;
   status: 'pending' | 'partially_settled' | 'settled' | 'overdue';
   notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-/** Contract for future PaymentAllocation (Section 15 in Blueprint v2) */
+/** N2: allocation only references an existing financial movement (never creates a second one). */
 export interface PaymentAllocationContract {
   id: string;
   dueItemId: string;
@@ -193,12 +199,12 @@ export interface PaymentAllocationContract {
   amountMinor: number;
 }
 
-/** Contract for future Reminder (Section 15 in Blueprint v2) */
+/** N2: manual reminder without automatic messaging or device notification. */
 export interface ReminderContract {
   id: string;
   dueItemId: string;
   remindAt: string;
   templateText: string;
   isCompleted: boolean;
-  channel?: 'manual' | 'whatsapp' | 'device';
+  channel?: 'manual';
 }
