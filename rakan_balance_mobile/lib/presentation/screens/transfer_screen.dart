@@ -174,6 +174,7 @@ class _TransferScreenState extends State<TransferScreen> {
               final val = InterAccountTransferEngine.validateTransfer(
                 input: input,
                 accounts: state.accounts,
+                currentTransactions: state.transactions,
               );
 
               if (!val.isValid) {
