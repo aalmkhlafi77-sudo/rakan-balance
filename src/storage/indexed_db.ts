@@ -332,7 +332,7 @@ export class IndexedDBStorage {
     const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
     const attStoreName = STORES_REAL.ATTACHMENTS;
     const allocationStoreName = isDemo ? STORES_DEMO.ALLOCATIONS : STORES_REAL.ALLOCATIONS;
-    const storesToLock = isDemo || (newAttachments.length === 0 && removedAttachmentIds.length === 0)
+    const storesToLock: string[] = isDemo || (newAttachments.length === 0 && removedAttachmentIds.length === 0)
       ? [txStoreName] : [txStoreName, attStoreName];
 
     storesToLock.push(allocationStoreName);
@@ -390,7 +390,7 @@ export class IndexedDBStorage {
     const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
     const attStoreName = STORES_REAL.ATTACHMENTS;
     const allocationStoreName = isDemo ? STORES_DEMO.ALLOCATIONS : STORES_REAL.ALLOCATIONS;
-    const storesToLock = isDemo || attachmentIds.length === 0
+    const storesToLock: string[] = isDemo || attachmentIds.length === 0
       ? [txStoreName] : [txStoreName, attStoreName];
 
     storesToLock.push(allocationStoreName);
