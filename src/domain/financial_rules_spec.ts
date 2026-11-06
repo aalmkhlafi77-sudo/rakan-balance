@@ -34,6 +34,7 @@ import {
   STORES_REAL,
 } from '../storage/indexed_db.ts';
 import { computeSHA256, validateBackupFile } from '../storage/backup_service.ts';
+import { buildStatementCSV, matchesPublicAccountSearch } from './account_privacy.ts';
 import {
   buildTransferEntries,
   validateInterAccountTransfer,
@@ -1505,48 +1506,37 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
       });
     }
 
-    // TEST N (24): Private Account Notes Privacy Boundary (Excluded from Financial Exports & Global Search)
+    // TEST N (24): Exercise the exact financial CSV and public account search functions.
     {
       const secretNoteText = 'سرية_للغاية_ممنوع_الظهور_في_التقارير_12345';
-      const accSecretNotes: AccountModel = {
+      const account: AccountModel = {
         id: 'acc_secret_n',
         name: 'حساب السرية',
         parentId: null,
         categoryId: 'cat-1',
         openingBalanceMinor: 50000,
         status: 'active',
+        phone: '0500000000',
         notes: secretNoteText,
         createdAt: '2026-11-01T10:00:00Z',
         updatedAt: '2026-11-01T10:00:00Z',
       };
-
-      const statement = calculateAccountStatement(accSecretNotes, []);
-      const statementString = JSON.stringify(statement);
-
-      // Verify privacy boundaries: notes excluded from statement output & global search filter, but included in backup export
-      const excludedFromStatement = !statementString.includes(secretNoteText);
-
-      // Verify backup bundle inclusion
-      const payload = {
-        accounts: [accSecretNotes],
-        categories: [],
-        transactions: [],
-        attachments: [],
-        notes: [],
-      };
-      const backupString = JSON.stringify(payload);
-      const includedInBackup = backupString.includes(secretNoteText);
-
-      const passed = excludedFromStatement && includedInBackup;
-
+      const statement = calculateAccountStatement(account, []);
+      const csv = buildStatementCSV(account, [account], statement);
+      const hiddenFromCsv = !csv.includes(secretNoteText);
+      const hiddenFromSearch = !matchesPublicAccountSearch(account, secretNoteText);
+      const publicSearchWorks = matchesPublicAccountSearch(account, 'حساب السرية')
+        && matchesPublicAccountSearch(account, '0500000000');
+      // Account notes must be in full backups, not financial reports.
+      const backupRecord = JSON.stringify({ accounts: [account] });
+      const includedInBackup = backupRecord.includes(secretNoteText);
+      const passed = hiddenFromCsv && hiddenFromSearch && publicSearchWorks && includedInBackup;
       results.push({
         id: 'test-24-test-n-private-notes-privacy-boundary',
-        title: 'الاختبار N (24): التحقق من حدود خصوصية الملاحظات (استبعادها من المخرجات المالية وشمولها بالنسخ)',
+        title: 'الاختبار N (24): اختبار فعلي لمولد CSV وبحث الحسابات واستبعاد الملاحظات الخاصة',
         passed,
-        expected: 'استبعاد النص السري من المخرجات المالية لكشف الحساب وشموله في حزمة النسخ الاحتياطي الكاملة',
-        actual: passed
-          ? 'تم التحقق: مستبعدة من كشوف الحسابات وتصادير المالية، ومحفوظة في النسخة الاحتياطية'
-          : 'فشل اختبار خصوصية الملاحظات',
+        expected: 'لا ملاحظات خاصة في CSV أو بحث الحسابات، مع بقائها في النسخة الكاملة',
+        actual: passed ? 'اجتاز مولد CSV والبحث الفعليان اختبار العزل' : 'تسربت الملاحظات الخاصة أو تعطل البحث العام',
       });
     }
 
@@ -1612,7 +1602,7 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
       });
     }
 
-    // TEST P (26): Interface and Minor Units Invariants Verification
+    // TEST P (26): Minor Units Invariants (not a browser/UI test)
     {
       const minorCheck = tryToMinorUnits('150.25');
       const maxSafeCheck = MAX_SAFE_MINOR_AMOUNT > 0;
@@ -1620,7 +1610,7 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
 
       results.push({
         id: 'test-26-test-p-invariants-verification',
-        title: 'الاختبار P (26): التحقق من ثوابت الدقة الممالية بالهللة وتوافق العقود',
+        title: 'الاختبار P (26): التحقق من ثوابت الدقة المالية بالهللة',
         passed,
         expected: 'تحويل دقيق للكسور النظامية منزلتين إلى هللات (150.25 -> 15025 هللة) وثبات الحدود الآمنة',
         actual: passed
