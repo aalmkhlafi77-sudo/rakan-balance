@@ -4,6 +4,7 @@ import '../../domain/financial/inter_account_transfer_engine.dart';
 import '../../domain/financial/money_utils.dart';
 import '../../domain/models/transfer_model.dart';
 import '../state/app_state_notifier.dart';
+import '../../app/theme/app_colors.dart';
 
 class TransferScreen extends StatefulWidget {
   const TransferScreen({super.key});
@@ -150,7 +151,7 @@ class _TransferScreenState extends State<TransferScreen> {
 
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.emerald,
+              backgroundColor: AppColors.emerald600,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
