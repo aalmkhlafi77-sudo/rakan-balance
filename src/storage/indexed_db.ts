@@ -700,7 +700,7 @@ export class IndexedDBStorage {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(
-        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS, STORES_DEMO.NOTES],
+        [STORES_DEMO.ACCOUNTS, STORES_DEMO.CATEGORIES, STORES_DEMO.TRANSACTIONS, STORES_DEMO.NOTES, STORES_DEMO.DUES, STORES_DEMO.ALLOCATIONS, STORES_DEMO.REMINDERS],
         'readwrite'
       );
 
@@ -719,6 +719,9 @@ export class IndexedDBStorage {
       const notesStore = tx.objectStore(STORES_DEMO.NOTES);
       notesStore.clear();
       notes.forEach((n) => notesStore.put(n));
+      tx.objectStore(STORES_DEMO.DUES).clear();
+      tx.objectStore(STORES_DEMO.ALLOCATIONS).clear();
+      tx.objectStore(STORES_DEMO.REMINDERS).clear();
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
