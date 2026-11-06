@@ -314,50 +314,44 @@ export class IndexedDBStorage {
     const db = await this.getDB();
     const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
     const attStoreName = STORES_REAL.ATTACHMENTS;
-
     const storesToLock = isDemo || (newAttachments.length === 0 && removedAttachmentIds.length === 0)
-      ? [txStoreName]
-      : [txStoreName, attStoreName];
+      ? [txStoreName] : [txStoreName, attStoreName];
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storesToLock, 'readwrite');
-
-      tx.onerror = () => {
-        reject(new Error(`فشلت المعاملة الذرية لتعديل الحركة: ${tx.error?.message || 'خطأ غير معروف'}`));
-      };
-
-      tx.onabort = () => {
-        reject(new Error('تم إلغاء تعديل الحركة الذري وبقيت الحالة السابقة كما هي.'));
-      };
-
-      tx.oncomplete = () => {
-        resolve();
-      };
-
-      try {
-        // 1. Update transaction record
-        const txStore = tx.objectStore(txStoreName);
-        txStore.put(txData);
-
-        // 2. Update attachments in the same transaction
-        if (!isDemo) {
-          const attStore = tx.objectStore(attStoreName);
-          for (const attId of removedAttachmentIds) {
-            attStore.delete(attId);
+      let reason: string | null = null;
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(reason || 'تم إلغاء تعديل الحركة الذري وبقيت الحالة السابقة كما هي.'));
+      tx.onerror = () => { /* Report via onabort. */ };
+      const store = tx.objectStore(txStoreName);
+      const getRequest = store.get(txData.id);
+      getRequest.onsuccess = () => {
+        try {
+          const existing = getRequest.result as TransactionModel | undefined;
+          if (txData.transferId || existing?.transferId) {
+            throw new Error('لا يمكن تعديل قيد بيني منفردًا؛ استخدم تعديل الحركة البينية.');
           }
-          for (const att of newAttachments) {
-            attStore.put(att);
+          store.put(txData);
+          if (!isDemo && (newAttachments.length || removedAttachmentIds.length)) {
+            const attStore = tx.objectStore(attStoreName);
+            for (const id of removedAttachmentIds) attStore.delete(id);
+            for (const attachment of newAttachments) attStore.put(attachment);
           }
+        } catch (error) {
+          reason = error instanceof Error ? error.message : String(error);
+          tx.abort();
         }
-      } catch (err) {
+      };
+      getRequest.onerror = () => {
+        reason = 'تعذر فحص الحركة الأصلية قبل تعديلها.';
         tx.abort();
-        reject(err);
-      }
+      };
     });
   }
 
   /**
-   * Atomically deletes a transaction and all its associated attachments inside a SINGLE transaction.
+   * Atomically deletes an ordinary transaction and its attachments.
+   * A transfer leg cannot be removed through the ordinary transaction API.
    */
   public async deleteTransactionAtomic(
     txId: string,
@@ -367,42 +361,37 @@ export class IndexedDBStorage {
     const db = await this.getDB();
     const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
     const attStoreName = STORES_REAL.ATTACHMENTS;
-
     const storesToLock = isDemo || attachmentIds.length === 0
-      ? [txStoreName]
-      : [txStoreName, attStoreName];
+      ? [txStoreName] : [txStoreName, attStoreName];
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storesToLock, 'readwrite');
-
-      tx.onerror = () => {
-        reject(new Error(`فشلت المعاملة الذرية لحذف الحركة: ${tx.error?.message || 'خطأ غير معروف'}`));
-      };
-
-      tx.onabort = () => {
-        reject(new Error('تم إلغاء حذف الحركة الذري وبقيت البيانات دون تعديل.'));
-      };
-
-      tx.oncomplete = () => {
-        resolve();
-      };
-
-      try {
-        // 1. Delete transaction record
-        const txStore = tx.objectStore(txStoreName);
-        txStore.delete(txId);
-
-        // 2. Delete all linked attachments in the same atomic transaction
-        if (!isDemo && attachmentIds.length > 0) {
-          const attStore = tx.objectStore(attStoreName);
-          for (const attId of attachmentIds) {
-            attStore.delete(attId);
+      let reason: string | null = null;
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(new Error(reason || 'تم إلغاء حذف الحركة الذري وبقيت البيانات دون تعديل.'));
+      tx.onerror = () => { /* Report via onabort. */ };
+      const store = tx.objectStore(txStoreName);
+      const getRequest = store.get(txId);
+      getRequest.onsuccess = () => {
+        try {
+          const existing = getRequest.result as TransactionModel | undefined;
+          if (existing?.transferId) {
+            throw new Error('لا يمكن حذف قيد بيني منفردًا؛ استخدم حذف الحركة البينية.');
           }
+          store.delete(txId);
+          if (!isDemo && attachmentIds.length) {
+            const attStore = tx.objectStore(attStoreName);
+            for (const id of attachmentIds) attStore.delete(id);
+          }
+        } catch (error) {
+          reason = error instanceof Error ? error.message : String(error);
+          tx.abort();
         }
-      } catch (err) {
+      };
+      getRequest.onerror = () => {
+        reason = 'تعذر فحص الحركة الأصلية قبل حذفها.';
         tx.abort();
-        reject(err);
-      }
+      };
     });
   }
 
