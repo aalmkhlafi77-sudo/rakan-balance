@@ -17,9 +17,10 @@ export function dueRemaining(due: DueItemContract): number {
   return due.originalAmountMinor - due.settledAmountMinor;
 }
 
-export function dueDisplayStatus(due: DueItemContract, today: string): 'pending' | 'partially_settled' | 'settled' | 'overdue' {
+export function dueDisplayStatus(due: DueItemContract, today: string): 'pending' | 'partially_settled' | 'settled' | 'overdue' | 'today' {
   if (dueRemaining(due) === 0) return 'settled';
   if (due.dueDate < today) return 'overdue';
+  if (due.dueDate === today) return 'today';
   if (due.settledAmountMinor > 0) return 'partially_settled';
   return 'pending';
 }
