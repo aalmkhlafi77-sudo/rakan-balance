@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { dueDisplayStatus, dueRemaining } from '../domain/dues.ts';
 import { formatMinorAmount, tryToMinorUnits } from '../domain/money.ts';
@@ -26,6 +26,7 @@ export const DuesView: React.FC = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const pendingRef = useRef(false);
   const [filter, setFilter] = useState<'all' | 'open' | 'overdue' | 'settled'>('all');
   const today = localToday();
   const activeAccounts = accounts.filter(a => a.status === 'active');
@@ -39,11 +40,12 @@ export const DuesView: React.FC = () => {
   const remaining = dues.reduce((sum, d) => sum + dueRemaining(d), 0);
 
   const run = async (action: () => Promise<void>, success: string) => {
-    if (busy) return;
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setBusy(true); setError(''); setMessage('');
     try { await action(); setMessage(success); }
     catch (e) { setError(e instanceof Error ? e.message : 'تعذر إكمال العملية.'); }
-    finally { setBusy(false); }
+    finally { pendingRef.current = false; setBusy(false); }
   };
 
   return (
