@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { AccountModel } from '../domain/types.ts';
 import { formatCurrency, fromMinorUnits, toMinorUnits } from '../domain/money.ts';
 import { checkTreeCycle } from '../domain/balance_calculator.ts';
+import { matchesPublicAccountSearch } from '../domain/account_privacy.ts';
 import {
   Users,
   Plus,
@@ -87,12 +88,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     return accounts.filter((acc) => {
       if (acc.status !== statusFilter) return false;
       if (selectedCategory !== 'all' && acc.categoryId !== selectedCategory) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesName = acc.name.toLowerCase().includes(q);
-        const matchesPhone = acc.phone?.toLowerCase().includes(q);
-        if (!matchesName && !matchesPhone) return false;
-      }
+      if (!matchesPublicAccountSearch(acc, searchQuery)) return false;
       return true;
     });
   }, [accounts, statusFilter, selectedCategory, searchQuery]);
