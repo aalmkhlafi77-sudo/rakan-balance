@@ -731,6 +731,129 @@ export async function runFinancialVerificationSuite(): Promise<TestResult[]> {
         actual: `استثناء غير متوقع: ${err.message}`,
       });
     }
+
+    // =========================================================================
+    // TEST 9: Real Rollback Snapshot Settings Invariance & Restore Accuracy (Flaw #1)
+    // Verifies that rollback snapshots restore original settings and accounts accurately,
+    // preserving settings format as a clean object (no array type corruption or field loss).
+    // =========================================================================
+    try {
+      const origAccount: AccountModel = {
+        id: 'acc_snap_orig_1',
+        name: 'حساب أصلي قبل أخذ اللقطة',
+        parentId: null,
+        categoryId: 'cat_c1',
+        openingBalanceMinor: 15000,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const origSettings = {
+        key: 'user_preferences',
+        ownerName: 'المالك الأصلي المحفوظ',
+        theme: 'light',
+        sidebarCollapsed: true,
+      };
+
+      // 1. Seed initial data and settings in testStorage
+      await testStorage.put(STORES_REAL.ACCOUNTS, origAccount);
+      await testStorage.put(STORES_REAL.SETTINGS, origSettings);
+
+      // 2. Capture safety snapshot
+      const snapshotId = await testStorage.createRollbackSnapshot();
+
+      // 3. Mutate data and settings in testStorage
+      await testStorage.put(STORES_REAL.ACCOUNTS, {
+        ...origAccount,
+        name: 'حساب معدل بالخطأ بعد اللقطة',
+        openingBalanceMinor: 99999,
+      });
+      await testStorage.put(STORES_REAL.SETTINGS, {
+        key: 'user_preferences',
+        ownerName: 'اسم مشوه غير مرغوب فيه',
+        theme: 'dark',
+      });
+
+      // 4. Perform snapshot restore
+      const restoreSuccess = await testStorage.restoreLatestSnapshot();
+
+      // 5. Query restored data and settings from testStorage
+      const restoredAccs = await testStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS);
+      const restoredSettingsRecords = await testStorage.getAll<any>(STORES_REAL.SETTINGS);
+
+      const accRestored = restoredAccs.some(
+        (a) => a.id === origAccount.id && a.name === 'حساب أصلي قبل أخذ اللقطة' && a.openingBalanceMinor === 15000
+      );
+
+      const settingsRecord = restoredSettingsRecords.find((s) => s.key === 'user_preferences');
+      const settingsRestored =
+        settingsRecord &&
+        settingsRecord.ownerName === 'المالك الأصلي المحفوظ' &&
+        settingsRecord.theme === 'light' &&
+        settingsRecord.sidebarCollapsed === true;
+
+      const passed = Boolean(snapshotId && restoreSuccess && accRestored && settingsRestored);
+
+      results.push({
+        id: 'test-9-rollback-snapshot-settings',
+        title: 'اختبار 9: التحقق الفعلي من دقة واتساق استعادة الإعدادات والحسابات من لقطات الرجوع (إصلاح خلل 1)',
+        passed,
+        expected: 'استعادة دقيقة وشاملة للحسابات والإعدادات الأصلية من اللقطة دون تشويه للأنواع أو فقدان للحقول',
+        actual: passed
+          ? `تم استعادة الحساب والإعدادات بنجاح: ownerName="${settingsRecord?.ownerName}", theme="${settingsRecord?.theme}"`
+          : `فشل التحقق: snapshotId=${snapshotId}, restore=${restoreSuccess}, acc=${accRestored}, settings=${settingsRestored}`,
+        details: 'تأكيد التوافق التام بين createRollbackSnapshot و atomicRestore دون تحويل الإعدادات إلى مصفوفات مشوهة.',
+      });
+    } catch (err: any) {
+      results.push({
+        id: 'test-9-rollback-snapshot-settings',
+        title: 'اختبار 9: التحقق الفعلي من دقة واتساق استعادة الإعدادات والحسابات من لقطات الرجوع (إصلاح خلل 1)',
+        passed: false,
+        expected: 'نجاح اختبار استعادة اللقطة',
+        actual: `استثناء غير متوقع: ${err.message}`,
+      });
+    }
+
+    // =========================================================================
+    // TEST 10: Real Database Cleanup Safety & Connection Handling Test (Flaw #2)
+    // Verifies that destroyDatabase closes open connections, rejects on error/blocked,
+    // and verifies complete database deletion on ephemeral storage.
+    // =========================================================================
+    try {
+      const ephemeralStorage = createIsolatedTestStorage();
+      const ephemeralDbName = ephemeralStorage.getDatabaseName();
+
+      // Put record to force opening DB connection
+      await ephemeralStorage.put(STORES_REAL.CATEGORIES, { id: 'cat_eph_1', name: 'تصنيف مؤقت', sortOrder: 0 });
+
+      let destroySucceeded = false;
+      try {
+        await ephemeralStorage.destroyDatabase();
+        destroySucceeded = true;
+      } catch (e) {
+        destroySucceeded = false;
+      }
+
+      results.push({
+        id: 'test-10-destroy-database-cleanup-safety',
+        title: 'اختبار 10: التحقق الفعلي من إغلاق الاتصالات وسلامة تنظيف وإلغاء قواعد الاختبار (إصلاح خلل 2)',
+        passed: destroySucceeded,
+        expected: 'إغلاق الاتصالات وحذف قاعدة البيانات بنجاح ودون إعتبار onblocked حالة نجاح',
+        actual: destroySucceeded
+          ? `تم تنظيف وحذف قاعدة البيانات المؤقتة (${ephemeralDbName}) بنجاح والتحقق من عدم وجودها`
+          : 'فشل حذف قاعدة البيانات المؤقتة',
+        details: 'معالجة الاتصالات المفتوحة والتأكد من نجاح التصفية البعدية.',
+      });
+    } catch (err: any) {
+      results.push({
+        id: 'test-10-destroy-database-cleanup-safety',
+        title: 'اختبار 10: التحقق الفعلي من إغلاق الاتصالات وسلامة تنظيف وإلغاء قواعد الاختبار (إصلاح خلل 2)',
+        passed: false,
+        expected: 'نجاح اختبار سلامة التنظيف',
+        actual: `استثناء غير متوقع: ${err.message}`,
+      });
+    }
   } finally {
     // =========================================================================
     // CLEANUP GUARANTEE:

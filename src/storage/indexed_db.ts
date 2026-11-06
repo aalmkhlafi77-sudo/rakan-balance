@@ -469,7 +469,7 @@ export class IndexedDBStorage {
    * Captures current real database state as a rollback snapshot.
    */
   public async createRollbackSnapshot(): Promise<string> {
-    const [accounts, categories, transactions, attachments, notes, settings] = await Promise.all([
+    const [accounts, categories, transactions, attachments, notes, settingsRecords] = await Promise.all([
       this.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
       this.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
       this.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
@@ -478,11 +478,21 @@ export class IndexedDBStorage {
       this.getAll<any>(STORES_REAL.SETTINGS),
     ]);
 
+    // Normalize settings records array into a clean preferences object for snapshot payload
+    let settingsPayload: Partial<UserSettings> | undefined = undefined;
+    if (Array.isArray(settingsRecords) && settingsRecords.length > 0) {
+      const pref = settingsRecords.find((s) => s && s.key === 'user_preferences') || settingsRecords[0];
+      if (pref && typeof pref === 'object') {
+        const { key, ...cleanPref } = pref;
+        settingsPayload = cleanPref;
+      }
+    }
+
     const snapshotId = `snapshot_${Date.now()}`;
     const snapshot = {
       id: snapshotId,
       createdAt: new Date().toISOString(),
-      data: { accounts, categories, transactions, attachments, notes, settings },
+      data: { accounts, categories, transactions, attachments, notes, settings: settingsPayload },
     };
 
     const db = await this.getDB();
@@ -503,6 +513,19 @@ export class IndexedDBStorage {
   public async atomicRestore(bundleData: BackupBundle['data']): Promise<void> {
     // 1. Create a safety snapshot first!
     await this.createRollbackSnapshot();
+
+    // 2. Normalize settings payload whether passed as an object or as an array
+    let settingsPayload: Record<string, any> | undefined = undefined;
+    if (Array.isArray(bundleData.settings)) {
+      const pref = (bundleData.settings as any[]).find((s) => s && s.key === 'user_preferences') || bundleData.settings[0];
+      if (pref && typeof pref === 'object') {
+        const { key, ...cleanPref } = pref;
+        settingsPayload = cleanPref;
+      }
+    } else if (bundleData.settings && typeof bundleData.settings === 'object') {
+      const { key, ...cleanPref } = bundleData.settings as any;
+      settingsPayload = cleanPref;
+    }
 
     const db = await this.getDB();
     const storesToLock = [
@@ -551,8 +574,8 @@ export class IndexedDBStorage {
 
         const settingsStore = tx.objectStore(STORES_REAL.SETTINGS);
         settingsStore.clear();
-        if (bundleData.settings) {
-          settingsStore.put({ key: 'user_preferences', ...bundleData.settings });
+        if (settingsPayload) {
+          settingsStore.put({ key: 'user_preferences', ...settingsPayload });
         }
 
         tx.oncomplete = () => {
