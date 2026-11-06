@@ -1,0 +1,109 @@
+# راكان بلانس | RAKAN BALANCE Mobile (Android & iOS)
+
+تطبيق الجوال الأصلي المعتمد لمشروع **راكان بلانس | RAKAN BALANCE**، والمبني باستخدام **Flutter (Dart)** وقاعدة البيانات المحلية **SQLite**، مع التوافق التام 1:1 مع المحرك المالي وقواعد البيانات والنسخ الاحتياطية لنسخة الويب المعتمدة (المراحل N0 وN1 وN2).
+
+---
+
+## 🚀 المميزات الرئيسية للتطبيق
+
+1. **محرك مالي دقيق 100% بالهللات (`int` Minor Units):**
+   - المعادلة المعتمدة: $B = \text{openingBalanceMinor} + \sum \text{signedTransactionsMinor}$.
+   - الحد التشغيلي: 100 مليار ريال (10,000,000,000,000 هللة).
+   - منع أخطاء النقطة العائمة (Floating Point Precision Loss) عبر المعالجة المباشرة للسلاسل الرقمية.
+
+2. **المعاملات الذرية لقواعد البيانات (Atomic SQLite Transactions):**
+   - الحركات البينية بين الحسابات («نقل مديونية»): تُنشأ وتُعدَّل وتُحذف كزوج مدين/دائن متكامل داخل `db.transaction` مع حظر التعديل أو الحذف المنفرد.
+   - الاستحقاقات وسدادها الجزئي: ربط الدفعة المالية (حركة واحدة) بسجل التخصيص والاستحقاق ذرياً.
+
+3. **عزل الملاحظات الخاصة (`AccountModel.notes`):**
+   - حقل الملاحظات الخاصة بالحساب محمي ومستثنى تماماً من البحث العام، كشوف الحساب، تصدير CSV، والتقارير المالية، ومتاح حصرياً في نافذة التفاصيل الخاصة.
+
+4. **التوافق التام مع النسخ الاحتياطية للويب (SHA-256 Checksum):**
+   - استيراد وتصدير حزم النسخ الاحتياطية بصيغة JSON المعرف عليها بـ `RAKAN_BALANCE_BACKUP` وإصدار الترويسة v2 مع التحقق الذري من البصمة وأعداد السجلات.
+
+5. **العمل التام بدون إنترنت (Offline-First):**
+   - قاعدة بيانات SQLite محلية دون الاستعانة بأي خوادم خارجية أو مزامنة سحابية غير مصرح بها.
+
+6. **واجهة عربية كاملة (RTL) ووضع داكن وفاتح ومظهر موحد.**
+
+7. **حماية رمز PIN للأجهزة الجوالة.**
+
+---
+
+## 📁 هيكلية المشروع المعتمدة (Clean Architecture)
+
+```
+rakan_balance_mobile/
+├── pubspec.yaml                 # حزم وتكوينات Flutter
+├── android/                     # تكوينات منصة Android الأصلية
+├── ios/                         # تكوينات منصة iOS الأصلية
+├── lib/
+│   ├── main.dart                # نقطة تشغيل التطبيق الرئيسية
+│   ├── app/
+│   │   ├── app.dart             # الجذر الأساسي والتوجيه والثيم
+│   │   └── theme/
+│   │       ├── app_colors.dart  # ألوان الهوية البصرية
+│   │       └── app_theme.dart   # ثيمات Light / Dark
+│   ├── domain/                  # الطبقة المالية وقواعد العمل
+│   │   ├── financial/
+│   │   │   ├── money_utils.dart # تحويل وتدقيق المبالغ بالهللات
+│   │   │   ├── balance_calculator.dart # احتساب الأرصدة والملخصات
+│   │   │   └── inter_account_transfer_engine.dart # محرك الحركات البينية
+│   │   ├── models/              # كيانات البيانات (Account, Transaction, Due, Note...)
+│   │   └── validators/          # فاحصات المدخلات والنسخ الاحتياطية SHA-256
+│   ├── data/                    # طبقة التخزين المحلي
+│   │   └── sqlite/
+│   │       ├── database_helper.dart      # إدارة قاعدة البيانات v3
+│   │       ├── tables_schema.dart        # جداول SQLite ومخططات الدفعات
+│   │       └── sqlite_storage_adapter.dart# العمليات الذرية المتكاملة
+│   ├── presentation/            # الواجهات وإدارة الحالة
+│   │   ├── state/
+│   │   │   └── app_state_notifier.dart   # مزود الحالة الرئيسي (Provider)
+│   │   └── screens/             # الشاشات الرئيسية (الرئيسية، الحسابات، البينية، الاستحقاقات...)
+└── test/                        # حزمة الاختبارات الآلية بلغة Dart
+    ├── domain_financial_rules_test.dart
+    ├── sqlite_atomic_transactions_test.dart
+    └── backup_compatibility_test.dart
+```
+
+---
+
+## 🛠️ تعليمات تشغيل وبناء التطبيق
+
+### المتطلبات الأساسية
+- **Flutter SDK:** الإصدار 3.0.0 أو أحدث.
+- **Dart SDK:** الإصدار 3.0.0 أو أحدث.
+- **Android Studio / VS Code** مع إضافات Flutter.
+- **Xcode** (لتشغيل وبناء نسخة iOS على أجهزة Mac).
+
+### خطوات التشغيل:
+
+1. **تثبيت الحزم:**
+   ```bash
+   cd rakan_balance_mobile
+   flutter pub get
+   ```
+
+2. **تشغيل الاختبارات الآلية:**
+   ```bash
+   flutter test
+   ```
+
+3. **تشغيل التطبيق على المحاكي أو الجهاز المتصل:**
+   ```bash
+   flutter run
+   ```
+
+4. **بناء النسخ التنفيذية (Production Builds):**
+   - **Android (APK):**
+     ```bash
+     flutter build apk --release
+     ```
+   - **Android (App Bundle):**
+     ```bash
+     flutter build appbundle --release
+     ```
+   - **iOS (Xcode Archive):**
+     ```bash
+     flutter build ios --release
+     ```
