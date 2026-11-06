@@ -1,7 +1,7 @@
 import type { AccountModel, DueItemContract, EntryType, PaymentAllocationContract, ReminderContract, TransactionModel } from './types.ts';
 import { MAX_SAFE_MINOR_AMOUNT } from './money.ts';
 
-const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date + 'T00:00:00Z'))
+export const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date + 'T00:00:00Z'))
   && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
 
 export function validateDueRecord(due: DueItemContract, accounts: AccountModel[], transactions: TransactionModel[]): void {
