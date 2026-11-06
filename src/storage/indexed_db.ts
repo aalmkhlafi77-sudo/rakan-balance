@@ -331,9 +331,11 @@ export class IndexedDBStorage {
     const db = await this.getDB();
     const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
     const attStoreName = STORES_REAL.ATTACHMENTS;
+    const allocationStoreName = isDemo ? STORES_DEMO.ALLOCATIONS : STORES_REAL.ALLOCATIONS;
     const storesToLock = isDemo || (newAttachments.length === 0 && removedAttachmentIds.length === 0)
       ? [txStoreName] : [txStoreName, attStoreName];
 
+    storesToLock.push(allocationStoreName);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storesToLock, 'readwrite');
       let reason: string | null = null;
@@ -348,12 +350,21 @@ export class IndexedDBStorage {
           if (txData.transferId || existing?.transferId) {
             throw new Error('لا يمكن تعديل قيد بيني منفردًا؛ استخدم تعديل الحركة البينية.');
           }
-          store.put(txData);
-          if (!isDemo && (newAttachments.length || removedAttachmentIds.length)) {
-            const attStore = tx.objectStore(attStoreName);
-            for (const id of removedAttachmentIds) attStore.delete(id);
-            for (const attachment of newAttachments) attStore.put(attachment);
-          }
+          const allocationReq = tx.objectStore(allocationStoreName).getAll();
+          allocationReq.onsuccess = () => {
+            if ((allocationReq.result as PaymentAllocationContract[]).some(a => a.paymentTransactionId === txData.id)) {
+              reason = 'الحركة مرتبطة بسداد استحقاق ولا يمكن تعديلها منفردة.';
+              tx.abort();
+              return;
+            }
+            store.put(txData);
+            if (!isDemo && (newAttachments.length || removedAttachmentIds.length)) {
+              const attStore = tx.objectStore(attStoreName);
+              for (const id of removedAttachmentIds) attStore.delete(id);
+              for (const attachment of newAttachments) attStore.put(attachment);
+            }
+          };
+          allocationReq.onerror = () => { reason = 'تعذر فحص تخصيصات السداد.'; tx.abort(); };
         } catch (error) {
           reason = error instanceof Error ? error.message : String(error);
           tx.abort();
@@ -378,9 +389,11 @@ export class IndexedDBStorage {
     const db = await this.getDB();
     const txStoreName = isDemo ? STORES_DEMO.TRANSACTIONS : STORES_REAL.TRANSACTIONS;
     const attStoreName = STORES_REAL.ATTACHMENTS;
+    const allocationStoreName = isDemo ? STORES_DEMO.ALLOCATIONS : STORES_REAL.ALLOCATIONS;
     const storesToLock = isDemo || attachmentIds.length === 0
       ? [txStoreName] : [txStoreName, attStoreName];
 
+    storesToLock.push(allocationStoreName);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storesToLock, 'readwrite');
       let reason: string | null = null;
@@ -395,11 +408,20 @@ export class IndexedDBStorage {
           if (existing?.transferId) {
             throw new Error('لا يمكن حذف قيد بيني منفردًا؛ استخدم حذف الحركة البينية.');
           }
-          store.delete(txId);
-          if (!isDemo && attachmentIds.length) {
-            const attStore = tx.objectStore(attStoreName);
-            for (const id of attachmentIds) attStore.delete(id);
-          }
+          const allocationReq = tx.objectStore(allocationStoreName).getAll();
+          allocationReq.onsuccess = () => {
+            if ((allocationReq.result as PaymentAllocationContract[]).some(a => a.paymentTransactionId === txId)) {
+              reason = 'الحركة مرتبطة بسداد استحقاق ولا يمكن حذفها منفردة.';
+              tx.abort();
+              return;
+            }
+            store.delete(txId);
+            if (!isDemo && attachmentIds.length) {
+              const attStore = tx.objectStore(attStoreName);
+              for (const id of attachmentIds) attStore.delete(id);
+            }
+          };
+          allocationReq.onerror = () => { reason = 'تعذر فحص تخصيصات السداد.'; tx.abort(); };
         } catch (error) {
           reason = error instanceof Error ? error.message : String(error);
           tx.abort();
