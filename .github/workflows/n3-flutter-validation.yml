@@ -1,0 +1,50 @@
+name: N3 Flutter mobile verification
+
+on:
+  push:
+    branches:
+      - fix/n3-mobile-build-and-functional-completion
+  pull_request:
+    paths:
+      - 'rakan_balance_mobile/**'
+      - '.github/workflows/n3-flutter-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n3-flutter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: rakan_balance_mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Check toolchain
+        run: flutter --version
+      - name: Generate missing standard Android and iOS Flutter host scaffolds
+        run: flutter create --platforms=android,ios --project-name=rakan_balance_mobile --org=com.rakanbalance .
+      - name: Install packages
+        run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze
+      - name: Run Dart tests
+        run: flutter test
+      - name: Build debug Android APK
+        run: flutter build apk --debug
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rakan-balance-n3-android-debug
+          path: rakan_balance_mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
