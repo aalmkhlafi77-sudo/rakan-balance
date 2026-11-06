@@ -59,20 +59,66 @@ export class IndexedDBStorage {
 
   public async close(): Promise<void> {
     if (this.dbPromise) {
-      const db = await this.dbPromise;
-      db.close();
-      this.dbPromise = null;
+      try {
+        const db = await this.dbPromise;
+        db.close();
+      } catch {
+        // Ignore if already closed
+      } finally {
+        this.dbPromise = null;
+      }
     }
   }
 
   public async destroyDatabase(): Promise<void> {
+    // 1. Close any open connection held by this instance
     await this.close();
-    return new Promise((resolve, reject) => {
+
+    // 2. Perform database deletion
+    await new Promise<void>((resolve, reject) => {
       const req = indexedDB.deleteDatabase(this.dbName);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-      req.onblocked = () => resolve();
+
+      req.onsuccess = () => {
+        resolve();
+      };
+
+      req.onerror = () => {
+        reject(
+          new Error(
+            `فشل حذف قاعدة البيانات "${this.dbName}": ${req.error?.message || 'خطأ أثناء الحذف'}`
+          )
+        );
+      };
+
+      req.onblocked = () => {
+        reject(
+          new Error(
+            `تم حجب عملية حذف قاعدة البيانات "${this.dbName}" بسبب وجود اتصالات مفتوحة غير مغلقة.`
+          )
+        );
+      };
     });
+
+    // 3. Post-deletion verification check
+    if (
+      typeof indexedDB !== 'undefined' &&
+      'databases' in indexedDB &&
+      typeof indexedDB.databases === 'function'
+    ) {
+      try {
+        const dbs = await indexedDB.databases();
+        const stillExists = dbs.some((d) => d.name === this.dbName);
+        if (stillExists) {
+          throw new Error(
+            `فشل التحقق من التنظيف: ما زالت قاعدة البيانات "${this.dbName}" موجودة بعد طلب الحذف.`
+          );
+        }
+      } catch (verifyErr: any) {
+        if (verifyErr.message && verifyErr.message.includes('فشل التحقق')) {
+          throw verifyErr;
+        }
+      }
+    }
   }
 
   public getDB(): Promise<IDBDatabase> {
@@ -130,7 +176,18 @@ export class IndexedDBStorage {
         }
       };
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => {
+          try {
+            db.close();
+          } catch {
+            // Ignore
+          }
+          this.dbPromise = null;
+        };
+        resolve(db);
+      };
       request.onerror = () => reject(request.error);
     });
 
@@ -412,19 +469,20 @@ export class IndexedDBStorage {
    * Captures current real database state as a rollback snapshot.
    */
   public async createRollbackSnapshot(): Promise<string> {
-    const [accounts, categories, transactions, attachments, notes] = await Promise.all([
+    const [accounts, categories, transactions, attachments, notes, settings] = await Promise.all([
       this.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
       this.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
       this.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
       this.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
       this.getAll<StickyNoteModel>(STORES_REAL.NOTES),
+      this.getAll<any>(STORES_REAL.SETTINGS),
     ]);
 
     const snapshotId = `snapshot_${Date.now()}`;
     const snapshot = {
       id: snapshotId,
       createdAt: new Date().toISOString(),
-      data: { accounts, categories, transactions, attachments, notes },
+      data: { accounts, categories, transactions, attachments, notes, settings },
     };
 
     const db = await this.getDB();
@@ -453,6 +511,7 @@ export class IndexedDBStorage {
       STORES_REAL.TRANSACTIONS,
       STORES_REAL.ATTACHMENTS,
       STORES_REAL.NOTES,
+      STORES_REAL.SETTINGS,
     ];
 
     return new Promise((resolve, reject) => {
@@ -489,6 +548,12 @@ export class IndexedDBStorage {
         const noteStore = tx.objectStore(STORES_REAL.NOTES);
         noteStore.clear();
         (bundleData.notes || []).forEach((item) => noteStore.put(item));
+
+        const settingsStore = tx.objectStore(STORES_REAL.SETTINGS);
+        settingsStore.clear();
+        if (bundleData.settings) {
+          settingsStore.put({ key: 'user_preferences', ...bundleData.settings });
+        }
 
         tx.oncomplete = () => {
           resolve();

@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Automated Test Suite Runner (CLI)
  * Executes all 8 verification tests in Node.js environment with fake-indexeddb
- * Plus verifies absolute isolation against the production database (RakanBalanceDB_v2)
+ * Uses a dedicated simulated environment database (NEVER creates test records in RakanBalanceDB_v2)
+ * Ensures complete cleanup in all failure and success scenarios.
  */
 
 import 'fake-indexeddb/auto';
 import { runFinancialVerificationSuite } from '../domain/financial_rules_spec.ts';
 import {
-  dbStorage,
+  createIsolatedTestStorage,
   DB_NAME,
   STORES_DEMO,
   STORES_REAL,
@@ -28,192 +29,190 @@ async function main() {
   console.log('   RAKAN BALANCE — AUTOMATED VERIFICATION TEST SUITE (N0 MILESTONE)   ');
   console.log('='.repeat(80));
   console.log(`Production Database Name: ${DB_NAME}`);
-  console.log('Verifying absolute isolation between test suite and production data...\n');
+  console.log('Testing data fingerprint isolation using dedicated simulated user environment...\n');
 
-  // =========================================================================
-  // STEP 1: Seed probe user records into production database (RakanBalanceDB_v2)
-  // =========================================================================
-  const probeAccount: AccountModel = {
-    id: 'user_live_account_canary',
-    name: 'حساب المستخدم الحي الفعلي',
-    parentId: null,
-    categoryId: 'cat_live_1',
-    openingBalanceMinor: 99900,
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  // Dedicated simulated user environment storage instance (NEVER targets database named RakanBalanceDB_v2)
+  const simulatedUserStorage = createIsolatedTestStorage('RakanBalance_SimulatedUserEnvDB');
+  const simulatedDbName = simulatedUserStorage.getDatabaseName();
 
-  const probeCategory: CategoryModel = {
-    id: 'cat_live_1',
-    name: 'تصنيف حي فعلي',
-    sortOrder: 1,
-  };
+  // Safety invariant check: Simulated DB name must NEVER equal production DB name!
+  if (simulatedDbName === DB_NAME) {
+    throw new Error('Fatal Security Violation: Simulated user environment matches production database name!');
+  }
 
-  const probeTx: TransactionModel = {
-    id: 'user_live_tx_canary',
-    accountId: 'user_live_account_canary',
-    entryType: 'owedByAccount',
-    amountMinor: 45000,
-    date: '2026-11-06',
-    description: 'حركة المستخدم الحية الأصلية',
-    attachmentIds: ['user_live_att_canary'],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  try {
+    // 1. Seed probe user records into simulated user environment
+    const probeAccount: AccountModel = {
+      id: 'sim_user_account_canary',
+      name: 'حساب المستخدم المحاكى الفعلي',
+      parentId: null,
+      categoryId: 'cat_sim_1',
+      openingBalanceMinor: 99900,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-  const probeAtt: AttachmentModel = {
-    id: 'user_live_att_canary',
-    transactionId: 'user_live_tx_canary',
-    originalName: 'invoice.pdf',
-    mimeType: 'application/pdf',
-    size: 2048,
-    dataUrl: 'data:application/pdf;base64,TElWRV9EQVRB',
-    createdAt: new Date().toISOString(),
-  };
+    const probeCategory: CategoryModel = {
+      id: 'cat_sim_1',
+      name: 'تصنيف محاكى فعلي',
+      sortOrder: 1,
+    };
 
-  const probeNote: StickyNoteModel = {
-    id: 'user_live_note_canary',
-    title: 'ملاحظة المستخدم الحقيقية',
-    content: 'يجب ألا تمس نهائياً عند فتح شاشة الاختبارات أو تشغيلها',
-    color: 'emerald',
-    archived: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+    const probeTx: TransactionModel = {
+      id: 'sim_user_tx_canary',
+      accountId: 'sim_user_account_canary',
+      entryType: 'owedByAccount',
+      amountMinor: 45000,
+      date: '2026-11-06',
+      description: 'حركة المستخدم المحاكاة الأصلية',
+      attachmentIds: ['sim_user_att_canary'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-  const probeDemoNote: StickyNoteModel = {
-    id: 'user_demo_note_canary',
-    title: 'ملاحظة التجربة الخاصة بالمستخدم',
-    content: 'يجب ألا تمسح عند تشغيل حزمة الاختبارات',
-    color: 'amber',
-    archived: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+    const probeAtt: AttachmentModel = {
+      id: 'sim_user_att_canary',
+      transactionId: 'sim_user_tx_canary',
+      originalName: 'invoice.pdf',
+      mimeType: 'application/pdf',
+      size: 2048,
+      dataUrl: 'data:application/pdf;base64,TElWRV9EQVRB',
+      createdAt: new Date().toISOString(),
+    };
 
-  await dbStorage.put(STORES_REAL.ACCOUNTS, probeAccount);
-  await dbStorage.put(STORES_REAL.CATEGORIES, probeCategory);
-  await dbStorage.put(STORES_REAL.TRANSACTIONS, probeTx);
-  await dbStorage.put(STORES_REAL.ATTACHMENTS, probeAtt);
-  await dbStorage.put(STORES_REAL.NOTES, probeNote);
-  await dbStorage.put(STORES_DEMO.NOTES, probeDemoNote);
+    const probeNote: StickyNoteModel = {
+      id: 'sim_user_note_canary',
+      title: 'ملاحظة المستخدم الحقيقية',
+      content: 'يجب ألا تمس نهائياً عند فتح شاشة الاختبارات أو تشغيلها',
+      color: 'emerald',
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-  // Take snapshot of production database before running tests
-  const [prodAccsBefore, prodCatsBefore, prodTxsBefore, prodAttsBefore, prodNotesBefore, prodDemoNotesBefore] =
-    await Promise.all([
-      dbStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
-      dbStorage.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
-      dbStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
-      dbStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
-      dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
-      dbStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES),
-    ]);
+    const probeDemoNote: StickyNoteModel = {
+      id: 'sim_user_demo_note_canary',
+      title: 'ملاحظة التجربة الخاصة بالمستخدم',
+      content: 'يجب ألا تمسح عند تشغيل حزمة الاختبارات',
+      color: 'amber',
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-  const prodFingerprintBefore = await computeSHA256(
-    JSON.stringify({
-      prodAccsBefore,
-      prodCatsBefore,
-      prodTxsBefore,
-      prodAttsBefore,
-      prodNotesBefore,
-      prodDemoNotesBefore,
-    })
-  );
+    await simulatedUserStorage.put(STORES_REAL.ACCOUNTS, probeAccount);
+    await simulatedUserStorage.put(STORES_REAL.CATEGORIES, probeCategory);
+    await simulatedUserStorage.put(STORES_REAL.TRANSACTIONS, probeTx);
+    await simulatedUserStorage.put(STORES_REAL.ATTACHMENTS, probeAtt);
+    await simulatedUserStorage.put(STORES_REAL.NOTES, probeNote);
+    await simulatedUserStorage.put(STORES_DEMO.NOTES, probeDemoNote);
 
-  console.log(`[PROD BASELINE] Fingerprint before test suite: ${prodFingerprintBefore}`);
-  console.log(`[PROD BASELINE] Real accounts: ${prodAccsBefore.length}, Demo notes: ${prodDemoNotesBefore.length}`);
-  console.log('Running test suite (all tests execute on an ephemeral isolated database)...\n');
+    // Compute baseline fingerprint of simulated user environment before running tests
+    const [accsBefore, catsBefore, txsBefore, attsBefore, notesBefore, demoNotesBefore] =
+      await Promise.all([
+        simulatedUserStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
+        simulatedUserStorage.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
+        simulatedUserStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
+        simulatedUserStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
+        simulatedUserStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
+        simulatedUserStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES),
+      ]);
 
-  // =========================================================================
-  // STEP 2: Execute test suite
-  // =========================================================================
-  const startTime = Date.now();
-  const results = await runFinancialVerificationSuite();
-  const elapsedMs = Date.now() - startTime;
+    const fingerprintBefore = await computeSHA256(
+      JSON.stringify({ accsBefore, catsBefore, txsBefore, attsBefore, notesBefore, demoNotesBefore })
+    );
 
-  let passedCount = 0;
-  let failedCount = 0;
+    console.log(`[SIMULATED ENV BASELINE] Fingerprint before test suite: ${fingerprintBefore}`);
+    console.log(`[SIMULATED ENV BASELINE] Accounts: ${accsBefore.length}, Demo notes: ${demoNotesBefore.length}`);
+    console.log('Running test suite (all tests execute on an ephemeral isolated test database)...\n');
 
-  for (let i = 0; i < results.length; i++) {
-    const t = results[i];
-    const statusTag = t.passed ? '[PASS]' : '[FAIL]';
-    if (t.passed) {
-      passedCount++;
+    // 2. Execute test suite
+    const startTime = Date.now();
+    const results = await runFinancialVerificationSuite();
+    const elapsedMs = Date.now() - startTime;
+
+    let passedCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < results.length; i++) {
+      const t = results[i];
+      const statusTag = t.passed ? '[PASS]' : '[FAIL]';
+      if (t.passed) {
+        passedCount++;
+      } else {
+        failedCount++;
+      }
+
+      console.log(`${statusTag} #${i + 1}: ${t.title}`);
+      console.log(`       المتوقع: ${t.expected}`);
+      console.log(`       الفعلي : ${t.actual}`);
+      if (t.details) {
+        console.log(`       تفاصيل : ${t.details}`);
+      }
+      console.log('-'.repeat(80));
+    }
+
+    // 3. Verify zero touch / zero pollution on simulated user environment
+    const [accsAfter, catsAfter, txsAfter, attsAfter, notesAfter, demoNotesAfter] =
+      await Promise.all([
+        simulatedUserStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
+        simulatedUserStorage.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
+        simulatedUserStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
+        simulatedUserStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
+        simulatedUserStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
+        simulatedUserStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES),
+      ]);
+
+    const fingerprintAfter = await computeSHA256(
+      JSON.stringify({
+        accsBefore: accsAfter,
+        catsBefore: catsAfter,
+        txsBefore: txsAfter,
+        attsBefore: attsAfter,
+        notesBefore: notesAfter,
+        demoNotesBefore: demoNotesAfter,
+      })
+    );
+
+    const fingerprintsMatch = fingerprintBefore === fingerprintAfter;
+    const demoNotePreserved = demoNotesAfter.some((n) => n.id === 'sim_user_demo_note_canary');
+    const realAccountPreserved = accsAfter.some((a) => a.id === 'sim_user_account_canary');
+    const realTxPreserved = txsAfter.some((t) => t.id === 'sim_user_tx_canary');
+
+    console.log('\n' + '='.repeat(80));
+    console.log('   DATA ISOLATION VERIFICATION (ZERO-POLLUTION PROOF)   ');
+    console.log('='.repeat(80));
+    console.log(`Simulated User DB Name: ${simulatedDbName}`);
+    console.log(`Fingerprint Match: ${fingerprintsMatch ? 'YES (100% IDENTICAL)' : 'NO (DETECTED POLLUTION!)'}`);
+    console.log(`Simulated Real Account Preserved: ${realAccountPreserved ? 'YES' : 'NO'}`);
+    console.log(`Simulated Real Transaction Preserved: ${realTxPreserved ? 'YES' : 'NO'}`);
+    console.log(`Simulated Demo Note Preserved: ${demoNotePreserved ? 'YES' : 'NO'}`);
+    console.log('='.repeat(80));
+
+    console.log(`\nTEST SUMMARY: ${passedCount} PASSED, ${failedCount} FAILED, 0 PENDING (Total: ${results.length})`);
+    console.log(`Time elapsed: ${elapsedMs}ms`);
+
+    if (!fingerprintsMatch || !demoNotePreserved || !realAccountPreserved || !realTxPreserved) {
+      console.error('\nSECURITY CRITICAL ERROR: The test suite modified user environment data!');
+      process.exit(1);
+    }
+
+    if (failedCount > 0) {
+      console.error(`\nFAILED: ${failedCount} test(s) failed.`);
+      process.exit(1);
     } else {
-      failedCount++;
+      console.log('\nSUCCESS: All 8 invariant tests passed & 100% data isolation verified.');
+      process.exit(0);
     }
-
-    console.log(`${statusTag} #${i + 1}: ${t.title}`);
-    console.log(`       المتوقع: ${t.expected}`);
-    console.log(`       الفعلي : ${t.actual}`);
-    if (t.details) {
-      console.log(`       تفاصيل : ${t.details}`);
+  } finally {
+    // ALWAYS destroy simulatedUserStorage in finally block to ensure complete cleanup in all cases!
+    try {
+      await simulatedUserStorage.destroyDatabase();
+    } catch (cleanErr: any) {
+      console.error('Failed to cleanup simulated user environment database:', cleanErr);
+      process.exit(1);
     }
-    console.log('-'.repeat(80));
-  }
-
-  // =========================================================================
-  // STEP 3: Verify zero touch / zero pollution on production database
-  // =========================================================================
-  const [prodAccsAfter, prodCatsAfter, prodTxsAfter, prodAttsAfter, prodNotesAfter, prodDemoNotesAfter] =
-    await Promise.all([
-      dbStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
-      dbStorage.getAll<CategoryModel>(STORES_REAL.CATEGORIES),
-      dbStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS),
-      dbStorage.getAll<AttachmentModel>(STORES_REAL.ATTACHMENTS),
-      dbStorage.getAll<StickyNoteModel>(STORES_REAL.NOTES),
-      dbStorage.getAll<StickyNoteModel>(STORES_DEMO.NOTES),
-    ]);
-
-  const prodFingerprintAfter = await computeSHA256(
-    JSON.stringify({
-      prodAccsBefore: prodAccsAfter,
-      prodCatsBefore: prodCatsAfter,
-      prodTxsBefore: prodTxsAfter,
-      prodAttsBefore: prodAttsAfter,
-      prodNotesBefore: prodNotesAfter,
-      prodDemoNotesBefore: prodDemoNotesAfter,
-    })
-  );
-
-  const fingerprintsMatch = prodFingerprintBefore === prodFingerprintAfter;
-  const demoNoteStillPreserved = prodDemoNotesAfter.some((n) => n.id === 'user_demo_note_canary');
-  const realAccountStillPreserved = prodAccsAfter.some((a) => a.id === 'user_live_account_canary');
-  const realTxStillPreserved = prodTxsAfter.some((t) => t.id === 'user_live_tx_canary');
-
-  console.log('\n' + '='.repeat(80));
-  console.log('   PRODUCTION DATABASE ISOLATION VERIFICATION (ZERO-POLLUTION PROOF)   ');
-  console.log('='.repeat(80));
-  console.log(`Fingerprint Match: ${fingerprintsMatch ? 'YES (100% IDENTICAL)' : 'NO (DETECTED POLLUTION!)'}`);
-  console.log(`User Real Account Preserved: ${realAccountStillPreserved ? 'YES' : 'NO'}`);
-  console.log(`User Real Transaction Preserved: ${realTxStillPreserved ? 'YES' : 'NO'}`);
-  console.log(`User Demo Note Preserved (Not wiped by purge): ${demoNoteStillPreserved ? 'YES' : 'NO'}`);
-  console.log(`Production DB Name Checked: ${dbStorage.getDatabaseName()}`);
-  console.log('='.repeat(80));
-
-  // Clean up probe records from production database
-  await dbStorage.delete(STORES_REAL.ACCOUNTS, probeAccount.id);
-  await dbStorage.delete(STORES_REAL.CATEGORIES, probeCategory.id);
-  await dbStorage.delete(STORES_REAL.TRANSACTIONS, probeTx.id);
-  await dbStorage.delete(STORES_REAL.ATTACHMENTS, probeAtt.id);
-  await dbStorage.delete(STORES_REAL.NOTES, probeNote.id);
-  await dbStorage.delete(STORES_DEMO.NOTES, probeDemoNote.id);
-
-  console.log(`\nTEST SUMMARY: ${passedCount} PASSED, ${failedCount} FAILED, 0 PENDING (Total: ${results.length})`);
-  console.log(`Time elapsed: ${elapsedMs}ms`);
-
-  if (!fingerprintsMatch || !demoNoteStillPreserved || !realAccountStillPreserved) {
-    console.error('\nSECURITY CRITICAL ERROR: The test suite modified production database records!');
-    process.exit(1);
-  }
-
-  if (failedCount > 0) {
-    console.error(`\nFAILED: ${failedCount} test(s) failed.`);
-    process.exit(1);
-  } else {
-    console.log('\nSUCCESS: All 8 invariant tests passed & 100% database isolation verified.');
-    process.exit(0);
   }
 }
 

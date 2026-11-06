@@ -520,21 +520,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const atomicRestoreData = async (bundleData: BackupBundle['data']) => {
-    // Strictly operates on Real storage!
+    // 1. Strictly operates on Real IndexedDB stores atomically in a single transaction
     await dbStorage.atomicRestore(bundleData);
-    if (bundleData.settings) {
-      if (bundleData.settings.ownerName) {
-        updateOwnerName(bundleData.settings.ownerName);
+
+    // 2. Post-DB transaction: Apply non-sensitive preferences to UI/LocalStorage with explicit error boundary
+    try {
+      if (bundleData.settings) {
+        if (bundleData.settings.ownerName) {
+          updateOwnerName(bundleData.settings.ownerName);
+        }
+        if (bundleData.settings.theme === 'light' || bundleData.settings.theme === 'dark') {
+          setTheme(bundleData.settings.theme);
+          setThemePref(bundleData.settings.theme);
+        }
+        if (typeof bundleData.settings.sidebarCollapsed === 'boolean') {
+          setSidebarCollapsed(bundleData.settings.sidebarCollapsed);
+          setSidebarCollapsedPref(bundleData.settings.sidebarCollapsed);
+        }
       }
-      if (bundleData.settings.theme === 'light' || bundleData.settings.theme === 'dark') {
-        setTheme(bundleData.settings.theme);
-        setThemePref(bundleData.settings.theme);
-      }
-      if (typeof bundleData.settings.sidebarCollapsed === 'boolean') {
-        setSidebarCollapsed(bundleData.settings.sidebarCollapsed);
-        setSidebarCollapsedPref(bundleData.settings.sidebarCollapsed);
-      }
+    } catch (prefError: any) {
+      console.warn('تنبيه: تمت استعادة البيانات المالية في قاعدة البيانات بنجاح، لكن تعذر تطبيق تفضيلات المظهر/الاسم:', prefError);
     }
+
     if (activeScope === 'real') {
       await loadWorkspaceData('real');
     }
