@@ -25,6 +25,8 @@ class DueValidator {
   }) {
     final txMap = {for (var t in transactions) t.id: t};
     final dueIds = <String>{};
+    final allocationIds = <String>{};
+    final reminderIds = <String>{};
     final allocatedByDue = <String, int>{};
     final allocatedByPayment = <String, int>{};
 
@@ -35,6 +37,9 @@ class DueValidator {
     }
 
     for (final a in allocations) {
+      if (a.id.isEmpty || !allocationIds.add(a.id)) {
+        throw Exception('معرف تخصيص سداد مكرر أو مفقود.');
+      }
       final due = dues.firstWhere((d) => d.id == a.dueItemId, orElse: () => DueItemModel(id: '', accountId: '', entryType: EntryType.owedByAccount, dueDate: '', originalAmountMinor: 0, settledAmountMinor: 0, status: '', createdAt: '', updatedAt: ''));
       final tx = txMap[a.paymentTransactionId];
 
@@ -55,12 +60,23 @@ class DueValidator {
       }
     }
 
+    for (final balance in allocatedByPayment.entries) {
+      final transaction = txMap[balance.key];
+      if (transaction == null || balance.value > transaction.amountMinor) {
+        throw Exception('مجموع تخصيصات السداد يتجاوز قيمة الحركة المالية.');
+      }
+    }
+
     for (final reminder in reminders) {
+      if (reminder.id.isEmpty || !reminderIds.add(reminder.id)) {
+        throw Exception('معرف تذكير مكرر أو مفقود.');
+      }
       if (reminder.id.isEmpty || !dueIds.contains(reminder.dueItemId)) {
         throw Exception('تذكير مرتبطة باستحقاق غير موجود.');
       }
-      if (!MoneyUtils.isValidDateString(reminder.remindAt)) {
-        throw Exception('تاريخ التذكير غير صالح.');
+      if (!MoneyUtils.isValidDateString(reminder.remindAt) ||
+          reminder.templateText.trim().isEmpty || reminder.channel != 'manual') {
+        throw Exception('تاريخ أو محتوى أو قناة التذكير غير صالحة.');
       }
     }
   }
