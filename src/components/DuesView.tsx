@@ -8,7 +8,7 @@ const localToday = () => {
   const d = new Date();
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 };
-const statusLabels = { pending: 'قادم', partially_settled: 'مسدد جزئيًا', settled: 'مسدد', overdue: 'متأخر' } as const;
+const statusLabels = { pending: 'قادم', partially_settled: 'مسدد جزئيًا', settled: 'مسدد', overdue: 'متأخر', today: 'مستحق اليوم' } as const;
 
 export const DuesView: React.FC = () => {
   const { accounts, dues, reminders, createDue, settleDue, deleteUnpaidDue, createReminder, completeReminder, activeScope, getAccountBalance } = useApp();
@@ -27,7 +27,7 @@ export const DuesView: React.FC = () => {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const pendingRef = useRef(false);
-  const [filter, setFilter] = useState<'all' | 'open' | 'overdue' | 'settled'>('all');
+  const [filter, setFilter] = useState<'all' | 'open' | 'overdue' | 'settled' | 'today'>('all');
   const today = localToday();
   const activeAccounts = accounts.filter(a => a.status === 'active');
   const ordered = useMemo(() => [...dues].sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [dues]);
@@ -102,7 +102,7 @@ export const DuesView: React.FC = () => {
       </form>
 
       <div className="flex flex-wrap gap-2">
-        {([['all','الكل'],['open','المفتوحة'],['overdue','المتأخرة'],['settled','المسددة']] as const).map(([key,label]) => (
+        {([['all','الكل'],['open','المفتوحة'],['today','المستحقة اليوم'],['overdue','المتأخرة'],['settled','المسددة']] as const).map(([key,label]) => (
           <button key={key} type="button" onClick={() => setFilter(key)} className={`rounded-lg px-3 py-2 text-xs border ${filter === key ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-300 dark:border-slate-700'}`}>{label}</button>
         ))}
       </div>
