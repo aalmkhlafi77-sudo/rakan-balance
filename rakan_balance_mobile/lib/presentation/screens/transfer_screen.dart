@@ -124,7 +124,7 @@ class _TransferScreenState extends State<TransferScreen> {
           // Description
           TextField(
             controller: _descController,
-            decoration: const InputDecoration(labelText: 'وصف الحركة (اختياري)'),
+            decoration: const InputDecoration(labelText: 'وصف الحركة (إلزامي)'),
           ),
           const SizedBox(height: 20),
 
