@@ -19,8 +19,8 @@ import {
   UserSettings,
 } from '../domain/types.ts';
 
-const DB_NAME = 'RakanBalanceDB_v2';
-const DB_VERSION = 2; // Incremented to version 2 to include demo_notes
+export const DB_NAME = 'RakanBalanceDB_v2';
+export const DB_VERSION = 2; // Incremented to version 2 to include demo_notes
 
 // Real workspace object stores
 export const STORES_REAL = {
@@ -43,14 +43,43 @@ export const STORES_DEMO = {
 // Rollback Snapshot store
 export const STORE_SNAPSHOTS = 'rollback_snapshots';
 
-class IndexedDBStorage {
+export class IndexedDBStorage {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  private dbName: string;
+  private dbVersion: number;
+
+  constructor(dbName: string = DB_NAME, dbVersion: number = DB_VERSION) {
+    this.dbName = dbName;
+    this.dbVersion = dbVersion;
+  }
+
+  public getDatabaseName(): string {
+    return this.dbName;
+  }
+
+  public async close(): Promise<void> {
+    if (this.dbPromise) {
+      const db = await this.dbPromise;
+      db.close();
+      this.dbPromise = null;
+    }
+  }
+
+  public async destroyDatabase(): Promise<void> {
+    await this.close();
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(this.dbName);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => resolve();
+    });
+  }
 
   public getDB(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise;
 
     this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(this.dbName, this.dbVersion);
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
@@ -489,4 +518,14 @@ class IndexedDBStorage {
   }
 }
 
-export const dbStorage = new IndexedDBStorage();
+export const dbStorage = new IndexedDBStorage(DB_NAME, DB_VERSION);
+
+/**
+ * Creates an entirely isolated, dedicated test storage adapter.
+ * Uses an isolated test database that NEVER intersects with production 'RakanBalanceDB_v2'.
+ */
+export function createIsolatedTestStorage(customName?: string): IndexedDBStorage {
+  const testDbName =
+    customName || `RakanBalance_TestIsolatedDB_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  return new IndexedDBStorage(testDbName, DB_VERSION);
+}

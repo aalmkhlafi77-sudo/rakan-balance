@@ -269,6 +269,19 @@ export const BackupRestoreView: React.FC = () => {
                   <div>المحتويات: {stagedCounts.accounts} حسابات · {stagedCounts.transactions} حركات · {stagedCounts.attachments} مرفقات</div>
                 </div>
 
+                {stagedBundle.data.settings && (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-400 space-y-0.5">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">الإعدادات غير الحساسة المستعادة:</span>
+                    <div>• اسم المالك: {stagedBundle.data.settings.ownerName || 'بدون تغيير'}</div>
+                    {stagedBundle.data.settings.theme && (
+                      <div>• المظهر العام: {stagedBundle.data.settings.theme === 'dark' ? 'داكن' : 'فاتح'}</div>
+                    )}
+                    <div className="text-emerald-700 dark:text-emerald-400 pt-0.5">
+                      ✓ يُستثنى رمز المرور (PIN) وأمان الجهاز المحلي لضمان عدم التلاعب بحماية الجلسة الحالية.
+                    </div>
+                  </div>
+                )}
+
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-700 text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   <span>سيتم أخذ لقطة أمان واستبدال البيانات الحالية فوراً.</span>

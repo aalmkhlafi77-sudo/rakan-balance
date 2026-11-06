@@ -522,8 +522,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const atomicRestoreData = async (bundleData: BackupBundle['data']) => {
     // Strictly operates on Real storage!
     await dbStorage.atomicRestore(bundleData);
-    if (bundleData.settings?.ownerName) {
-      updateOwnerName(bundleData.settings.ownerName);
+    if (bundleData.settings) {
+      if (bundleData.settings.ownerName) {
+        updateOwnerName(bundleData.settings.ownerName);
+      }
+      if (bundleData.settings.theme === 'light' || bundleData.settings.theme === 'dark') {
+        setTheme(bundleData.settings.theme);
+        setThemePref(bundleData.settings.theme);
+      }
+      if (typeof bundleData.settings.sidebarCollapsed === 'boolean') {
+        setSidebarCollapsed(bundleData.settings.sidebarCollapsed);
+        setSidebarCollapsedPref(bundleData.settings.sidebarCollapsed);
+      }
     }
     if (activeScope === 'real') {
       await loadWorkspaceData('real');
