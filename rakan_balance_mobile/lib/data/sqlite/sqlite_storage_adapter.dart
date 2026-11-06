@@ -1,11 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import '../../domain/financial/inter_account_transfer_engine.dart';
-import '../../domain/models/account_model.dart';
 import '../../domain/models/due_item_model.dart';
-import '../../domain/models/note_model.dart';
 import '../../domain/models/transaction_model.dart';
 import '../../domain/models/transfer_model.dart';
-import 'database_helper.dart';
 import 'tables_schema.dart';
 
 class SqliteStorageAdapter {
