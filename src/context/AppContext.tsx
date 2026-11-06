@@ -91,6 +91,7 @@ interface AppContextType {
   // N2: dues are follow-up records; a payment is exactly ONE financial movement.
   createDue: (input: { accountId: string; entryType: EntryType; dueDate: string; amountMinor: number; notes?: string }) => Promise<string>;
   settleDue: (dueId: string, amountMinor: number, date: string) => Promise<void>;
+  deleteUnpaidDue: (dueId: string) => Promise<void>;
   createReminder: (dueId: string, remindAt: string, templateText: string) => Promise<void>;
   completeReminder: (reminderId: string) => Promise<void>;
 
@@ -580,6 +581,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return due.id;
   };
 
+  const deleteUnpaidDue = async (dueId: string): Promise<void> => {
+    await dbStorage.deleteUnpaidDueAtomic(dueId, activeScope === 'demo');
+    setDues(prev => prev.filter(d => d.id !== dueId));
+    setReminders(prev => prev.filter(r => r.dueItemId !== dueId));
+  };
+
   const settleDue = async (dueId: string, amountMinor: number, date: string): Promise<void> => {
     const due = dues.find(d => d.id === dueId);
     if (!due) throw new Error('الاستحقاق غير موجود.');
@@ -871,6 +878,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteInterAccountTransfer,
         createDue,
         settleDue,
+        deleteUnpaidDue,
         createReminder,
         completeReminder,
         addCategory,
