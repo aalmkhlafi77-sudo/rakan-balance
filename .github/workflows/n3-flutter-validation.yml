@@ -44,9 +44,10 @@ jobs:
         run: flutter test
       - name: Build debug Android APK
         run: flutter build apk --debug
-      - name: Upload Android debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rakan-balance-n3-android-debug
-          path: rakan_balance_mobile/build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
+      - name: Verify Android APK exists and record fingerprint
+        run: |
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh build/app/outputs/flutter-apk/app-debug.apk
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk
+      # GitHub Actions artifact storage is currently over quota.
+      # APK upload is intentionally omitted; enable only when quota is restored.
