@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Force tabular numbers on all financial metrics and code inputs */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media print {
+  /* Print optimization for account statements */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

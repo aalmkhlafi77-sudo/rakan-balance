@@ -1,0 +1,464 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ * RAKAN BALANCE (راكان بلانس) — Transactions & Movements Ledger
+ * Tabular grid with filters, search, attachment preview, and editing
+ */
+
+import React, { useState, useMemo } from 'react';
+import { useApp } from '../context/AppContext.tsx';
+import { TransactionModel } from '../domain/types.ts';
+import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
+import {
+  ReceiptText,
+  Search,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Calendar,
+  Filter,
+  Plus,
+  Edit2,
+  Trash2,
+  Paperclip,
+  Download,
+  X,
+  FileSpreadsheet,
+} from 'lucide-react';
+
+interface TransactionsViewProps {
+  onOpenQuickTx: (accountId?: string) => void;
+  onEditTransaction: (tx: TransactionModel) => void;
+  onOpenStatementForAccount: (accountId: string) => void;
+}
+
+export const TransactionsView: React.FC<TransactionsViewProps> = ({
+  onOpenQuickTx,
+  onEditTransaction,
+  onOpenStatementForAccount,
+}) => {
+  const { transactions, accounts, attachments, deleteTransaction } = useApp();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState('all');
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'owedByAccount' | 'owedToAccount'>('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  // Delete confirmation
+  const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
+
+  // Attachment Preview Modal
+  const [previewAttachment, setPreviewAttachment] = useState<{
+    name: string;
+    url: string;
+    mime: string;
+  } | null>(null);
+
+  // Filtered & stably sorted transactions
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (selectedAccountId !== 'all' && tx.accountId !== selectedAccountId) return false;
+      if (directionFilter !== 'all' && tx.entryType !== directionFilter) return false;
+      if (fromDate && tx.date < fromDate) return false;
+      if (toDate && tx.date > toDate) return false;
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const acc = accounts.find((a) => a.id === tx.accountId);
+        const matchesDesc = tx.description.toLowerCase().includes(q);
+        const matchesAccount = acc?.name.toLowerCase().includes(q);
+        const matchesNotes = tx.notes?.toLowerCase().includes(q);
+        if (!matchesDesc && !matchesAccount && !matchesNotes) return false;
+      }
+
+      return true;
+    }).sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [transactions, accounts, selectedAccountId, directionFilter, fromDate, toDate, searchQuery]);
+
+  // Summary of filtered rows
+  const filteredSummary = useMemo(() => {
+    let totalOwedBy = 0;
+    let totalOwedTo = 0;
+    for (const tx of filteredTransactions) {
+      if (tx.entryType === 'owedByAccount') {
+        totalOwedBy += tx.amountMinor;
+      } else {
+        totalOwedTo += tx.amountMinor;
+      }
+    }
+    return {
+      count: filteredTransactions.length,
+      totalOwedBy,
+      totalOwedTo,
+      netDelta: totalOwedBy - totalOwedTo,
+    };
+  }, [filteredTransactions]);
+
+  const confirmDelete = async () => {
+    if (!deletingTxId) return;
+    await deleteTransaction(deletingTxId);
+    setDeletingTxId(null);
+  };
+
+  return (
+    <div className="space-y-5" dir="rtl">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+            دفتر الحركات المالية
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            سجل شامل لجميع عمليات الذمم (عليه / له) مع تصفية دقيقة ومرفقات
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onOpenQuickTx()}
+          className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-600/30 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>تسجيل حركة جديدة</span>
+        </button>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Search Input */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="البحث بالبيان أو الطرف..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-9 px-3 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+          </div>
+
+          {/* Account Picker */}
+          <div>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="w-full h-9 px-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 focus:outline-hidden"
+            >
+              <option value="all">كل الأطراف والحسابات</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Direction Segmented control */}
+          <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => setDirectionFilter('all')}
+              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
+                directionFilter === 'all'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              الكل
+            </button>
+            <button
+              type="button"
+              onClick={() => setDirectionFilter('owedByAccount')}
+              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
+                directionFilter === 'owedByAccount'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              عليه (+ لك)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDirectionFilter('owedToAccount')}
+              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
+                directionFilter === 'owedToAccount'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              له (- عليك)
+            </button>
+          </div>
+
+          {/* Date Range */}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="w-1/2 h-9 px-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-700 dark:text-slate-300"
+              title="من تاريخ"
+            />
+            <span className="text-slate-400 text-xs">إلى</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="w-1/2 h-9 px-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-700 dark:text-slate-300"
+              title="إلى تاريخ"
+            />
+          </div>
+        </div>
+
+        {/* Filter Summary Ribbon */}
+        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
+          <div>
+            النتائج: <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">{filteredSummary.count}</span> حركة
+          </div>
+          <div className="flex items-center gap-4 font-mono">
+            <div>
+              مجموع عليه: <span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">+{formatMinorAmount(filteredSummary.totalOwedBy)} ر.س</span>
+            </div>
+            <div>
+              مجموع له: <span className="text-rose-600 dark:text-rose-400 font-bold tabular-nums">-{formatMinorAmount(filteredSummary.totalOwedTo)} ر.س</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Transactions Table */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+        {filteredTransactions.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 text-xs">
+            لا توجد حركات مالية مطابقة للفلاتر المحددة.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold">
+                <tr>
+                  <th className="py-3 px-4">التاريخ</th>
+                  <th className="py-3 px-4">الطرف / الحساب</th>
+                  <th className="py-3 px-4">البيان والوصف</th>
+                  <th className="py-3 px-4">النوع</th>
+                  <th className="py-3 px-4 text-left">المبلغ</th>
+                  <th className="py-3 px-4 text-center">المرفقات</th>
+                  <th className="py-3 px-4 text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                {filteredTransactions.map((tx) => {
+                  const acc = accounts.find((a) => a.id === tx.accountId);
+                  const isOwedBy = tx.entryType === 'owedByAccount';
+                  const txAttachments = attachments.filter((att) =>
+                    tx.attachmentIds?.includes(att.id)
+                  );
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors"
+                    >
+                      <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
+                        {tx.date}
+                      </td>
+
+                      <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => onOpenStatementForAccount(tx.accountId)}
+                          className="hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>{acc?.name || 'حساب غير معروف'}</span>
+                          <FileSpreadsheet className="w-3 h-3 text-slate-400 inline" />
+                        </button>
+                      </td>
+
+                      <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
+                        <div>{tx.description}</div>
+                        {tx.notes && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">{tx.notes}</div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1 font-semibold text-[11px] ${
+                            isOwedBy
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {isOwedBy ? (
+                            <>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                              <span>عليه (+ لك)</span>
+                            </>
+                          ) : (
+                            <>
+                              <ArrowDownLeft className="w-3.5 h-3.5" />
+                              <span>له (- عليك)</span>
+                            </>
+                          )}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4 text-left font-mono whitespace-nowrap">
+                        <span
+                          className={`font-bold tabular-nums text-sm ${
+                            isOwedBy
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {isOwedBy ? '+' : '-'}
+                          {formatMinorAmount(tx.amountMinor)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-sans mr-1">ر.س</span>
+                      </td>
+
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        {txAttachments.length > 0 ? (
+                          <div className="flex items-center justify-center gap-1">
+                            {txAttachments.map((att) => (
+                              <button
+                                key={att.id}
+                                type="button"
+                                onClick={() =>
+                                  setPreviewAttachment({
+                                    name: att.originalName,
+                                    url: att.dataUrl,
+                                    mime: att.mimeType,
+                                  })
+                                }
+                                className="p-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 cursor-pointer"
+                                title={`معاينة: ${att.originalName}`}
+                              >
+                                <Paperclip className="w-3.5 h-3.5" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onEditTransaction(tx)}
+                            className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            title="تعديل الحركة"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingTxId(tx.id)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                            title="حذف الحركة"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingTxId && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 text-center">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-2">
+              تأكيد حذف الحركة المالية
+            </h4>
+            <p className="text-xs text-slate-500 mb-5">
+              هل أنت متأكد من حذف هذه الحركة؟ سيتم إعادة احتساب رصيد الحساب واللوحة وكشف الحساب فوراً وبدقة.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDeletingTxId(null)}
+                className="py-2 px-4 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="py-2 px-5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs cursor-pointer shadow-sm shadow-rose-600/30"
+              >
+                تأكيد الحذف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attachment Preview Modal */}
+      {previewAttachment && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                {previewAttachment.name}
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewAttachment.url}
+                  download={previewAttachment.name}
+                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="تنزيل الملف"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 flex items-center justify-center max-h-[70vh] overflow-auto bg-slate-50 dark:bg-slate-950">
+              {previewAttachment.mime.startsWith('image/') ? (
+                <img
+                  src={previewAttachment.url}
+                  alt={previewAttachment.name}
+                  className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-sm"
+                />
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-xs text-slate-500 mb-3">
+                    ملف مستند ({previewAttachment.mime})
+                  </p>
+                  <a
+                    href={previewAttachment.url}
+                    download={previewAttachment.name}
+                    className="py-2 px-4 rounded-xl bg-emerald-600 text-white text-xs font-medium inline-flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>تنزيل المستند</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
