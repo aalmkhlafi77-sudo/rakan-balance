@@ -12,6 +12,7 @@ import '../presentation/screens/statements_screen.dart';
 import '../presentation/screens/transfer_screen.dart';
 import '../presentation/state/app_state_notifier.dart';
 import 'theme/app_theme.dart';
+import 'theme/app_colors.dart';
 
 class RakanBalanceApp extends StatelessWidget {
   const RakanBalanceApp({super.key});
@@ -96,7 +97,7 @@ class _MainShellScreenState extends State<MainShellScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (idx) => setState(() => _currentIndex = idx),
-        selectedItemColor: Colors.emerald,
+        selectedItemColor: AppColors.emerald600,
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
         items: const [

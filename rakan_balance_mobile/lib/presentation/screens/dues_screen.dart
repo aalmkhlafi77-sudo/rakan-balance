@@ -58,7 +58,7 @@ class _DuesScreenState extends State<DuesScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     decoration: const InputDecoration(labelText: 'الحساب'),
-                    value: _selectedAccountId,
+                    initialValue: _selectedAccountId,
                     items: state.accounts.where((a) => a.status == 'active').map((a) {
                       return DropdownMenuItem(value: a.id, child: Text(a.name));
                     }).toList(),
@@ -67,7 +67,7 @@ class _DuesScreenState extends State<DuesScreen> {
                   const SizedBox(height: 8),
                   DropdownButtonFormField<EntryType>(
                     decoration: const InputDecoration(labelText: 'نوع الاستحقاق'),
-                    value: _entryType,
+                    initialValue: _entryType,
                     items: const [
                       DropdownMenuItem(value: EntryType.owedByAccount, child: Text('مستحق لك')),
                       DropdownMenuItem(value: EntryType.owedToAccount, child: Text('مستحق عليك')),
@@ -107,7 +107,7 @@ class _DuesScreenState extends State<DuesScreen> {
                         _amountController.clear();
                         _notesController.clear();
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          ScaffoldMessenger.of(this.context).showSnackBar(
                             const SnackBar(content: Text('تم تسجيل الاستحقاق بنجاح دون حركة مالية.')),
                           );
                         }
@@ -187,7 +187,7 @@ class _DuesScreenState extends State<DuesScreen> {
               onPressed: () async {
                 final res = MoneyUtils.toMinorUnits(payController.text);
                 if (!res.success || res.minor > maxMinor) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: Text('المبلغ المدخل غير صالح أو يتجاوز المتبقي.')),
                   );
                   return;
@@ -198,9 +198,9 @@ class _DuesScreenState extends State<DuesScreen> {
                   amountMinor: res.minor,
                   date: DateTime.now().toIso8601String().split('T')[0],
                 );
-                if (mounted) {
+                if (mounted && ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: Text('تم تسجيل حركة سداد واحدة بنجاح.')),
                   );
                 }

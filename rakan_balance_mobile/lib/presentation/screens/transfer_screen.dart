@@ -4,6 +4,7 @@ import '../../domain/financial/inter_account_transfer_engine.dart';
 import '../../domain/financial/money_utils.dart';
 import '../../domain/models/transfer_model.dart';
 import '../state/app_state_notifier.dart';
+import '../../app/theme/app_colors.dart';
 
 class TransferScreen extends StatefulWidget {
   const TransferScreen({super.key});
@@ -78,7 +79,7 @@ class _TransferScreenState extends State<TransferScreen> {
           // Source Account
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'الحساب المصدر (الذي ينقل المديونية منه)'),
-            value: _sourceAccountId,
+            initialValue: _sourceAccountId,
             items: activeAccounts.map((a) {
               return DropdownMenuItem(
                 value: a.id,
@@ -92,7 +93,7 @@ class _TransferScreenState extends State<TransferScreen> {
           // Destination Account
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'الحساب الوجهة (الذي يُنقل المديونية إليه)'),
-            value: _destinationAccountId,
+            initialValue: _destinationAccountId,
             items: activeAccounts.map((a) {
               return DropdownMenuItem(
                 value: a.id,
@@ -138,8 +139,8 @@ class _TransferScreenState extends State<TransferScreen> {
                   children: [
                     const Text('معاينة أثر الحركة البينية:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                     const SizedBox(height: 4),
-                    Text('المصدر: ${MoneyUtils.formatMinorAmount(srcBalanceBefore)} $\\rightarrow$ ${MoneyUtils.formatMinorAmount(srcBalanceAfter!)} ر.س'),
-                    Text('الوجهة: ${MoneyUtils.formatMinorAmount(dstBalanceBefore)} $\\rightarrow$ ${MoneyUtils.formatMinorAmount(dstBalanceAfter!)} ر.س'),
+                    Text('المصدر: ${MoneyUtils.formatMinorAmount(srcBalanceBefore)} → ${MoneyUtils.formatMinorAmount(srcBalanceAfter!)} ر.س'),
+                    Text('الوجهة: ${MoneyUtils.formatMinorAmount(dstBalanceBefore)} → ${MoneyUtils.formatMinorAmount(dstBalanceAfter!)} ر.س'),
                     const Divider(),
                     const Text('أثر النظام الكلي: 0.00 ر.س (توازن تام)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                   ],
@@ -150,7 +151,7 @@ class _TransferScreenState extends State<TransferScreen> {
 
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.emerald,
+              backgroundColor: AppColors.emerald600,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -183,7 +184,7 @@ class _TransferScreenState extends State<TransferScreen> {
               try {
                 await state.createTransfer(input);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: Text('تم تنفيذ الحركة البينية بنجاح في قاعدة البيانات.')),
                   );
                   _amountController.clear();

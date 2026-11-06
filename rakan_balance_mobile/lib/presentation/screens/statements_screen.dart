@@ -17,10 +17,8 @@ class _StatementsScreenState extends State<StatementsScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppStateNotifier>();
 
-    final selectedAcc = state.accounts.firstWhere(
-      (a) => a.id == _selectedAccountId,
-      orElse: () => AccountModelStub.dummy,
-    );
+    final matches = state.accounts.where((a) => a.id == _selectedAccountId).toList();
+    final selectedAcc = matches.isEmpty ? null : matches.first;
 
     final accTxs = state.transactions.where((t) => t.accountId == _selectedAccountId).toList();
 
@@ -33,14 +31,14 @@ class _StatementsScreenState extends State<StatementsScreen> {
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             decoration: const InputDecoration(labelText: 'اختر الحساب لاستعراض كشف الحساب'),
-            value: _selectedAccountId,
+            initialValue: _selectedAccountId,
             items: state.accounts.map((a) {
               return DropdownMenuItem(value: a.id, child: Text(a.name));
             }).toList(),
             onChanged: (val) => setState(() => _selectedAccountId = val),
           ),
           const SizedBox(height: 16),
-          if (_selectedAccountId != null && selectedAcc.id.isNotEmpty) ...[
+          if (selectedAcc != null) ...[
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
@@ -87,9 +85,4 @@ class _StatementsScreenState extends State<StatementsScreen> {
       ),
     );
   }
-}
-
-class AccountModelStub {
-  static final dummy = AccountModelStub();
-  final String id = '';
 }

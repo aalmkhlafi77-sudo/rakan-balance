@@ -1,5 +1,3 @@
-import 'dart:math';
-
 /// Utility class for strict integer money arithmetic in Halalas (Minor Units).
 /// Preserves exact 1:1 financial rules from the web reference implementation (`src/domain/money.ts`).
 class MoneyUtils {
