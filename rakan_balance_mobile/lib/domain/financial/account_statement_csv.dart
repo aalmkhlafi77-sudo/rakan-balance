@@ -8,8 +8,8 @@ class AccountStatementCsv {
   static String _cell(String value) {
     // Quoting all text neutralizes separators and line breaks. Leading formula
     // operators are prefixed with a tab inside the quoted cell for Excel safety.
-    final escapedFormula = RegExp(r'^[\\s]*[=+@-]').hasMatch(value)
-        ? '\\t$value' : value;
+    final escapedFormula = RegExp(r'^[\s]*[=+@-]').hasMatch(value)
+        ? '\t$value' : value;
     return '"${escapedFormula.replaceAll('"', '""')}"';
   }
 
@@ -59,6 +59,6 @@ class AccountStatementCsv {
       _cell('الرصيد الختامي'),
       '0', '0', '$running', MoneyUtils.formatMinorAmount(running),
     ].join(','));
-    return '\\uFEFF${lines.join('\\r\\n')}\\r\\n';
+    return '\uFEFF${lines.join('\r\n')}\r\n';
   }
 }
