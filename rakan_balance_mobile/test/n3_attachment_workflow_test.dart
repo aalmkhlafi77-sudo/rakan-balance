@@ -3,7 +3,6 @@ import 'package:rakan_balance_mobile/data/sqlite/database_helper.dart';
 import 'package:rakan_balance_mobile/data/sqlite/sqlite_storage_adapter.dart';
 import 'package:rakan_balance_mobile/data/sqlite/tables_schema.dart';
 import 'package:rakan_balance_mobile/domain/models/account_model.dart';
-import 'package:rakan_balance_mobile/domain/models/attachment_model.dart';
 import 'package:rakan_balance_mobile/domain/models/transaction_model.dart';
 import 'package:rakan_balance_mobile/domain/models/transfer_model.dart';
 import 'package:rakan_balance_mobile/domain/validators/attachment_policy.dart';
