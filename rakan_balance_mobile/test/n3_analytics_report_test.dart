@@ -319,7 +319,7 @@ void main() {
   });
 
   test('CSV export protects formula-like account names and excludes notes entirely', () {
-    final report = AnalyticsReport(
+    const report = AnalyticsReport(
       totalReceivableMinor: 100,
       totalPayableMinor: 0,
       netMinor: 100,
