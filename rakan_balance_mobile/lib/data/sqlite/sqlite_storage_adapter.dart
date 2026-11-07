@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import '../../domain/models/account_model.dart';
 import '../../domain/financial/money_utils.dart';
@@ -259,49 +260,106 @@ class SqliteStorageAdapter {
   // Atomic Backup Import & Restore
   // =========================================================================
 
+  /// Replace real data atomically after BackupValidator has accepted the bundle.
+  /// Convert JSON arrays and booleans to SQLite storage values. Never erase demo data.
   Future<void> atomicRestoreBackup(Map<String, dynamic> bundleData) async {
-    await _db.transaction((txn) async {
-      // Clear all real tables
-      await txn.delete(TablesSchema.accounts);
-      await txn.delete(TablesSchema.categories);
-      await txn.delete(TablesSchema.transactions);
-      await txn.delete(TablesSchema.attachments);
-      await txn.delete(TablesSchema.notes);
-      await txn.delete(TablesSchema.dues);
-      await txn.delete(TablesSchema.paymentAllocations);
-      await txn.delete(TablesSchema.reminders);
+    List<Map<String, dynamic>> rows(String field, {bool optional = false}) {
+      final value = bundleData[field];
+      if (optional && value == null) return [];
+      if (value is! List) throw FormatException('بيانات $field ناقصة أو غير صالحة.');
+      return value.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    }
 
-      // Insert restored accounts
-      for (final accMap in (bundleData['accounts'] as List? ?? [])) {
-        await txn.insert(TablesSchema.accounts, Map<String, dynamic>.from(accMap));
+    final categories = rows('categories');
+    final accounts = rows('accounts');
+    final movements = rows('transactions');
+    final attachments = rows('attachments');
+    final notes = rows('notes');
+    final dues = rows('dues', optional: true);
+    final allocations = rows('allocations', optional: true);
+    final reminders = rows('reminders', optional: true);
+
+    await _db.transaction((txn) async {
+      // Foreign-key children first, parents last. A failure rolls back all deletes.
+      for (final table in [
+        TablesSchema.reminders,
+        TablesSchema.paymentAllocations,
+        TablesSchema.dues,
+        TablesSchema.attachments,
+        TablesSchema.transactions,
+        TablesSchema.notes,
+        TablesSchema.accounts,
+        TablesSchema.categories,
+      ]) {
+        await txn.delete(table);
       }
-      // Insert categories
-      for (final catMap in (bundleData['categories'] as List? ?? [])) {
-        await txn.insert(TablesSchema.categories, Map<String, dynamic>.from(catMap));
+
+      for (final row in categories) {
+        await txn.insert(TablesSchema.categories, {
+          'id': row['id'], 'name': row['name'], 'sortOrder': row['sortOrder'] ?? 0,
+        });
       }
-      // Insert transactions
-      for (final txMap in (bundleData['transactions'] as List? ?? [])) {
-        await txn.insert(TablesSchema.transactions, Map<String, dynamic>.from(txMap));
+      for (final row in accounts) {
+        await txn.insert(TablesSchema.accounts,
+            AccountModel.fromMap(row).toMap());
       }
-      // Insert attachments
-      for (final attMap in (bundleData['attachments'] as List? ?? [])) {
-        await txn.insert(TablesSchema.attachments, Map<String, dynamic>.from(attMap));
+      for (final row in movements) {
+        await txn.insert(TablesSchema.transactions,
+            TransactionModel.fromMap(row).toMap());
       }
-      // Insert notes
-      for (final noteMap in (bundleData['notes'] as List? ?? [])) {
-        await txn.insert(TablesSchema.notes, Map<String, dynamic>.from(noteMap));
+      for (final row in attachments) {
+        // v3 required legacy columns remain populated for additive migration.
+        // New v4 columns retain the original web attachment representation.
+        final name = (row['originalName'] ?? row['filename']) as String?;
+        final size = (row['size'] ?? row['sizeBytes']) as int?;
+        final bytes = (row['dataUrl'] ?? row['base64Data']) as String?;
+        await txn.insert(TablesSchema.attachments, {
+          'id': row['id'],
+          'filename': name ?? '',
+          'mimeType': row['mimeType'],
+          'sizeBytes': size ?? 0,
+          'base64Data': bytes ?? '',
+          'transactionId': row['transactionId'],
+          'originalName': name,
+          'size': size,
+          'dataUrl': bytes,
+          'createdAt': row['createdAt'],
+        });
       }
-      // Insert dues
-      for (final dueMap in (bundleData['dues'] as List? ?? [])) {
-        await txn.insert(TablesSchema.dues, Map<String, dynamic>.from(dueMap));
+      for (final row in notes) {
+        final archived = row['archived'];
+        await txn.insert(TablesSchema.notes, {
+          'id': row['id'], 'title': row['title'] ?? '',
+          'content': row['content'],
+          'color': row['color'] ?? 'slate',
+          'archived': archived == true || archived == 1 ? 1 : 0,
+          'createdAt': row['createdAt'], 'updatedAt': row['updatedAt'],
+        });
       }
-      // Insert payment allocations
-      for (final allocMap in (bundleData['allocations'] as List? ?? [])) {
-        await txn.insert(TablesSchema.paymentAllocations, Map<String, dynamic>.from(allocMap));
+      for (final row in dues) {
+        await txn.insert(TablesSchema.dues, DueItemModel.fromMap(row).toMap());
       }
-      // Insert reminders
-      for (final remMap in (bundleData['reminders'] as List? ?? [])) {
-        await txn.insert(TablesSchema.reminders, Map<String, dynamic>.from(remMap));
+      for (final row in allocations) {
+        await txn.insert(TablesSchema.paymentAllocations,
+            PaymentAllocationModel.fromMap(row).toMap());
+      }
+      for (final row in reminders) {
+        await txn.insert(TablesSchema.reminders,
+            ReminderModel.fromMap(row).toMap());
+      }
+      final sourceSettings = bundleData['settings'];
+      if (sourceSettings is Map) {
+        const allowed = [
+          'ownerName', 'theme', 'sidebarCollapsed', 'currencyCode',
+          'currencySymbol', 'currencyDecimals',
+        ];
+        for (final key in allowed) {
+          if (sourceSettings.containsKey(key)) {
+            await txn.insert(TablesSchema.settings, {
+              'key': key, 'value': jsonEncode(sourceSettings[key]),
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        }
       }
     });
   }

@@ -80,7 +80,9 @@ void main() {
       String buildBackup(List<Map<String, dynamic>> transactions) {
         final data = <String, dynamic>{
           'accounts': accounts.map((a) => a.toMap()).toList(),
-          'categories': <dynamic>[],
+          'categories': [
+            {'id': 'cat', 'name': 'عام', 'sortOrder': 0},
+          ],
           'transactions': transactions,
           'attachments': <dynamic>[],
           'notes': <dynamic>[],
@@ -95,7 +97,7 @@ void main() {
             'schemaVersion': 2,
             'checksum': sha256.convert(utf8.encode(jsonEncode(data))).toString(),
             'recordCounts': {
-              'accounts': 2, 'categories': 0, 'transactions': transactions.length,
+              'accounts': 2, 'categories': 1, 'transactions': transactions.length,
               'attachments': 0, 'notes': 0,
               'dues': 0, 'allocations': 0, 'reminders': 0,
             },
@@ -104,13 +106,19 @@ void main() {
         });
       }
 
-      final valid = buildBackup(pair.map((tx) => tx.toMap()).toList());
+      final valid = buildBackup(pair.map((tx) => {
+        ...tx.toMap(), 'attachmentIds': <String>[],
+      }).toList());
       expect(BackupValidator.validateBackupJson(valid).isValid, true);
 
-      final orphan = buildBackup([pair.first.toMap()]);
+      final orphan = buildBackup([{
+        ...pair.first.toMap(), 'attachmentIds': <String>[],
+      }]);
       expect(BackupValidator.validateBackupJson(orphan).isValid, false);
 
-      final broken = pair.map((tx) => tx.toMap()).toList();
+      final broken = pair.map((tx) => {
+        ...tx.toMap(), 'attachmentIds': <String>[],
+      }).toList();
       broken[1] = {...broken[1], 'counterpartyAccountId': 'unknown'};
       expect(BackupValidator.validateBackupJson(buildBackup(broken)).isValid, false);
     });

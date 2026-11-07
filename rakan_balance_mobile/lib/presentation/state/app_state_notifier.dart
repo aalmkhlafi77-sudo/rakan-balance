@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../data/sqlite/database_helper.dart';
 import '../../data/sqlite/sqlite_storage_adapter.dart';
+import '../../data/sqlite/mobile_backup_service.dart';
+import '../../domain/validators/backup_validator.dart';
 import '../../domain/financial/balance_calculator.dart';
+import '../../platform/security/pin_security_service.dart';
 import '../../domain/financial/money_utils.dart';
 import '../../domain/validators/transaction_validator.dart';
 import '../../domain/models/account_model.dart';
@@ -16,10 +19,12 @@ class AppStateNotifier extends ChangeNotifier {
   SqliteStorageAdapter? _storage;
 
   bool _isLoading = true;
+  String? _initializationError;
   String _activeScope = 'real'; // 'real' | 'demo'
   ThemeMode _themeMode = ThemeMode.light;
   bool _isPinLocked = false;
-  String? _pinCode;
+  bool _hasPin = false;
+  final PinSecurityService _pinService;
 
   List<AccountModel> _accounts = [];
   List<TransactionModel> _transactions = [];
@@ -28,20 +33,22 @@ class AppStateNotifier extends ChangeNotifier {
   List<ReminderModel> _reminders = [];
   List<NoteModel> _notes = [];
 
-  AppStateNotifier();
+  AppStateNotifier() : _pinService = PinSecurityService(SecurePinCredentialStore());
 
   /// Isolated SQLite test injection only; never opens or mutates production storage.
-  AppStateNotifier.forTesting(Database db) {
+  AppStateNotifier.forTesting(Database db, {PinSecurityService? pinSecurity})
+      : _pinService = pinSecurity ?? PinSecurityService(SecurePinCredentialStore()) {
     _db = db;
     _storage = SqliteStorageAdapter(db);
     _isLoading = false;
   }
 
   bool get isLoading => _isLoading;
+  String? get initializationError => _initializationError;
   String get activeScope => _activeScope;
   ThemeMode get themeMode => _themeMode;
   bool get isPinLocked => _isPinLocked;
-  bool get hasPin => _pinCode != null && _pinCode!.isNotEmpty;
+  bool get hasPin => _hasPin;
 
   List<AccountModel> get accounts => _accounts;
   List<TransactionModel> get transactions => _transactions;
@@ -52,14 +59,21 @@ class AppStateNotifier extends ChangeNotifier {
 
   Future<void> init() async {
     _isLoading = true;
+    _initializationError = null;
     notifyListeners();
 
     try {
+      _hasPin = await _pinService.hasPin();
+      _isPinLocked = _hasPin;
+      notifyListeners();
       _db = await DatabaseHelper().database;
       _storage = SqliteStorageAdapter(_db!);
       await reloadWorkspace();
     } catch (e) {
-      debugPrint('Failed to initialize database: $e');
+      // Fail closed if secure storage or database initialization fails.
+      _initializationError = 'تعذر تهيئة التخزين الآمن أو قاعدة البيانات.';
+      _isPinLocked = true;
+      debugPrint('Failed to initialize application: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -77,19 +91,34 @@ class AppStateNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setPin(String? pin) {
-    _pinCode = pin;
-    _isPinLocked = pin != null && pin.isNotEmpty;
+  Future<void> setPin(String? pin, {String? currentPin}) async {
+    if (pin == null) {
+      if (currentPin == null) throw ArgumentError('رمز الحماية الحالي مطلوب.');
+      await _pinService.disablePin(currentPin);
+    } else {
+      await _pinService.setPin(pin, previousPin: currentPin);
+    }
+    _hasPin = await _pinService.hasPin();
+    _isPinLocked = _hasPin;
     notifyListeners();
   }
 
-  bool unlockWithPin(String pin) {
-    if (_pinCode == pin) {
+  Future<bool> unlockWithPin(String pin) async {
+    if (await _pinService.verifyPin(pin)) {
       _isPinLocked = false;
       notifyListeners();
       return true;
     }
     return false;
+  }
+
+  Future<int> pinLockoutSecondsRemaining() =>
+      _pinService.lockoutSecondsRemaining();
+
+  void lockIfPinEnabled() {
+    if (!_hasPin || _isPinLocked) return;
+    _isPinLocked = true;
+    notifyListeners();
   }
 
   Future<void> reloadWorkspace() async {
@@ -406,9 +435,30 @@ class AppStateNotifier extends ChangeNotifier {
     await reloadWorkspace();
   }
 
-  // Backup restore
-  Future<void> restoreBackup(Map<String, dynamic> bundleData) async {
-    await _storage!.atomicRestoreBackup(bundleData);
+  /// Backups contain only real workspace financial records, never PIN secrets.
+  Future<String> exportBackupJson() async {
+    if (_db == null) throw StateError('قاعدة البيانات غير مهيأة.');
+    if (_activeScope != 'real') {
+      throw StateError('انتقل إلى البيانات الحقيقية قبل تصدير النسخة الاحتياطية.');
+    }
+    return MobileBackupService.exportJson(_db!,
+      theme: _themeMode == ThemeMode.dark ? 'dark' : 'light');
+  }
+
+  /// Verify checksum and all referential invariants BEFORE any destructive SQL.
+  Future<void> restoreBackupJson(String jsonText) async {
+    if (_db == null || _storage == null) {
+      throw StateError('قاعدة البيانات غير مهيأة.');
+    }
+    if (_activeScope != 'real') {
+      throw StateError('انتقل إلى البيانات الحقيقية قبل استعادة النسخة الاحتياطية.');
+    }
+    final verified = BackupValidator.validateBackupJson(jsonText);
+    if (!verified.isValid) {
+      throw FormatException(verified.error ?? 'ملف النسخة الاحتياطية غير صالح.');
+    }
+    final data = verified.parsedBundle!['data'] as Map<String, dynamic>;
+    await _storage!.atomicRestoreBackup(data);
     await reloadWorkspace();
   }
 }

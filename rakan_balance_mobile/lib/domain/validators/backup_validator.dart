@@ -30,6 +30,13 @@ class BackupValidator {
         return (isValid: false, error: 'إصدار النسخة الاحتياطية غير مدعوم.', parsedBundle: null);
       }
 
+      final schemaVersion = manifest['schemaVersion'] as int?;
+      if (schemaVersion == null || schemaVersion < 1 || schemaVersion > 2 ||
+          backupFormatVersion != schemaVersion) {
+        return (isValid: false, error: 'إصدار مخطط النسخة الاحتياطية غير مدعوم.',
+          parsedBundle: null);
+      }
+
       // B. SHA-256 Checksum Verification
       final expectedChecksum = manifest['checksum'] as String?;
       if (expectedChecksum == null || expectedChecksum.isEmpty) {
@@ -65,6 +72,134 @@ class BackupValidator {
 
       if (recordCounts.containsKey('dues') && recordCounts['dues'] != duesList.length) {
         return (isValid: false, error: 'أعداد الاستحقاقات لا تطابق الترويسة.', parsedBundle: null);
+      }
+
+      if (recordCounts.containsKey('allocations') &&
+          recordCounts['allocations'] != allocationsList.length ||
+          recordCounts.containsKey('reminders') &&
+          recordCounts['reminders'] != remindersList.length) {
+        return (isValid: false, error: 'أعداد تخصيصات السداد أو التذكيرات غير متطابقة.',
+          parsedBundle: null);
+      }
+
+      // Validate the cross-platform schema before creating model instances.
+      if (data['accounts'] is! List || data['categories'] is! List ||
+          data['transactions'] is! List || data['attachments'] is! List ||
+          data['notes'] is! List) {
+        return (isValid: false, error: 'بيانات النسخة ليست قوائم صالحة.', parsedBundle: null);
+      }
+
+      bool uniqueRecords(List records) {
+        final ids = <String>{};
+        for (final raw in records) {
+          if (raw is! Map || raw['id'] is! String ||
+              (raw['id'] as String).isEmpty || !ids.add(raw['id'] as String)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      for (final records in [
+        accountsList, categoriesList, transactionsList, attachmentsList,
+        notesList, duesList, allocationsList, remindersList,
+      ]) {
+        if (!uniqueRecords(records)) {
+          return (isValid: false, error: 'النسخة تحتوي معرفات مكررة أو مفقودة.',
+            parsedBundle: null);
+        }
+      }
+
+      final categoryIds = categoriesList.map((e) => e['id'] as String).toSet();
+      final accountIds = accountsList.map((e) => e['id'] as String).toSet();
+      final transactionIds = transactionsList.map((e) => e['id'] as String).toSet();
+      final attachmentIds = attachmentsList.map((e) => e['id'] as String).toSet();
+      final parentMap = <String, String?>{};
+      for (final raw in accountsList) {
+        final acc = Map<String, dynamic>.from(raw as Map);
+        if (!categoryIds.contains(acc['categoryId']) ||
+            acc['name'] is! String ||
+            (acc['name'] as String).trim().isEmpty ||
+            !['active', 'archived'].contains(acc['status'] ?? 'active')) {
+          return (isValid: false, error: 'حساب مرتبط بتصنيف مفقود أو يحمل بيانات غير صالحة.',
+            parsedBundle: null);
+        }
+        parentMap[acc['id'] as String] = acc['parentId'] as String?;
+      }
+      for (final id in accountIds) {
+        final visited = <String>{};
+        String? current = id;
+        while (current != null) {
+          if (!parentMap.containsKey(current) || !visited.add(current)) {
+            return (isValid: false, error: 'شجرة الحسابات تتضمن مرجعًا مفقودًا أو دورة.',
+              parsedBundle: null);
+          }
+          current = parentMap[current];
+        }
+      }
+
+      for (final raw in transactionsList) {
+        final tx = Map<String, dynamic>.from(raw as Map);
+        final refs = tx['attachmentIds'];
+        if (!['owedByAccount', 'owedToAccount'].contains(tx['entryType']) ||
+            !MoneyUtils.isValidDateString(tx['date'] as String? ?? '') ||
+            refs is! List || refs.any((id) => !attachmentIds.contains(id))) {
+          return (isValid: false, error: 'حركة مالية تحتوي تاريخًا أو مرفقات أو نوعًا غير صالح.',
+            parsedBundle: null);
+        }
+      }
+
+      for (final raw in attachmentsList) {
+        final att = Map<String, dynamic>.from(raw as Map);
+        if (!transactionIds.contains(att['transactionId']) ||
+            att['originalName'] is! String ||
+            att['mimeType'] is! String ||
+            att['size'] is! int || (att['size'] as int) < 0 ||
+            att['dataUrl'] is! String) {
+          return (isValid: false, error: 'مرفق لا يطابق حركة مالية موجودة.',
+            parsedBundle: null);
+        }
+      }
+
+      for (final raw in duesList) {
+        final due = Map<String, dynamic>.from(raw as Map);
+        if (!['owedByAccount', 'owedToAccount'].contains(due['entryType']) ||
+            !['pending', 'partially_settled', 'settled', 'overdue']
+                .contains(due['status'])) {
+          return (isValid: false, error: 'نوع أو حالة الاستحقاق غير صالح.',
+            parsedBundle: null);
+        }
+        if (due['sourceTransactionId'] != null) {
+          final source = transactionsList.where(
+            (tx) => tx['id'] == due['sourceTransactionId']).toList();
+          if (source.length != 1 ||
+              source.first['accountId'] != due['accountId'] ||
+              source.first['entryType'] != due['entryType']) {
+            return (isValid: false, error: 'الحركة الأصلية للاستحقاق غير متطابقة.',
+              parsedBundle: null);
+          }
+        }
+      }
+
+      for (final raw in notesList) {
+        final note = Map<String, dynamic>.from(raw as Map);
+        if (note['content'] is! String ||
+            note['title'] is! String ||
+            !['emerald', 'amber', 'rose', 'blue', 'purple', 'slate']
+                .contains(note['color']) ||
+            note['archived'] is! bool) {
+          return (isValid: false, error: 'سجل الملاحظات العامة غير صالح.',
+            parsedBundle: null);
+        }
+      }
+
+      final settings = data['settings'];
+      if (settings is Map &&
+          settings.keys.any((key) => key.toString().toLowerCase().contains('pin') ||
+              key.toString().toLowerCase().contains('password') ||
+              key.toString().toLowerCase().contains('secret'))) {
+        return (isValid: false, error: 'بيانات حساسة غير مسموحة ضمن النسخة الاحتياطية.',
+          parsedBundle: null);
       }
 
       // D. Parse & Validate Domain Invariants

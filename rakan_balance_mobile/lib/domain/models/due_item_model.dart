@@ -3,6 +3,7 @@ import 'transaction_model.dart';
 class DueItemModel {
   final String id;
   final String accountId;
+  final String? sourceTransactionId;
   final EntryType entryType;
   final String dueDate;
   final int originalAmountMinor;
@@ -15,6 +16,7 @@ class DueItemModel {
   DueItemModel({
     required this.id,
     required this.accountId,
+    this.sourceTransactionId,
     required this.entryType,
     required this.dueDate,
     required this.originalAmountMinor,
@@ -31,6 +33,7 @@ class DueItemModel {
     return {
       'id': id,
       'accountId': accountId,
+      'sourceTransactionId': sourceTransactionId,
       'entryType': entryType == EntryType.owedByAccount ? 'owedByAccount' : 'owedToAccount',
       'dueDate': dueDate,
       'originalAmountMinor': originalAmountMinor,
@@ -46,6 +49,7 @@ class DueItemModel {
     return DueItemModel(
       id: map['id'] as String,
       accountId: map['accountId'] as String,
+      sourceTransactionId: map['sourceTransactionId'] as String?,
       entryType: map['entryType'] == 'owedByAccount'
           ? EntryType.owedByAccount
           : EntryType.owedToAccount,
