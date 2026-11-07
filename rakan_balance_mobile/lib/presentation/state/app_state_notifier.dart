@@ -337,6 +337,66 @@ class AppStateNotifier extends ChangeNotifier {
     await reloadWorkspace();
   }
 
+  Future<void> createGeneralNote(String content) async {
+    if (content.trim().isEmpty) throw ArgumentError('نص الملاحظة مطلوب.');
+    final now = DateTime.now().toUtc().toIso8601String();
+    final table = _activeScope == 'demo' ? 'demo_notes' : 'notes';
+    await _db!.insert(table, NoteModel(id: _newId('note'),
+      content: content.trim(), createdAt: now, updatedAt: now).toMap());
+    await reloadWorkspace();
+  }
+
+  Future<void> updateGeneralNote(String id, String content) async {
+    if (content.trim().isEmpty) throw ArgumentError('نص الملاحظة مطلوب.');
+    final table = _activeScope == 'demo' ? 'demo_notes' : 'notes';
+    final count = await _db!.update(table, {
+      'content': content.trim(),
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [id]);
+    if (count != 1) throw StateError('الملاحظة غير موجودة.');
+    await reloadWorkspace();
+  }
+
+  Future<void> deleteGeneralNote(String id) async {
+    final table = _activeScope == 'demo' ? 'demo_notes' : 'notes';
+    final count = await _db!.delete(table, where: 'id = ?', whereArgs: [id]);
+    if (count != 1) throw StateError('الملاحظة غير موجودة.');
+    await reloadWorkspace();
+  }
+
+  Future<void> createReminder({
+    required String dueId,
+    required String remindAt,
+    required String templateText,
+  }) async {
+    if (!_dues.any((d) => d.id == dueId) ||
+        !MoneyUtils.isValidDateString(remindAt) ||
+        templateText.trim().isEmpty) {
+      throw ArgumentError('الاستحقاق أو التاريخ أو نص التذكير غير صالح.');
+    }
+    final table = _activeScope == 'demo' ? 'demo_reminders' : 'reminders';
+    await _db!.insert(table, ReminderModel(id: _newId('rem'),
+      dueItemId: dueId, remindAt: remindAt,
+      templateText: templateText.trim(), isCompleted: false).toMap());
+    await reloadWorkspace();
+  }
+
+  Future<void> setReminderCompleted(String reminderId, bool completed) async {
+    final table = _activeScope == 'demo' ? 'demo_reminders' : 'reminders';
+    final changed = await _db!.update(table, {'isCompleted': completed ? 1 : 0},
+      where: 'id = ?', whereArgs: [reminderId]);
+    if (changed != 1) throw StateError('التذكير غير موجود.');
+    await reloadWorkspace();
+  }
+
+  Future<void> deleteReminder(String reminderId) async {
+    final table = _activeScope == 'demo' ? 'demo_reminders' : 'reminders';
+    final deleted = await _db!.delete(table,
+      where: 'id = ?', whereArgs: [reminderId]);
+    if (deleted != 1) throw StateError('التذكير غير موجود.');
+    await reloadWorkspace();
+  }
+
   // Backup restore
   Future<void> restoreBackup(Map<String, dynamic> bundleData) async {
     await _storage!.atomicRestoreBackup(bundleData);
