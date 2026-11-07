@@ -8,6 +8,8 @@ import 'package:rakan_balance_mobile/data/sqlite/mobile_backup_service.dart';
 import 'package:rakan_balance_mobile/data/sqlite/sqlite_storage_adapter.dart';
 import 'package:rakan_balance_mobile/data/sqlite/tables_schema.dart';
 import 'package:rakan_balance_mobile/domain/validators/backup_validator.dart';
+import 'package:rakan_balance_mobile/domain/financial/inter_account_transfer_engine.dart';
+import 'package:rakan_balance_mobile/domain/models/transaction_model.dart';
 
 Map<String, dynamic> _webBackup() {
   final data = <String, dynamic>{
@@ -99,6 +101,73 @@ Map<String, dynamic> _webBackup() {
           'accounts', 'categories', 'transactions', 'attachments', 'notes',
           'dues', 'allocations', 'reminders',
         ]) key: (data[key] as List).length,
+      },
+    },
+    'data': data,
+  };
+}
+
+
+Map<String, dynamic> _transferBackup() {
+  final data = <String, dynamic>{
+    'accounts': [
+      {
+        'id': 'src', 'name': 'المصدر', 'parentId': null,
+        'categoryId': 'cat', 'openingBalanceMinor': 10000,
+        'status': 'active', 'createdAt': '2026-11-01T00:00:00Z',
+        'updatedAt': '2026-11-01T00:00:00Z',
+      },
+      {
+        'id': 'dst', 'name': 'الوجهة', 'parentId': null,
+        'categoryId': 'cat', 'openingBalanceMinor': 0,
+        'status': 'active', 'createdAt': '2026-11-01T00:00:00Z',
+        'updatedAt': '2026-11-01T00:00:00Z',
+      },
+    ],
+    'categories': [
+      {'id': 'cat', 'name': 'عام', 'sortOrder': 0},
+    ],
+    'transactions': [
+      {
+        'id': 'tx-src', 'accountId': 'src',
+        'entryType': 'owedToAccount', 'amountMinor': 4000,
+        'date': '2026-11-02', 'description': 'نقل مديونية',
+        'attachmentIds': <String>[], 'transferId': 'tr-1',
+        'transferRole': 'source', 'counterpartyAccountId': 'dst',
+        'createdAt': '2026-11-02T00:00:00Z',
+        'updatedAt': '2026-11-02T00:00:00Z',
+      },
+      {
+        'id': 'tx-dst', 'accountId': 'dst',
+        'entryType': 'owedByAccount', 'amountMinor': 4000,
+        'date': '2026-11-02', 'description': 'نقل مديونية',
+        'attachmentIds': <String>[], 'transferId': 'tr-1',
+        'transferRole': 'destination', 'counterpartyAccountId': 'src',
+        'createdAt': '2026-11-02T00:00:00Z',
+        'updatedAt': '2026-11-02T00:00:00Z',
+      },
+    ],
+    'attachments': <dynamic>[],
+    'notes': <dynamic>[],
+    'dues': <dynamic>[],
+    'allocations': <dynamic>[],
+    'reminders': <dynamic>[],
+    'settings': {
+      'ownerName': 'مالك', 'theme': 'light',
+      'sidebarCollapsed': false, 'currencyCode': 'SAR',
+      'currencySymbol': 'ر.س', 'currencyDecimals': 2,
+    },
+  };
+  return {
+    'manifest': {
+      'formatName': 'RAKAN_BALANCE_BACKUP',
+      'backupFormatVersion': 2,
+      'schemaVersion': 2,
+      'checksum': sha256.convert(utf8.encode(jsonEncode(data))).toString(),
+      'recordCounts': {
+        'accounts': 2, 'categories': 1, 'transactions': 2,
+        'attachments': 0, 'notes': 0, 'dues': 0,
+        'allocations': 0, 'reminders': 0,
       },
     },
     'data': data,
@@ -201,4 +270,74 @@ void main() {
     (bundle['data'] as Map<String, dynamic>)['accounts'][0]['openingBalanceMinor'] = 99999;
     expect(BackupValidator.validateBackupJson(jsonEncode(bundle)).isValid, false);
   });
+
+  test('valid reciprocal transfer survives restore and re-export intact', () async {
+    final db = await DatabaseHelper.initInMemoryDatabase();
+    try {
+      final bundle = _transferBackup();
+      final input = jsonEncode(bundle);
+      final validated = BackupValidator.validateBackupJson(input);
+      expect(validated.isValid, true, reason: validated.error);
+
+      await SqliteStorageAdapter(db).atomicRestoreBackup(
+        Map<String, dynamic>.from(bundle['data'] as Map));
+      final stored = (await db.query(TablesSchema.transactions))
+          .map((row) => TransactionModel.fromMap(row)).toList();
+      expect(stored.length, 2);
+      expect(InterAccountTransferEngine.validateTransferPair(stored).isValid, true);
+      expect(stored.map((tx) => tx.transferRole).toSet(),
+        {TransferRole.source, TransferRole.destination});
+
+      final exported = await MobileBackupService.exportJson(db);
+      final reparsed = BackupValidator.validateBackupJson(exported);
+      expect(reparsed.isValid, true, reason: reparsed.error);
+      final txs = (reparsed.parsedBundle!['data']['transactions'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(txs.length, 2);
+      expect(txs.every((tx) => tx['transferId'] == 'tr-1'), true);
+    } finally {
+      await db.close();
+    }
+  });
+
+  test('late settings failure rolls back accounts, ledger and prior settings', () async {
+    final db = await DatabaseHelper.initInMemoryDatabase();
+    try {
+      await db.insert(TablesSchema.categories,
+        {'id': 'old-cat', 'name': 'قديم', 'sortOrder': 0});
+      await db.insert(TablesSchema.accounts, {
+        'id': 'old', 'name': 'حساب قديم', 'categoryId': 'old-cat',
+        'openingBalanceMinor': 4321, 'status': 'active',
+        'createdAt': '', 'updatedAt': '',
+      });
+      await db.insert(TablesSchema.settings, {
+        'key': 'ownerName', 'value': jsonEncode('المالك القديم'),
+      });
+      await db.execute('''
+        CREATE TRIGGER block_settings_restore
+        BEFORE INSERT ON settings
+        WHEN NEW.key = 'currencyDecimals'
+        BEGIN
+          SELECT RAISE(ABORT, 'simulated late settings failure');
+        END
+      ''');
+
+      final bundle = _transferBackup();
+      await expectLater(
+        SqliteStorageAdapter(db).atomicRestoreBackup(
+          Map<String, dynamic>.from(bundle['data'] as Map)),
+        throwsException,
+      );
+
+      expect((await db.query(TablesSchema.accounts)).single['id'], 'old');
+      expect((await db.query(TablesSchema.categories)).single['id'], 'old-cat');
+      expect(await db.query(TablesSchema.transactions), isEmpty);
+      final owner = (await db.query(TablesSchema.settings,
+        where: 'key = ?', whereArgs: ['ownerName'])).single;
+      expect(jsonDecode(owner['value'] as String), 'المالك القديم');
+    } finally {
+      await db.close();
+    }
+  });
+
 }
