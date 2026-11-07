@@ -106,13 +106,19 @@ void main() {
         });
       }
 
-      final valid = buildBackup(pair.map((tx) => tx.toMap()).toList());
+      final valid = buildBackup(pair.map((tx) => {
+        ...tx.toMap(), 'attachmentIds': <String>[],
+      }).toList());
       expect(BackupValidator.validateBackupJson(valid).isValid, true);
 
-      final orphan = buildBackup([pair.first.toMap()]);
+      final orphan = buildBackup([{
+        ...pair.first.toMap(), 'attachmentIds': <String>[],
+      }]);
       expect(BackupValidator.validateBackupJson(orphan).isValid, false);
 
-      final broken = pair.map((tx) => tx.toMap()).toList();
+      final broken = pair.map((tx) => {
+        ...tx.toMap(), 'attachmentIds': <String>[],
+      }).toList();
       broken[1] = {...broken[1], 'counterpartyAccountId': 'unknown'};
       expect(BackupValidator.validateBackupJson(buildBackup(broken)).isValid, false);
     });
