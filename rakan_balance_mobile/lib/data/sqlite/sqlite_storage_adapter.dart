@@ -7,6 +7,7 @@ import '../../domain/financial/inter_account_transfer_engine.dart';
 import '../../domain/models/due_item_model.dart';
 import '../../domain/models/transaction_model.dart';
 import '../../domain/models/transfer_model.dart';
+import '../../domain/validators/attachment_policy.dart';
 import 'tables_schema.dart';
 
 class SqliteStorageAdapter {
@@ -139,6 +140,15 @@ class SqliteStorageAdapter {
         throw Exception('الحركة البينية التالفة لا يمكن حذفها إفرادياً.');
       }
       _requireValidPair(existingMaps);
+      for (final row in existingMaps) {
+        final tx = TransactionModel.fromMap(row);
+        await txn.delete(TablesSchema.attachments,
+          where: 'transactionId = ?', whereArgs: [tx.id]);
+        for (final attachmentId in tx.attachmentIds) {
+          await txn.delete(TablesSchema.attachments,
+            where: 'id = ?', whereArgs: [attachmentId]);
+        }
+      }
       await txn.delete(txTable, where: 'transferId = ?', whereArgs: [transferId]);
     });
   }
@@ -184,7 +194,102 @@ class SqliteStorageAdapter {
         throw Exception('الحركة مرتبطة بسداد استحقاق ولا يمكن حذفها منفردة.');
       }
 
+      if (existingMaps.isNotEmpty) {
+        final existing = TransactionModel.fromMap(existingMaps.first);
+        await txn.delete(TablesSchema.attachments,
+          where: 'transactionId = ?', whereArgs: [txId]);
+        for (final attachmentId in existing.attachmentIds) {
+          await txn.delete(TablesSchema.attachments,
+            where: 'id = ?', whereArgs: [attachmentId]);
+        }
+      }
       await txn.delete(txTable, where: 'id = ?', whereArgs: [txId]);
+    });
+  }
+
+  // =========================================================================
+  // Attachments: real workspace only until demo attachment storage is isolated.
+  // =========================================================================
+
+  Future<List<AttachmentModel>> listAttachmentsForTransaction({
+    required String txId,
+    required bool isDemo,
+  }) async {
+    if (isDemo) return const [];
+    final rows = await _db.query(TablesSchema.attachments,
+      where: 'transactionId = ?', whereArgs: [txId],
+      orderBy: 'createdAt ASC');
+    return rows.map(AttachmentModel.fromMap).toList();
+  }
+
+  Future<void> addAttachmentAtomic({
+    required String txId,
+    required AttachmentModel attachment,
+    required bool isDemo,
+  }) async {
+    if (isDemo) {
+      throw StateError('المرفقات غير متاحة في مساحة البيانات التجريبية.');
+    }
+    if (attachment.transactionId != txId) {
+      throw ArgumentError('المرفق لا يطابق الحركة المالية.');
+    }
+    AttachmentPolicy.validate(
+      name: attachment.displayName, size: attachment.effectiveSize);
+    if (attachment.mimeType != AttachmentPolicy.mimeForName(attachment.displayName)) {
+      throw ArgumentError('نوع المرفق لا يطابق امتداد الملف.');
+    }
+    if (!attachment.effectiveDataUrl
+        .startsWith('data:${attachment.mimeType};base64,')) {
+      throw ArgumentError('بيانات المرفق ليست بصيغة Base64 المعتمدة.');
+    }
+
+    await _db.transaction((txn) async {
+      final rows = await txn.query(TablesSchema.transactions,
+        where: 'id = ?', whereArgs: [txId]);
+      if (rows.length != 1) throw StateError('الحركة المالية غير موجودة.');
+      final tx = TransactionModel.fromMap(rows.single);
+      if (tx.attachmentIds.contains(attachment.id)) {
+        throw StateError('المرفق مرتبط بالحركة مسبقًا.');
+      }
+      final duplicate = await txn.query(TablesSchema.attachments,
+        where: 'id = ?', whereArgs: [attachment.id]);
+      if (duplicate.isNotEmpty) throw StateError('معرف المرفق مستخدم مسبقًا.');
+
+      await txn.insert(TablesSchema.attachments, attachment.toMap());
+      final ids = [...tx.attachmentIds, attachment.id];
+      await txn.update(TablesSchema.transactions, {
+        'attachmentIds': ids.join(','),
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      }, where: 'id = ?', whereArgs: [txId]);
+    });
+  }
+
+  Future<void> deleteAttachmentAtomic({
+    required String txId,
+    required String attachmentId,
+    required bool isDemo,
+  }) async {
+    if (isDemo) {
+      throw StateError('المرفقات غير متاحة في مساحة البيانات التجريبية.');
+    }
+    await _db.transaction((txn) async {
+      final rows = await txn.query(TablesSchema.transactions,
+        where: 'id = ?', whereArgs: [txId]);
+      if (rows.length != 1) throw StateError('الحركة المالية غير موجودة.');
+      final tx = TransactionModel.fromMap(rows.single);
+      final attachment = await txn.query(TablesSchema.attachments,
+        where: 'id = ? AND transactionId = ?',
+        whereArgs: [attachmentId, txId]);
+      if (attachment.length != 1 || !tx.attachmentIds.contains(attachmentId)) {
+        throw StateError('المرفق غير موجود أو لا يتبع هذه الحركة.');
+      }
+      final ids = tx.attachmentIds.where((id) => id != attachmentId).toList();
+      await txn.update(TablesSchema.transactions, {
+        'attachmentIds': ids.join(','),
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      }, where: 'id = ?', whereArgs: [txId]);
+      await txn.delete(TablesSchema.attachments,
+        where: 'id = ?', whereArgs: [attachmentId]);
     });
   }
 
