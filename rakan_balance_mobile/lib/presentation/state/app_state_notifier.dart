@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../data/sqlite/database_helper.dart';
@@ -9,6 +11,7 @@ import '../../domain/financial/balance_calculator.dart';
 import '../../platform/security/pin_security_service.dart';
 import '../../domain/financial/money_utils.dart';
 import '../../domain/validators/transaction_validator.dart';
+import '../../domain/validators/attachment_policy.dart';
 import '../../domain/models/account_model.dart';
 import '../../domain/models/due_item_model.dart';
 import '../../domain/models/transaction_model.dart';
@@ -432,6 +435,58 @@ class AppStateNotifier extends ChangeNotifier {
     final deleted = await _db!.delete(table,
       where: 'id = ?', whereArgs: [reminderId]);
     if (deleted != 1) throw StateError('التذكير غير موجود.');
+    await reloadWorkspace();
+  }
+
+  Future<List<AttachmentModel>> getAttachmentsForTransaction(String txId) async {
+    if (_storage == null) throw StateError('قاعدة البيانات غير مهيأة.');
+    return _storage!.listAttachmentsForTransaction(
+      txId: txId, isDemo: _activeScope == 'demo');
+  }
+
+  Future<void> addAttachmentToTransaction({
+    required String txId,
+    required String originalName,
+    required Uint8List bytes,
+  }) async {
+    if (_storage == null) throw StateError('قاعدة البيانات غير مهيأة.');
+    if (_activeScope != 'real') {
+      throw StateError('المرفقات متاحة حاليًا للبيانات الحقيقية فقط.');
+    }
+    final cleanName = AttachmentPolicy.sanitizeOriginalName(originalName);
+    AttachmentPolicy.validate(name: cleanName, size: bytes.length);
+    final id = _newId('att');
+    final mime = AttachmentPolicy.mimeForName(cleanName);
+    final storedName = AttachmentPolicy.safeStoredName(id, cleanName);
+    final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+    final now = DateTime.now().toUtc().toIso8601String();
+    final attachment = AttachmentModel(
+      id: id,
+      filename: storedName,
+      mimeType: mime,
+      sizeBytes: bytes.length,
+      base64Data: dataUrl,
+      transactionId: txId,
+      originalName: cleanName,
+      size: bytes.length,
+      dataUrl: dataUrl,
+      createdAt: now,
+    );
+    await _storage!.addAttachmentAtomic(
+      txId: txId, attachment: attachment, isDemo: false);
+    await reloadWorkspace();
+  }
+
+  Future<void> deleteAttachmentFromTransaction({
+    required String txId,
+    required String attachmentId,
+  }) async {
+    if (_storage == null) throw StateError('قاعدة البيانات غير مهيأة.');
+    if (_activeScope != 'real') {
+      throw StateError('المرفقات متاحة حاليًا للبيانات الحقيقية فقط.');
+    }
+    await _storage!.deleteAttachmentAtomic(
+      txId: txId, attachmentId: attachmentId, isDemo: false);
     await reloadWorkspace();
   }
 
