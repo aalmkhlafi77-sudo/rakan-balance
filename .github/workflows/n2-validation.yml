@@ -7,6 +7,18 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'public/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'index.html'
+      - 'metadata.json'
+      - 'playwright.config.ts'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - '.github/workflows/n2-validation.yml'
   workflow_dispatch:
 
 concurrency:

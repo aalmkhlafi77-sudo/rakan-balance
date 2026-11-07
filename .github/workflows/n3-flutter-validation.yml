@@ -5,6 +5,7 @@ on:
     branches:
       - fix/n3-mobile-build-and-functional-completion
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'rakan_balance_mobile/**'
       - '.github/workflows/n3-flutter-validation.yml'
@@ -53,6 +54,7 @@ jobs:
       # APK upload is intentionally omitted; enable only when quota is restored.
 
   flutter-ios-simulator:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-15
     timeout-minutes: 45
     defaults:

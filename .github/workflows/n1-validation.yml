@@ -7,7 +7,23 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'public/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'index.html'
+      - 'metadata.json'
+      - 'playwright.config.ts'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - '.github/workflows/n1-validation.yml'
   workflow_dispatch:
+
+concurrency:
+  group: n1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -21,8 +37,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: package.json
+      # No npm lockfile is tracked (bun.lock is the package-manager lock).
+      # setup-node's npm cache requires a package-lock.json or npm-shrinkwrap.json.
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Execute isolated financial tests
