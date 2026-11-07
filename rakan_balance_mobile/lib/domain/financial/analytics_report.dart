@@ -84,6 +84,21 @@ class AnalyticsReportBuilder {
       '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}';
 
+  static DateTime _dateOnly(DateTime date) =>
+      DateTime.utc(date.year, date.month, date.day);
+
+  static DateTime _parseLedgerDate(String value) {
+    if (!MoneyUtils.isValidDateString(value)) {
+      throw FormatException('تاريخ حركة غير صالح في التقرير: $value');
+    }
+    final parts = value.split('-');
+    return DateTime.utc(
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
+  }
+
   static DateTime _monthStart(DateTime date) =>
       DateTime.utc(date.year, date.month, 1);
 
@@ -106,9 +121,12 @@ class AnalyticsReportBuilder {
         .where((account) => includeArchived || account.status == 'active')
         .toList();
     final selectedIds = selectedAccounts.map((account) => account.id).toSet();
-    final relevantTransactions = transactions
-        .where((tx) => selectedIds.contains(tx.accountId))
-        .toList();
+    final reportDate = _dateOnly(throughDate);
+    final relevantTransactions = transactions.where((tx) {
+      if (!selectedIds.contains(tx.accountId)) return false;
+      final txDate = _parseLedgerDate(tx.date);
+      return !txDate.isAfter(reportDate);
+    }).toList();
 
     final systemSummary = BalanceCalculator.calculateSystemSummary(
       accounts: selectedAccounts,
@@ -192,8 +210,8 @@ class AnalyticsReportBuilder {
     };
 
     for (final tx in relevantTransactions) {
-      final txDate = DateTime.tryParse(tx.date);
-      if (txDate != null && txDate.isBefore(startMonth)) {
+      final txDate = _parseLedgerDate(tx.date);
+      if (txDate.isBefore(startMonth)) {
         balances[tx.accountId] =
             (balances[tx.accountId] ?? 0) + tx.signedAmountMinor;
       }
@@ -207,9 +225,8 @@ class AnalyticsReportBuilder {
       var movementOwedTo = 0;
 
       for (final tx in relevantTransactions) {
-        final txDate = DateTime.tryParse(tx.date);
-        if (txDate == null ||
-            txDate.isBefore(monthStart) ||
+        final txDate = _parseLedgerDate(tx.date);
+        if (txDate.isBefore(monthStart) ||
             !txDate.isBefore(nextMonth) ||
             !txDate.isBefore(nextAfterEnd)) {
           continue;
