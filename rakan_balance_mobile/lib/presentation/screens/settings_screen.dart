@@ -47,40 +47,71 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _showSetPinDialog(BuildContext context, AppStateNotifier state) {
-    final pinController = TextEditingController();
-    showDialog(
+  Future<void> _showSetPinDialog(BuildContext context, AppStateNotifier state) async {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    String? error;
+    var saving = false;
+    await showDialog<void>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('تعيين رمز الحماية PIN'),
-          content: TextField(
-            controller: pinController,
-            keyboardType: TextInputType.number,
-            obscureText: true,
-            maxLength: 4,
-            decoration: const InputDecoration(labelText: 'رمز من 4 أرقام'),
-          ),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: Text(state.hasPin ? 'تغيير رمز الحماية' : 'تفعيل رمز الحماية'),
+          content: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (state.hasPin) TextField(
+                controller: currentController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                maxLength: 4,
+                decoration: const InputDecoration(labelText: 'الرمز الحالي *'),
+              ),
+              TextField(
+                controller: newController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                maxLength: 4,
+                decoration: const InputDecoration(labelText: 'الرمز الجديد من 4 أرقام'),
+              ),
+              if (error != null)
+                Text(error!, style: const TextStyle(color: Colors.red)),
+            ],
+          )),
           actions: [
-            TextButton(
-              onPressed: () {
-                state.setPin(null);
-                Navigator.pop(ctx);
-              },
-              child: const Text('إلغاء التفعيل'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (pinController.text.length == 4) {
-                  state.setPin(pinController.text);
-                  Navigator.pop(ctx);
+            TextButton(onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء')),
+            if (state.hasPin) TextButton(
+              onPressed: saving ? null : () async {
+                refresh(() { saving = true; error = null; });
+                try {
+                  await state.setPin(null, currentPin: currentController.text);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  if (ctx.mounted) refresh(() => error = e.toString());
+                } finally {
+                  if (ctx.mounted) refresh(() => saving = false);
                 }
               },
-              child: const Text('حفظ الرمز'),
+              child: const Text('إلغاء تفعيل الحماية'),
             ),
+            FilledButton(onPressed: saving ? null : () async {
+              refresh(() { saving = true; error = null; });
+              try {
+                await state.setPin(newController.text,
+                  currentPin: state.hasPin ? currentController.text : null);
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                if (ctx.mounted) refresh(() => error = e.toString());
+              } finally {
+                if (ctx.mounted) refresh(() => saving = false);
+              }
+            }, child: const Text('حفظ الرمز')),
           ],
-        );
-      },
+        ),
+      ),
     );
+    currentController.dispose();
+    newController.dispose();
   }
 }
