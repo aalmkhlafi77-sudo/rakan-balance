@@ -423,10 +423,15 @@ class LedgerImportService {
 
       final List<List<dynamic>> table;
       try {
+        // The csv package defaults to CRLF; imported and generated CSV
+        // files may use LF, CRLF or legacy CR line endings.
+        final normalizedCsv =
+            text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
         table = const CsvToListConverter(
+          eol: '\n',
           shouldParseNumbers: false,
           allowInvalid: false,
-        ).convert(text);
+        ).convert(normalizedCsv);
       } catch (e) {
         return LedgerImportPreview(
           sourceName: fileName,
@@ -612,6 +617,14 @@ class LedgerImportService {
     };
     final importedNames = <String>{};
     final importedRefs = <String>{};
+    final importedRefOwners = <String, String>{};
+    // Collect all account names first: an external ref must not shadow a
+    // different account's name, even when that row occurs later in the file.
+    final batchNameKeys = <String>{
+      for (final row in accountRows)
+        if (_value(row, _accountName) != null)
+          _token(_value(row, _accountName)),
+    };
 
     for (var index = 0; index < accountRows.length; index++) {
       final row = accountRows[index];
@@ -658,6 +671,32 @@ class LedgerImportService {
 
       final normalizedName = _token(name);
       final normalizedRef = ref == null ? null : _token(ref);
+
+      // A shared external reference for two different account names is
+      // ambiguous: silently skipping one would post its movements to another.
+      if (normalizedRef != null && normalizedRef.isNotEmpty) {
+        final importedOwner = importedRefOwners[normalizedRef];
+        final existingAliasOwners = existingAccounts.where((account) =>
+            _token(account.id) == normalizedRef ||
+            _token(account.name) == normalizedRef);
+        final conflictsWithExistingAlias = existingAliasOwners.any(
+            (account) => _token(account.name) != normalizedName);
+        final conflictsWithBatchName =
+            batchNameKeys.contains(normalizedRef) &&
+            normalizedRef != normalizedName;
+        if ((importedOwner != null && importedOwner != normalizedName) ||
+            conflictsWithExistingAlias || conflictsWithBatchName) {
+          issues.add(ImportIssue(
+            section: 'accounts',
+            rowNumber: rowNumber,
+            message: 'المرجع الخارجي مرتبط بحساب مختلف؛ '
+                'يجب تصحيح المراجع قبل الاستيراد.',
+            blocking: true,
+          ));
+          continue;
+        }
+        importedRefOwners[normalizedRef] = normalizedName;
+      }
 
       final duplicate = existingByName.containsKey(normalizedName) ||
           importedNames.contains(normalizedName) ||

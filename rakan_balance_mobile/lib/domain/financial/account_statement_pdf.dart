@@ -159,7 +159,8 @@ class AccountStatementPdf {
                 pw.SizedBox(height: 3),
                 pw.Text(
                   '${MoneyUtils.formatMinorAmount(value)} ر.س',
-                  style: const pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  // ignore: prefer_const_constructors
+                  style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
                 ),
               ],
             ),
@@ -182,7 +183,8 @@ class AccountStatementPdf {
                   child: pw.Text(
                     text,
                     textAlign: pw.TextAlign.center,
-                    style: const pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+                    // ignore: prefer_const_constructors
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                   ),
                 ))
             .toList(),
@@ -233,7 +235,8 @@ class AccountStatementPdf {
               children: [
                 pw.Text(
                   'راكان بلانس | RAKAN BALANCE',
-                  style: const pw.TextStyle(
+                  // ignore: prefer_const_constructors
+                  style: pw.TextStyle(
                     fontSize: 10,
                     fontWeight: pw.FontWeight.bold,
                   ),
@@ -241,7 +244,8 @@ class AccountStatementPdf {
                 pw.SizedBox(height: 4),
                 pw.Text(
                   'كشف حساب: ${data.accountName}',
-                  style: const pw.TextStyle(
+                  // ignore: prefer_const_constructors
+                  style: pw.TextStyle(
                     fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
                   ),
