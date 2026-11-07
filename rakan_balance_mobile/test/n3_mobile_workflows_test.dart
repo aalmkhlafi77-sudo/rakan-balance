@@ -120,4 +120,50 @@ void main() {
       await db.close();
     }
   });
+  test('general notes can be created, updated and deleted independently', () async {
+    final db = await DatabaseHelper.initInMemoryDatabase();
+    final state = AppStateNotifier.forTesting(db);
+    try {
+      await state.reloadWorkspace();
+      await state.createGeneralNote('ملاحظة عامة');
+      expect(state.notes.single.content, 'ملاحظة عامة');
+      final id = state.notes.single.id;
+      await state.updateGeneralNote(id, 'تم التعديل');
+      expect(state.notes.single.content, 'تم التعديل');
+      await state.deleteGeneralNote(id);
+      expect(state.notes, isEmpty);
+    } finally {
+      state.dispose();
+      await db.close();
+    }
+  });
+
+  test('manual due reminder can be created, completed and deleted', () async {
+    final db = await DatabaseHelper.initInMemoryDatabase();
+    final state = AppStateNotifier.forTesting(db);
+    try {
+      await state.reloadWorkspace();
+      await state.createAccount(name: 'حساب متابعة', categoryName: 'عام',
+        openingBalanceMinor: 0);
+      await state.createDue(
+        accountId: state.accounts.single.id,
+        entryType: EntryType.owedByAccount,
+        dueDate: '2026-11-30', amountMinor: 1000);
+      expect(state.dues.length, 1);
+      await state.createReminder(
+        dueId: state.dues.single.id,
+        remindAt: '2026-11-20', templateText: 'متابعة الاستحقاق');
+      expect(state.reminders.single.isCompleted, false);
+      final id = state.reminders.single.id;
+      await state.setReminderCompleted(id, true);
+      expect(state.reminders.single.isCompleted, true);
+      await state.deleteReminder(id);
+      expect(state.reminders, isEmpty);
+      expect(state.transactions, isEmpty); // Reminders are non-financial.
+    } finally {
+      state.dispose();
+      await db.close();
+    }
+  });
+
 }
