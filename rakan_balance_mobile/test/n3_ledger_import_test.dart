@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rakan_balance_mobile/data/sqlite/database_helper.dart';
 import 'package:rakan_balance_mobile/data/sqlite/sqlite_storage_adapter.dart';
@@ -11,6 +13,23 @@ void main() {
   setUpAll(() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+  });
+
+  test('generated-style UTF-8 BOM CSV headers are recognized', () async {
+    final csv = '\uFEFFexternalRef,name,category,openingBalance,phone,notes\n'
+        'A-001,أحمد,أفراد,0.00,0500000000,';
+    final preview = await LedgerImportService.previewFile(
+      bytes: Uint8List.fromList(utf8.encode(csv)),
+      fileName: 'accounts.csv',
+      existingAccounts: const [],
+      existingTransactions: const [],
+    );
+
+    expect(preview.blockingIssues, isEmpty);
+    expect(preview.accounts, hasLength(1));
+    expect(preview.accounts.single.externalRef, 'A-001');
+    expect(preview.accounts.single.name, 'أحمد');
+    expect(preview.canCommit, true);
   });
 
   test('preview detects duplicates and resolves imported account references', () {
