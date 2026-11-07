@@ -130,8 +130,12 @@ jobs:
           set -euo pipefail
           python3 -u - <<'PY'
           import os, subprocess, threading
-          args = ["flutter", "test", "integration_test/app_smoke_test.dart",
-                  "-d", os.environ["DEVICE_UDID"], "-r", "expanded"]
+          # Use the explicit integration-driver VM service bridge, not the
+          # iOS flutter-test runner that previously stalled after Xcode build.
+          args = ["flutter", "drive",
+                  "--driver=test_driver/integration_test.dart",
+                  "--target=integration_test/app_smoke_test.dart",
+                  "-d", os.environ["DEVICE_UDID"], "--verbose"]
           print("SIM_PHASE: start Flutter integration test", flush=True)
           proc = subprocess.Popen(args, stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, text=True, bufsize=1)
