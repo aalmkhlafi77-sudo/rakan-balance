@@ -194,8 +194,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     try {
       await state.deleteRegularTransaction(tx.id);
     } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر حذف الحركة: $e')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر حذف الحركة: $e')));
+      }
     }
   }
 }
