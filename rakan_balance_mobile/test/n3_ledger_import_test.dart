@@ -88,6 +88,26 @@ void main() {
     expect(committed, contains('الحركات المستوردة,3'));
   });
 
+  test('mixed CSV preserves the original source row in validation issues', () async {
+    final csv = 'recordType,externalRef,name,category,openingBalance,accountRef,entryType,amount,date,description\n'
+        'account,A-1,عميل,عام,0.00,,,,,\n'
+        'unknown,,,,,,,,,سجل غير معروف\n'
+        'transaction,,,,,A-1,لك,5.00,2026-11-07,فاتورة';
+
+    final preview = await LedgerImportService.previewFile(
+      bytes: Uint8List.fromList(utf8.encode(csv)),
+      fileName: 'mixed.csv',
+      existingAccounts: const [],
+      existingTransactions: const [],
+    );
+
+    expect(preview.accounts, hasLength(1));
+    expect(preview.transactions, hasLength(1));
+    expect(preview.blockingIssues, hasLength(1));
+    expect(preview.blockingIssues.single.rowNumber, 3);
+    expect(preview.blockingIssues.single.message, contains('نوع السجل غير معروف'));
+  });
+
   test('preview detects duplicates and resolves imported account references', () {
     final existingAccount = AccountModel(
       id: 'existing',
