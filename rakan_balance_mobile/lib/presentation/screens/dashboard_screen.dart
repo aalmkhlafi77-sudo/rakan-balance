@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../domain/financial/balance_calculator.dart';
+import '../../domain/financial/due_followup_calculator.dart';
 import '../../domain/financial/money_utils.dart';
 import '../state/app_state_notifier.dart';
 
@@ -20,7 +21,10 @@ class DashboardScreen extends StatelessWidget {
       transactions: state.transactions,
     );
 
-    final openDuesCount = state.dues.where((d) => d.remainingAmountMinor > 0).length;
+    final dueSummary = DueFollowUpCalculator.summarize(
+      state.dues,
+      today: DateTime.now(),
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -103,15 +107,28 @@ class DashboardScreen extends StatelessWidget {
 
           // Dues Summary Alert
           Card(
-            color: openDuesCount > 0 ? Colors.orange.shade50 : Colors.grey.shade100,
+            color: dueSummary.overdueCount > 0
+                ? Colors.red.shade50
+                : dueSummary.openCount > 0
+                    ? Colors.orange.shade50
+                    : Colors.grey.shade100,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
-              leading: const Icon(Icons.event_note, color: Colors.orange),
+              leading: Icon(
+                Icons.event_note,
+                color: dueSummary.overdueCount > 0 ? Colors.red : Colors.orange,
+              ),
               title: const Text('متابعة الاستحقاقات والسداد', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(
-                openDuesCount > 0
-                    ? 'يوجد $openDuesCount استحقاق قائم يتطلب المتابعة'
-                    : 'لا توجد استحقاقات قائمة حالياً',
+                dueSummary.openCount == 0
+                    ? 'لا توجد استحقاقات قائمة حالياً'
+                    : dueSummary.overdueCount > 0
+                        ? '${dueSummary.overdueCount} متأخر • '
+                            '${dueSummary.dueTodayCount} مستحق اليوم • '
+                            '${dueSummary.dueSoonCount} قريب خلال 7 أيام'
+                        : '${dueSummary.openCount} استحقاق قائم • '
+                            '${dueSummary.dueTodayCount} اليوم • '
+                            '${dueSummary.dueSoonCount} قريب خلال 7 أيام',
               ),
             ),
           ),
