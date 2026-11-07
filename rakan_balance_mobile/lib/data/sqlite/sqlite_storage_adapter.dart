@@ -263,8 +263,9 @@ class SqliteStorageAdapter {
   /// Replace real data atomically after BackupValidator has accepted the bundle.
   /// Convert JSON arrays and booleans to SQLite storage values. Never erase demo data.
   Future<void> atomicRestoreBackup(Map<String, dynamic> bundleData) async {
-    List<Map<String, dynamic>> rows(String field) {
+    List<Map<String, dynamic>> rows(String field, {bool optional = false}) {
       final value = bundleData[field];
+      if (optional && value == null) return [];
       if (value is! List) throw FormatException('بيانات $field ناقصة أو غير صالحة.');
       return value.map((row) => Map<String, dynamic>.from(row as Map)).toList();
     }
@@ -274,9 +275,9 @@ class SqliteStorageAdapter {
     final movements = rows('transactions');
     final attachments = rows('attachments');
     final notes = rows('notes');
-    final dues = rows('dues');
-    final allocations = rows('allocations');
-    final reminders = rows('reminders');
+    final dues = rows('dues', optional: true);
+    final allocations = rows('allocations', optional: true);
+    final reminders = rows('reminders', optional: true);
 
     await _db.transaction((txn) async {
       // Foreign-key children first, parents last. A failure rolls back all deletes.
