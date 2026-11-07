@@ -20,6 +20,7 @@ class _TransferScreenState extends State<TransferScreen> {
   final _descController = TextEditingController();
   String _date = DateTime.now().toIso8601String().split('T')[0];
   String? _error;
+  bool _isSubmitting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +156,8 @@ class _TransferScreenState extends State<TransferScreen> {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
-            onPressed: () async {
+            onPressed: _isSubmitting ? null : () async {
+              if (_isSubmitting) return;
               setState(() => _error = null);
               final amountRes = MoneyUtils.toMinorUnits(_amountController.text);
               if (!amountRes.success) {
@@ -182,6 +184,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 return;
               }
 
+              setState(() => _isSubmitting = true);
               try {
                 await state.createTransfer(input);
                 if (mounted) {
@@ -192,10 +195,14 @@ class _TransferScreenState extends State<TransferScreen> {
                   _descController.clear();
                 }
               } catch (e) {
-                setState(() => _error = e.toString());
+                if (mounted) setState(() => _error = e.toString());
+              } finally {
+                if (mounted) setState(() => _isSubmitting = false);
               }
             },
-            child: const Text('تأكيد تنفيذ الحركة البينية الذرية', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: _isSubmitting
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('تأكيد تنفيذ الحركة البينية الذرية', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
