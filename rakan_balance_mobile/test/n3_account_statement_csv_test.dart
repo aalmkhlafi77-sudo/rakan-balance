@@ -88,4 +88,26 @@ void main() {
       fromDate: '2026-12-01', toDate: '2026-11-01'), throwsArgumentError);
   });
 
+
+  test('transfer rows include the counterparty context used by the web statement', () {
+    final source = AccountModel(
+      id: 'src', name: 'المصدر', categoryId: 'c',
+      openingBalanceMinor: 5000, createdAt: '', updatedAt: '');
+    final destination = AccountModel(
+      id: 'dst', name: 'الوجهة', categoryId: 'c',
+      openingBalanceMinor: 0, createdAt: '', updatedAt: '');
+    final transfer = TransactionModel(
+      id: 't1', accountId: 'src', entryType: EntryType.owedToAccount,
+      amountMinor: 1000, date: '2026-11-07', description: 'نقل',
+      attachmentIds: const [], transferId: 'tr-1',
+      transferRole: TransferRole.source, counterpartyAccountId: 'dst',
+      createdAt: '', updatedAt: '');
+    final csv = AccountStatementCsv.build(
+      account: source,
+      accounts: [source, destination],
+      transactions: [transfer],
+    );
+    expect(csv, contains('نقل مديونية إلى: الوجهة'));
+  });
+
 }
