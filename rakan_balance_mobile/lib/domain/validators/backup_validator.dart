@@ -76,9 +76,9 @@ class BackupValidator {
       }
 
       // Validate the cross-platform schema before creating model instances.
-      if (accountsList is! List || categoriesList is! List ||
-          transactionsList is! List || attachmentsList is! List ||
-          notesList is! List) {
+      if (data['accounts'] is! List || data['categories'] is! List ||
+          data['transactions'] is! List || data['attachments'] is! List ||
+          data['notes'] is! List) {
         return (isValid: false, error: 'بيانات النسخة ليست قوائم صالحة.', parsedBundle: null);
       }
 
