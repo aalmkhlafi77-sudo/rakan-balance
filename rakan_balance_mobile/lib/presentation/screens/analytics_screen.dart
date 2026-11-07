@@ -217,7 +217,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ),
               isThreeLine: true,
               trailing: Text(
-                '${MoneyUtils.formatMinorAmount(row.netMinor)}',
+                MoneyUtils.formatMinorAmount(row.netMinor),
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
