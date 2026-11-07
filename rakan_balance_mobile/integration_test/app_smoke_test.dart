@@ -15,12 +15,15 @@ void main() {
 
   testWidgets('launches and navigates core mobile screens on simulator',
       (tester) async {
+    debugPrint('SMOKE_PHASE: app launch');
     app.main();
     await _settle(tester);
+    debugPrint('SMOKE_PHASE: dashboard rendered');
 
     expect(find.text('لوحة التحكم والملخص المالي'), findsOneWidget);
     expect(find.text('الرئيسية'), findsOneWidget);
 
+    debugPrint('SMOKE_PHASE: open accounts');
     await tester.tap(find.text('الحسابات'));
     await _settle(tester);
     expect(find.text('دليل الحسابات والملاحظات الخاصة'), findsOneWidget);
@@ -28,10 +31,12 @@ void main() {
 
     final menu = find.byIcon(Icons.menu);
     expect(menu, findsOneWidget);
+    debugPrint('SMOKE_PHASE: open navigation drawer');
     await tester.tap(menu);
     await _settle(tester);
 
     expect(find.text('راكان بلانس — الأقسام'), findsOneWidget);
+    debugPrint('SMOKE_PHASE: open backup screen');
     await tester.tap(find.text('النسخ والاستعادة'));
     await _settle(tester);
 
@@ -40,14 +45,17 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.menu));
     await _settle(tester);
+    debugPrint('SMOKE_PHASE: open import screen');
     await tester.tap(find.text('استيراد CSV / Excel'));
     await _settle(tester);
     expect(find.text('استيراد الحسابات والحركات'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.menu));
     await _settle(tester);
+    debugPrint('SMOKE_PHASE: open analytics screen');
     await tester.tap(find.text('التقارير والتحليلات').last);
     await _settle(tester);
     expect(find.text('المركز المالي حسب الشهر'), findsOneWidget);
+    debugPrint('SMOKE_PHASE: all navigation checks passed');
   });
 }
