@@ -20,6 +20,7 @@ import {
   TransactionModel,
   UserSettings,
 } from '../domain/types.ts';
+import { LedgerImportPreview, LedgerImportCommitResult } from '../domain/web_ledger_import.ts';
 import {
   calculateAccountBalance,
   calculateDashboardSummary,
@@ -112,6 +113,7 @@ interface AppContextType {
   purgeDemoData: () => Promise<void>;
   atomicRestoreData: (bundleData: BackupBundle['data']) => Promise<void>;
   rollbackLastRestore: () => Promise<boolean>;
+  importLedger: (preview: LedgerImportPreview) => Promise<LedgerImportCommitResult>;
 
   // App lock & Security
   isLocked: boolean;
@@ -777,6 +779,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return ok;
   };
 
+  const importLedger = async (
+    preview: LedgerImportPreview
+  ): Promise<LedgerImportCommitResult> => {
+    if (!preview.canCommit) {
+      throw new Error('المعاينة تحتوي على أخطاء مانعة أو لا تحتوي على سجلات جديدة.');
+    }
+    const result = await dbStorage.importLedgerAtomic(preview, activeScope);
+    await loadWorkspaceData(activeScope);
+    return result;
+  };
+
   // =========================================================================
   // App Lock & Security
   // =========================================================================
@@ -893,6 +906,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         purgeDemoData,
         atomicRestoreData,
         rollbackLastRestore,
+        importLedger,
         isLocked,
         hasPinSet: Boolean(pinAuth.hash),
         unlockWithPin,

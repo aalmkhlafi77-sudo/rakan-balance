@@ -548,6 +548,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                   alt={previewAttachment.name}
                   className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-sm"
                 />
+              ) : previewAttachment.mime.includes('pdf') ? (
+                <iframe
+                  src={previewAttachment.url}
+                  title={previewAttachment.name}
+                  className="w-full h-[60vh] rounded-lg border border-slate-200 dark:border-slate-800"
+                />
               ) : (
                 <div className="text-center py-8">
                   <p className="text-xs text-slate-500 mb-3">

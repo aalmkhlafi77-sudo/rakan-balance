@@ -153,6 +153,8 @@ export function formatMinorAmount(minor: number, absolute: boolean = false): str
   return parts.join('.');
 }
 
+export const formatHalalaAmount = formatMinorAmount;
+
 /**
  * Formats a monetary amount with currency symbol and Arabic presentation
  * Example: 15025 -> "150.25 ر.س"

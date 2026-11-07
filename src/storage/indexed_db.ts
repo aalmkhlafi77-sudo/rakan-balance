@@ -22,6 +22,7 @@ import {
   UserSettings,
 } from '../domain/types.ts';
 import { validateTransferPairs } from '../domain/inter_account_transfer.ts';
+import { LedgerImportPreview, LedgerImportCommitResult } from '../domain/web_ledger_import.ts';
 
 export const DB_NAME = 'RakanBalanceDB_v2';
 export const DB_VERSION = 3; // N2: due schedules, payment allocations and manual reminders
@@ -948,6 +949,205 @@ export class IndexedDBStorage {
 
     await this.atomicRestore(latest.data);
     return true;
+  }
+
+  /**
+   * WEB-F1: Executes an atomic import of accounts and transactions inside ONE IndexedDB transaction.
+   * Rollback occurs automatically if any IDB operation or integrity check fails.
+   */
+  public async importLedgerAtomic(
+    preview: LedgerImportPreview,
+    activeScope: 'real' | 'demo'
+  ): Promise<LedgerImportCommitResult> {
+    if (!preview.canCommit) {
+      throw new Error('لا يمكن تنفيذ استيراد يحتوي على أخطاء مانعة أو لا يحتوي على سجلات جديدة.');
+    }
+
+    const isDemo = activeScope === 'demo';
+    const stores = isDemo ? STORES_DEMO : STORES_REAL;
+    const db = await this.getDB();
+
+    const storesToLock = [stores.ACCOUNTS, stores.CATEGORIES, stores.TRANSACTIONS];
+
+    function normToken(val: any): string {
+      return (val ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\uFEFF/g, '')
+        .replace(/﻿/g, '')
+        .replace(/[\s_\-]+/g, '');
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storesToLock, 'readwrite');
+
+      tx.onerror = () => {
+        reject(new Error(`فشل استيراد البيانات: ${tx.error?.message || 'خطأ غير معروف'}`));
+      };
+
+      tx.onabort = () => {
+        reject(new Error('تم إلغاء عملية الاستيراد الذرية وتراجعت البيانات بالكامل 100%.'));
+      };
+
+      try {
+        const accStore = tx.objectStore(stores.ACCOUNTS);
+        const catStore = tx.objectStore(stores.CATEGORIES);
+        const txStore = tx.objectStore(stores.TRANSACTIONS);
+
+        const catReq = catStore.getAll();
+        const accReq = accStore.getAll();
+        const txReq = txStore.getAll();
+
+        catReq.onsuccess = () => {
+          const categoryRows: CategoryModel[] = catReq.result || [];
+          accReq.onsuccess = () => {
+            const accountRows: AccountModel[] = accReq.result || [];
+            txReq.onsuccess = () => {
+              const transactionRows: TransactionModel[] = txReq.result || [];
+
+              const categoryByName: Record<string, string> = {};
+              for (const row of categoryRows) {
+                categoryByName[normToken(row.name)] = row.id;
+              }
+
+              const accountByName: Record<string, string> = {};
+              const accountById: Record<string, string> = {};
+              for (const account of accountRows) {
+                accountByName[normToken(account.name)] = account.id;
+                accountById[normToken(account.id)] = account.id;
+              }
+              const accountByExternalRef: Record<string, string> = {};
+
+              const transactionSignatures = new Set<string>();
+              for (const txItem of transactionRows) {
+                transactionSignatures.add(
+                  `${normToken(txItem.accountId)}|${txItem.entryType}|${txItem.amountMinor}|${txItem.date}|${txItem.description.trim()}`
+                );
+              }
+
+              let importedAccounts = 0;
+              let skippedAccounts = 0;
+              let importedTransactions = 0;
+              let skippedTransactions = 0;
+
+              const nowIso = new Date().toISOString();
+
+              for (const draft of preview.accounts) {
+                const nameKey = normToken(draft.name);
+                const refKey = draft.externalRef ? normToken(draft.externalRef) : null;
+
+                const existingId = accountByName[nameKey];
+                if (draft.duplicate || existingId) {
+                  const resolvedId = existingId || accountByName[nameKey];
+                  if (resolvedId && refKey) {
+                    accountByExternalRef[refKey] = resolvedId;
+                  }
+                  skippedAccounts++;
+                  continue;
+                }
+
+                const categoryKey = normToken(draft.categoryName);
+                let categoryId = categoryByName[categoryKey];
+                if (!categoryId) {
+                  categoryId = `cat_imp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                  const newCategory: CategoryModel = {
+                    id: categoryId,
+                    name: draft.categoryName.trim(),
+                    sortOrder: categoryRows.length + 1,
+                    isDemo,
+                  };
+                  catStore.put(newCategory);
+                  categoryByName[categoryKey] = categoryId;
+                }
+
+                const accountId = `acc_imp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                const newAccount: AccountModel = {
+                  id: accountId,
+                  name: draft.name.trim(),
+                  parentId: null,
+                  categoryId,
+                  openingBalanceMinor: draft.openingBalanceMinor,
+                  status: 'active',
+                  phone: draft.phone?.trim(),
+                  notes: draft.notes?.trim(),
+                  isDemo,
+                  createdAt: nowIso,
+                  updatedAt: nowIso,
+                };
+
+                accStore.put(newAccount);
+                accountByName[nameKey] = accountId;
+                accountById[normToken(accountId)] = accountId;
+                if (refKey) {
+                  accountByExternalRef[refKey] = accountId;
+                }
+                importedAccounts++;
+              }
+
+              for (const draft of preview.transactions) {
+                if (draft.duplicate) {
+                  skippedTransactions++;
+                  continue;
+                }
+
+                const refKey = normToken(draft.accountRef);
+                const accountId =
+                  accountById[refKey] ||
+                  accountByExternalRef[refKey] ||
+                  accountByName[refKey];
+
+                if (!accountId) {
+                  tx.abort();
+                  reject(
+                    new Error(
+                      `تعذر ربط الحركة في الصف ${draft.sourceRow} بحساب موجود.`
+                    )
+                  );
+                  return;
+                }
+
+                const signature = `${normToken(accountId)}|${draft.entryType}|${draft.amountMinor}|${draft.date}|${draft.description.trim()}`;
+                if (transactionSignatures.has(signature)) {
+                  skippedTransactions++;
+                  continue;
+                }
+                transactionSignatures.add(signature);
+
+                const newTx: TransactionModel = {
+                  id: `tx_imp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  accountId,
+                  entryType: draft.entryType,
+                  amountMinor: draft.amountMinor,
+                  date: draft.date,
+                  description: draft.description.trim(),
+                  notes: draft.notes?.trim(),
+                  attachmentIds: [],
+                  isDemo,
+                  createdAt: nowIso,
+                  updatedAt: nowIso,
+                };
+
+                txStore.put(newTx);
+                importedTransactions++;
+              }
+
+              tx.oncomplete = () => {
+                resolve({
+                  importedAccounts,
+                  skippedAccounts,
+                  importedTransactions,
+                  skippedTransactions,
+                });
+              };
+            };
+          };
+        };
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    });
   }
 }
 
