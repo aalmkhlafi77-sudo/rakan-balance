@@ -39,7 +39,13 @@ class RakanBalanceApp extends StatelessWidget {
             ],
             home: state.isLoading
                 ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-                : (state.isPinLocked ? const PinLockScreen() : const MainShellScreen()),
+                : (state.initializationError != null
+                    ? Scaffold(body: Center(child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(state.initializationError!,
+                          textAlign: TextAlign.center),
+                      )))
+                    : (state.isPinLocked ? const PinLockScreen() : const MainShellScreen())),
           );
         },
       ),
