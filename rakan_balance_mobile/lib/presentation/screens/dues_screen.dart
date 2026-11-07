@@ -18,6 +18,7 @@ class _DuesScreenState extends State<DuesScreen> {
   final _dueDateController = TextEditingController(text: DateTime.now().toIso8601String().split('T')[0]);
   final _notesController = TextEditingController();
   String? _error;
+  bool _isCreatingDue = false;
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +88,8 @@ class _DuesScreenState extends State<DuesScreen> {
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton(
-                    onPressed: () async {
+                    onPressed: _isCreatingDue ? null : () async {
+                      if (_isCreatingDue) return;
                       setState(() => _error = null);
                       final parseRes = MoneyUtils.toMinorUnits(_amountController.text);
                       if (!parseRes.success || parseRes.minor <= 0 || _selectedAccountId == null) {
@@ -95,6 +97,7 @@ class _DuesScreenState extends State<DuesScreen> {
                         return;
                       }
 
+                      setState(() => _isCreatingDue = true);
                       try {
                         await state.createDue(
                           accountId: _selectedAccountId!,
@@ -103,18 +106,20 @@ class _DuesScreenState extends State<DuesScreen> {
                           amountMinor: parseRes.minor,
                           notes: _notesController.text,
                         );
-                        _amountController.clear();
-                        _notesController.clear();
                         if (mounted) {
+                          _amountController.clear();
+                          _notesController.clear();
                           ScaffoldMessenger.of(this.context).showSnackBar(
                             const SnackBar(content: Text('تم تسجيل الاستحقاق بنجاح دون حركة مالية.')),
                           );
                         }
                       } catch (e) {
-                        setState(() => _error = e.toString());
+                        if (mounted) setState(() => _error = e.toString());
+                      } finally {
+                        if (mounted) setState(() => _isCreatingDue = false);
                       }
                     },
-                    child: const Text('حفظ الاستحقاق'),
+                    child: Text(_isCreatingDue ? 'جارٍ حفظ الاستحقاق...' : 'حفظ الاستحقاق'),
                   ),
                 ],
               ),
@@ -209,55 +214,75 @@ class _DuesScreenState extends State<DuesScreen> {
     );
   }
 
-  void _showSettleModal(BuildContext context, String dueId, int maxMinor) {
+  Future<void> _showSettleModal(BuildContext context, String dueId, int maxMinor) async {
     final payController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('تسجيل سداد جزئي أو كامل'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('المتبقي للاستحقاق: ${MoneyUtils.formatMinorAmount(maxMinor)} ر.س'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: payController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'مبلغ الدفعة بالريال'),
+    final state = context.read<AppStateNotifier>();
+    var isSettling = false;
+    String? error;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => StatefulBuilder(
+          builder: (ctx, refresh) => AlertDialog(
+            title: const Text('تسجيل سداد جزئي أو كامل'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('المتبقي للاستحقاق: ${MoneyUtils.formatMinorAmount(maxMinor)} ر.س'),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: payController,
+                  enabled: !isSettling,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'مبلغ الدفعة بالريال'),
+                ),
+                if (error != null)
+                  Text(error!, style: const TextStyle(color: Colors.red)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSettling ? null : () => Navigator.pop(ctx),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: isSettling ? null : () async {
+                  // A synchronous guard prevents a second callback before rebuild.
+                  if (isSettling) return;
+                  final res = MoneyUtils.toMinorUnits(payController.text);
+                  if (!res.success || res.minor <= 0 || res.minor > maxMinor) {
+                    refresh(() => error = 'المبلغ المدخل غير صالح أو يتجاوز المتبقي.');
+                    return;
+                  }
+                  refresh(() { isSettling = true; error = null; });
+                  try {
+                    await state.settleDue(
+                      dueId: dueId,
+                      amountMinor: res.minor,
+                      date: DateTime.now().toIso8601String().split('T')[0],
+                    );
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (mounted) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(content: Text('تم تسجيل حركة سداد واحدة بنجاح.')),
+                      );
+                    }
+                  } catch (e) {
+                    if (ctx.mounted) refresh(() => error = e.toString());
+                  } finally {
+                    if (ctx.mounted) refresh(() => isSettling = false);
+                  }
+                },
+                child: Text(isSettling ? 'جارٍ تسجيل السداد...' : 'تأكيد السداد'),
               ),
             ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () async {
-                final res = MoneyUtils.toMinorUnits(payController.text);
-                if (!res.success || res.minor <= 0 || res.minor > maxMinor) {
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(content: Text('المبلغ المدخل غير صالح أو يتجاوز المتبقي.')),
-                  );
-                  return;
-                }
-                final state = context.read<AppStateNotifier>();
-                await state.settleDue(
-                  dueId: dueId,
-                  amountMinor: res.minor,
-                  date: DateTime.now().toIso8601String().split('T')[0],
-                );
-                if (mounted && ctx.mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(content: Text('تم تسجيل حركة سداد واحدة بنجاح.')),
-                  );
-                }
-              },
-              child: const Text('تأكيد السداد'),
-            ),
-          ],
-        );
-      },
-    );
+        ),
+      );
+    } finally {
+      payController.dispose();
+    }
   }
   Future<void> _deleteUnpaidDue(BuildContext context, String dueId) async {
     final state = context.read<AppStateNotifier>();
