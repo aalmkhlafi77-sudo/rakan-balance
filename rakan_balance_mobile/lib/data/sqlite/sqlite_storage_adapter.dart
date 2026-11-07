@@ -4,6 +4,7 @@ import '../../domain/models/account_model.dart';
 import '../../domain/financial/money_utils.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../domain/financial/inter_account_transfer_engine.dart';
+import '../../domain/importing/ledger_import_service.dart';
 import '../../domain/models/due_item_model.dart';
 import '../../domain/models/transaction_model.dart';
 import '../../domain/models/transfer_model.dart';
@@ -290,6 +291,178 @@ class SqliteStorageAdapter {
       }, where: 'id = ?', whereArgs: [txId]);
       await txn.delete(TablesSchema.attachments,
         where: 'id = ?', whereArgs: [attachmentId]);
+    });
+  }
+
+  // =========================================================================
+  // N3.7: Atomic CSV/XLSX Ledger Import
+  // =========================================================================
+
+  String _importKey(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s_\-]+'), '');
+
+  String _newImportId(String prefix) =>
+      '${prefix}_${DateTime.now().microsecondsSinceEpoch}_'
+      '${Random.secure().nextInt(1 << 32)}';
+
+  Future<LedgerImportCommitResult> importLedgerAtomic({
+    required LedgerImportPreview preview,
+    required bool isDemo,
+  }) async {
+    if (preview.blockingIssues.isNotEmpty) {
+      throw StateError('لا يمكن تنفيذ استيراد يحتوي على أخطاء مانعة.');
+    }
+
+    final accountsTable =
+        isDemo ? TablesSchema.demoAccounts : TablesSchema.accounts;
+    final categoriesTable =
+        isDemo ? TablesSchema.demoCategories : TablesSchema.categories;
+    final transactionsTable =
+        isDemo ? TablesSchema.demoTransactions : TablesSchema.transactions;
+
+    return _db.transaction((txn) async {
+      final categoryRows = await txn.query(categoriesTable);
+      final accountRows = await txn.query(accountsTable);
+      final transactionRows = await txn.query(transactionsTable);
+
+      final categoryByName = <String, String>{};
+      for (final row in categoryRows) {
+        categoryByName[_importKey(row['name'] as String)] = row['id'] as String;
+      }
+
+      final accountByName = <String, String>{};
+      final accountById = <String, String>{};
+      for (final row in accountRows) {
+        final account = AccountModel.fromMap(row);
+        accountByName[_importKey(account.name)] = account.id;
+        accountById[_importKey(account.id)] = account.id;
+      }
+      final accountByExternalRef = <String, String>{};
+
+      final transactionSignatures = <String>{};
+      for (final row in transactionRows) {
+        final tx = TransactionModel.fromMap(row);
+        transactionSignatures.add(
+          '${_importKey(tx.accountId)}|${tx.entryType.name}|'
+          '${tx.amountMinor}|${tx.date}|${tx.description.trim()}',
+        );
+      }
+
+      var importedAccounts = 0;
+      var skippedAccounts = 0;
+      var importedTransactions = 0;
+      var skippedTransactions = 0;
+
+      for (final draft in preview.accounts) {
+        final nameKey = _importKey(draft.name);
+        final refKey = draft.externalRef == null
+            ? null
+            : _importKey(draft.externalRef!);
+
+        final existingId = accountByName[nameKey];
+        if (draft.duplicate || existingId != null) {
+          final resolvedId = existingId ?? accountByName[nameKey];
+          if (resolvedId != null && refKey != null && refKey.isNotEmpty) {
+            accountByExternalRef[refKey] = resolvedId;
+          }
+          skippedAccounts++;
+          continue;
+        }
+
+        final categoryKey = _importKey(draft.categoryName);
+        var categoryId = categoryByName[categoryKey];
+        if (categoryId == null) {
+          categoryId = _newImportId('cat_imp');
+          await txn.insert(
+            categoriesTable,
+            {
+              'id': categoryId,
+              'name': draft.categoryName.trim(),
+              'sortOrder': 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+          categoryByName[categoryKey] = categoryId;
+        }
+
+        final now = DateTime.now().toUtc().toIso8601String();
+        final accountId = _newImportId('acc_imp');
+        final account = AccountModel(
+          id: accountId,
+          name: draft.name.trim(),
+          categoryId: categoryId,
+          openingBalanceMinor: draft.openingBalanceMinor,
+          phone: draft.phone?.trim(),
+          notes: draft.notes?.trim(),
+          createdAt: now,
+          updatedAt: now,
+        );
+        await txn.insert(
+          accountsTable,
+          account.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        accountByName[nameKey] = accountId;
+        accountById[_importKey(accountId)] = accountId;
+        if (refKey != null && refKey.isNotEmpty) {
+          accountByExternalRef[refKey] = accountId;
+        }
+        importedAccounts++;
+      }
+
+      for (final draft in preview.transactions) {
+        if (draft.duplicate) {
+          skippedTransactions++;
+          continue;
+        }
+
+        final refKey = _importKey(draft.accountRef);
+        final accountId = accountById[refKey] ??
+            accountByExternalRef[refKey] ??
+            accountByName[refKey];
+        if (accountId == null) {
+          throw StateError(
+            'تعذر ربط الحركة في الصف ${draft.sourceRow} بحساب موجود.',
+          );
+        }
+
+        final signature =
+            '${_importKey(accountId)}|${draft.entryType.name}|'
+            '${draft.amountMinor}|${draft.date}|${draft.description.trim()}';
+        if (!transactionSignatures.add(signature)) {
+          skippedTransactions++;
+          continue;
+        }
+
+        final now = DateTime.now().toUtc().toIso8601String();
+        final tx = TransactionModel(
+          id: _newImportId('tx_imp'),
+          accountId: accountId,
+          entryType: draft.entryType,
+          amountMinor: draft.amountMinor,
+          date: draft.date,
+          description: draft.description.trim(),
+          notes: draft.notes?.trim(),
+          attachmentIds: const [],
+          createdAt: now,
+          updatedAt: now,
+        );
+        await txn.insert(
+          transactionsTable,
+          tx.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        importedTransactions++;
+      }
+
+      return LedgerImportCommitResult(
+        importedAccounts: importedAccounts,
+        skippedAccounts: skippedAccounts,
+        importedTransactions: importedTransactions,
+        skippedTransactions: skippedTransactions,
+      );
     });
   }
 
