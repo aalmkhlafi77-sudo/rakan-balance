@@ -37,7 +37,9 @@ class RakanBalanceApp extends StatelessWidget {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            home: state.isPinLocked ? const PinLockScreen() : const MainShellScreen(),
+            home: state.isLoading
+                ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+                : (state.isPinLocked ? const PinLockScreen() : const MainShellScreen()),
           );
         },
       ),
@@ -52,7 +54,27 @@ class MainShellScreen extends StatefulWidget {
   State<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends State<MainShellScreen> {
+class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    if (lifecycle == AppLifecycleState.hidden ||
+        lifecycle == AppLifecycleState.paused) {
+      context.read<AppStateNotifier>().lockIfPinEnabled();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   int _currentIndex = 0;
 
   final List<Widget> _screens = const [
