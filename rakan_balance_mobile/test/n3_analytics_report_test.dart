@@ -245,6 +245,48 @@ void main() {
     expect(november.movementOwedToMinor, 0);
   });
 
+  test('as-of analytics exclude future-dated movements in the current month', () {
+    final accounts = [
+      account(
+        id: 'a',
+        name: 'أ',
+        categoryId: 'c',
+        opening: 10000,
+      ),
+    ];
+    final transactions = [
+      tx(
+        id: 'past',
+        accountId: 'a',
+        type: EntryType.owedByAccount,
+        amount: 2000,
+        date: '2026-11-05',
+      ),
+      tx(
+        id: 'future',
+        accountId: 'a',
+        type: EntryType.owedToAccount,
+        amount: 9000,
+        date: '2026-11-20',
+      ),
+    ];
+
+    final report = AnalyticsReportBuilder.build(
+      accounts: accounts,
+      transactions: transactions,
+      categoryNames: const {'c': 'عام'},
+      throughDate: DateTime.utc(2026, 11, 7),
+      monthCount: 1,
+    );
+
+    expect(report.totalReceivableMinor, 12000);
+    expect(report.totalPayableMinor, 0);
+    expect(report.netMinor, 12000);
+    expect(report.monthly.single.receivableMinor, 12000);
+    expect(report.monthly.single.movementOwedByMinor, 2000);
+    expect(report.monthly.single.movementOwedToMinor, 0);
+  });
+
   test('category report groups current balances by category name', () {
     final report = AnalyticsReportBuilder.build(
       accounts: [
