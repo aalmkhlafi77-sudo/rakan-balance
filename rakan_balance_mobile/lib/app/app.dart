@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import '../presentation/screens/accounts_screen.dart';
+import '../presentation/screens/analytics_screen.dart';
 import '../presentation/screens/backup_restore_screen.dart';
 import '../presentation/screens/import_screen.dart';
 import '../presentation/screens/dashboard_screen.dart';
@@ -90,6 +91,7 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     TransactionsScreen(),
     DuesScreen(),
     StatementsScreen(),
+    AnalyticsScreen(),
     TransferScreen(),
     NotesScreen(),
     BackupRestoreScreen(),
@@ -103,6 +105,7 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     'دفتر الحركات المالية',
     'الاستحقاقات والسداد والتذكيرات',
     'كشف الحساب والتقارير',
+    'التقارير والتحليلات',
     'حركة بينية (نقل مديونية)',
     'الملاحظات العامة',
     'النسخ والاستعادة',
@@ -116,6 +119,7 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     Icons.receipt_long_outlined,
     Icons.event_note_outlined,
     Icons.assessment_outlined,
+    Icons.analytics_outlined,
     Icons.swap_horiz,
     Icons.note_outlined,
     Icons.backup_outlined,
