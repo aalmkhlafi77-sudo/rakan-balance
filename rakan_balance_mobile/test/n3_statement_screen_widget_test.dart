@@ -15,9 +15,11 @@ void main() {
 
   testWidgets('statement screen selects an account and renders financial period metrics',
       (tester) async {
-    final db = await DatabaseHelper.initInMemoryDatabase();
-    final state = AppStateNotifier.forTesting(db);
-    try {
+    // sqflite_ffi performs real asynchronous I/O; keep it outside the
+    // test binding's FakeAsync clock to avoid a stalled widget test.
+    final seeded = await tester.runAsync(() async {
+      final db = await DatabaseHelper.initInMemoryDatabase();
+      final state = AppStateNotifier.forTesting(db);
       await state.reloadWorkspace();
       await state.createAccount(
         name: 'طرف اختبار',
@@ -40,6 +42,11 @@ void main() {
         description: 'سداد',
       );
 
+      return (db: db, state: state);
+    });
+    final db = seeded!.db;
+    final state = seeded.state;
+    try {
       await tester.pumpWidget(
         ChangeNotifierProvider<AppStateNotifier>.value(
           value: state,
@@ -71,8 +78,10 @@ void main() {
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-      state.dispose();
-      await db.close();
+      await tester.runAsync(() async {
+        state.dispose();
+        await db.close();
+      });
     }
   });
 }
