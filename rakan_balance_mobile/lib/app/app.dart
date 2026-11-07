@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import '../presentation/screens/accounts_screen.dart';
 import '../presentation/screens/backup_restore_screen.dart';
+import '../presentation/screens/import_screen.dart';
 import '../presentation/screens/dashboard_screen.dart';
 import '../presentation/screens/dues_screen.dart';
 import '../presentation/screens/notes_screen.dart';
@@ -92,6 +93,7 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     TransferScreen(),
     NotesScreen(),
     BackupRestoreScreen(),
+    ImportScreen(),
     SettingsScreen(),
   ];
 
@@ -104,6 +106,7 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     'حركة بينية (نقل مديونية)',
     'الملاحظات العامة',
     'النسخ والاستعادة',
+    'استيراد CSV / Excel',
     'الإعدادات والمظهر',
   ];
 
@@ -116,6 +119,7 @@ class _MainShellScreenState extends State<MainShellScreen> with WidgetsBindingOb
     Icons.swap_horiz,
     Icons.note_outlined,
     Icons.backup_outlined,
+    Icons.upload_file_outlined,
     Icons.settings_outlined,
   ];
 
