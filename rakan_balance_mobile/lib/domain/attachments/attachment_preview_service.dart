@@ -26,14 +26,14 @@ class AttachmentPreviewService {
   static Uint8List decodeBytes(AttachmentModel attachment) {
     final raw = attachment.effectiveDataUrl.trim();
     if (raw.isEmpty) {
-      throw FormatException('بيانات المرفق فارغة.');
+      throw const FormatException('بيانات المرفق فارغة.');
     }
 
     String encoded;
     if (raw.startsWith('data:')) {
       final expectedPrefix = 'data:${attachment.mimeType};base64,';
       if (!raw.startsWith(expectedPrefix)) {
-        throw FormatException('نوع بيانات المرفق لا يطابق MIME المسجل.');
+        throw const FormatException('نوع بيانات المرفق لا يطابق MIME المسجل.');
       }
       encoded = raw.substring(expectedPrefix.length);
     } else {
@@ -45,15 +45,15 @@ class AttachmentPreviewService {
     try {
       bytes = Uint8List.fromList(base64Decode(encoded));
     } on FormatException {
-      throw FormatException('محتوى Base64 للمرفق غير صالح.');
+      throw const FormatException('محتوى Base64 للمرفق غير صالح.');
     }
 
     if (bytes.isEmpty) {
-      throw FormatException('المرفق لا يحتوي بيانات قابلة للعرض.');
+      throw const FormatException('المرفق لا يحتوي بيانات قابلة للعرض.');
     }
     if (attachment.effectiveSize > 0 &&
         attachment.effectiveSize != bytes.length) {
-      throw FormatException(
+      throw const FormatException(
         'حجم المرفق المخزن لا يطابق حجم البيانات الفعلي.',
       );
     }
@@ -80,7 +80,7 @@ class AttachmentPreviewService {
       try {
         text = utf8.decode(bytes, allowMalformed: false);
       } on FormatException {
-        throw FormatException('ترميز الملف النصي ليس UTF-8 صالحًا.');
+        throw const FormatException('ترميز الملف النصي ليس UTF-8 صالحًا.');
       }
       const maxPreviewChars = 12000;
       if (text.length > maxPreviewChars) {
