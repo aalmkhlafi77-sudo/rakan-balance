@@ -1,3 +1,4 @@
+import 'money_utils.dart';
 import '../models/account_model.dart';
 import '../models/due_item_model.dart';
 import '../models/transaction_model.dart';
@@ -206,8 +207,7 @@ class DueFollowUpCalculator {
     required AccountModel? account,
   }) {
     final name = account?.name ?? 'الحساب';
-    final amount = due.remainingAmountMinor;
-    final riyals = (amount / 100).toStringAsFixed(2);
+    final riyals = MoneyUtils.formatMinorAmount(due.remainingAmountMinor);
     final direction = due.entryType == EntryType.owedByAccount
         ? 'المستحق لنا'
         : 'المستحق علينا';
