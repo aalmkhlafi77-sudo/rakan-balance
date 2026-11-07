@@ -286,6 +286,7 @@ void main() {
         AccountAnalyticsRow(
           accountId: 'a',
           name: '=SUM(A1:A2)',
+          categoryId: 'c',
           categoryName: 'اختبار',
           balanceMinor: 100,
           transactionCount: 0,
