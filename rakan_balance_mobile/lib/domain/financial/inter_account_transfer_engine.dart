@@ -94,6 +94,32 @@ class InterAccountTransferEngine {
   }
 
   /// Validates that a pair of transactions representing an inter-account transfer are completely valid and balanced.
+
+  /// Backups and imports must contain complete pairs, not merely a zero-sum total.
+  /// Unrelated ordinary transactions remain valid without transfer metadata.
+  static ({bool isValid, String? error}) validateTransferJournal(
+      List<TransactionModel> transactions) {
+    final groups = <String, List<TransactionModel>>{};
+    for (final tx in transactions) {
+      if (tx.transferId == null && tx.transferRole == null &&
+          tx.counterpartyAccountId == null) {
+        continue;
+      }
+      if (tx.transferId == null || tx.transferId!.isEmpty ||
+          tx.transferRole == null ||
+          tx.counterpartyAccountId == null ||
+          tx.counterpartyAccountId!.isEmpty) {
+        return (isValid: false, error: 'الحركة البينية تحتوي على بيانات ربط ناقصة.');
+      }
+      groups.putIfAbsent(tx.transferId!, () => <TransactionModel>[]).add(tx);
+    }
+    for (final entry in groups.entries) {
+      final result = validateTransferPair(entry.value);
+      if (!result.isValid) return result;
+    }
+    return (isValid: true, error: null);
+  }
+
   static ({bool isValid, String? error}) validateTransferPair(List<TransactionModel> pair) {
     if (pair.length != 2) {
       return (isValid: false, error: 'الحركة البينية تتطلب قيدين بالضبط.');
