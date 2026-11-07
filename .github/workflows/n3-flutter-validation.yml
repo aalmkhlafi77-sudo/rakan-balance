@@ -51,3 +51,28 @@ jobs:
           sha256sum build/app/outputs/flutter-apk/app-debug.apk
       # GitHub Actions artifact storage is currently over quota.
       # APK upload is intentionally omitted; enable only when quota is restored.
+
+  flutter-ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: rakan_balance_mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Check Xcode and Flutter
+        run: |
+          xcodebuild -version
+          flutter --version
+      - name: Prepare native iOS build files
+        run: flutter create --no-pub --platforms=ios --project-name=rakan_balance_mobile --org=com.rakanbalance .
+      - name: Resolve iOS dependencies
+        run: flutter pub get
+      - name: Build unsigned iOS simulator app
+        run: flutter build ios --simulator --no-codesign
+      - name: Confirm simulator Runner app exists
+        run: test -d build/ios/iphonesimulator/Runner.app
