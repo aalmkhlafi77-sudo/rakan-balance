@@ -55,10 +55,10 @@ class DueFollowUpCalculator {
       DateTime.utc(date.year, date.month, date.day);
 
   static DateTime _parseDate(String date) {
-    final parts = date.split('-');
-    if (parts.length != 3) {
+    if (!MoneyUtils.isValidDateString(date)) {
       throw FormatException('تاريخ الاستحقاق غير صالح: $date');
     }
+    final parts = date.split('-');
     return DateTime.utc(
       int.parse(parts[0]),
       int.parse(parts[1]),
