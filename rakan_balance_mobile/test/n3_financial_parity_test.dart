@@ -262,6 +262,52 @@ void main() {
             .single.signedAmountMinor, 10000);
       } finally { await db.close(); }
     });
+    test('second transfer insert failure rolls back first inserted entry', () async {
+      final db = await dbWithAccounts();
+      try {
+        await db.execute('''
+          CREATE TRIGGER prevent_destination_transfer
+          BEFORE INSERT ON transactions
+          WHEN NEW.transferRole = 'destination'
+          BEGIN
+            SELECT RAISE(ABORT, 'simulated second insert failure');
+          END
+        ''');
+        await expectLater(
+          SqliteStorageAdapter(db).saveTransferAtomic(
+            input: _transfer(3000), isDemo: false),
+          throwsException,
+        );
+        expect(await db.query(TablesSchema.transactions), isEmpty);
+      } finally {
+        await db.close();
+      }
+    });
+    test('overpayment is rejected without changing due or ledger', () async {
+      final db = await dbWithAccounts();
+      try {
+        final due = DueItemModel(id: 'due-overpay', accountId: 'source',
+          entryType: EntryType.owedByAccount, dueDate: _date,
+          originalAmountMinor: 5000, settledAmountMinor: 0, status: 'pending',
+          createdAt: '', updatedAt: '');
+        await db.insert(TablesSchema.dues, due.toMap());
+        await expectLater(
+          SqliteStorageAdapter(db).recordDuePaymentAtomic(
+            dueId: 'due-overpay',
+            payment: _tx('overpay', 'source', EntryType.owedToAccount, 5001),
+            allocation: PaymentAllocationModel(id: 'overpay-allocation',
+              dueItemId: 'due-overpay', paymentTransactionId: 'overpay',
+              amountMinor: 5001),
+            isDemo: false),
+          throwsA(isA<StateError>()),
+        );
+        expect(await db.query(TablesSchema.transactions), isEmpty);
+        expect(await db.query(TablesSchema.paymentAllocations), isEmpty);
+        expect((await db.query(TablesSchema.dues)).single['settledAmountMinor'], 0);
+      } finally {
+        await db.close();
+      }
+    });
     test('valid transfer edit updates both entries in one transaction', () async {
       final db = await dbWithAccounts();
       try {
