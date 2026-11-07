@@ -1,8 +1,12 @@
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../domain/financial/money_utils.dart';
 import '../../domain/models/transaction_model.dart';
+import '../../domain/models/attachment_model.dart';
+import '../../domain/validators/attachment_policy.dart';
 import '../state/app_state_notifier.dart';
 
 /// Regular ledger movements. Transfers and allocated due payments are read-only
@@ -66,14 +70,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     Text('${MoneyUtils.formatMinorAmount(tx.signedAmountMinor)} ر.س',
                       style: TextStyle(color: tx.signedAmountMinor >= 0
                           ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-                    if (!guarded) PopupMenuButton<String>(
+                    PopupMenuButton<String>(
                       onSelected: (action) {
+                        if (action == 'attachments') _openAttachments(context, tx);
                         if (action == 'edit') _openEditor(context, existing: tx);
                         if (action == 'delete') _confirmDelete(context, tx);
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                        PopupMenuItem(value: 'delete', child: Text('حذف')),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'attachments',
+                          child: Text('المرفقات (${tx.attachmentIds.length})'),
+                        ),
+                        if (!guarded)
+                          const PopupMenuItem(value: 'edit', child: Text('تعديل')),
+                        if (!guarded)
+                          const PopupMenuItem(value: 'delete', child: Text('حذف')),
                       ],
                     ),
                   ]),
@@ -175,6 +186,209 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     amount.dispose();
     date.dispose();
     description.dispose();
+  }
+
+  List<int> _attachmentBytes(AttachmentModel attachment) {
+    final raw = attachment.effectiveDataUrl;
+    final comma = raw.indexOf(',');
+    final encoded = comma >= 0 ? raw.substring(comma + 1) : raw;
+    return base64Decode(encoded);
+  }
+
+  Future<void> _downloadAttachment(
+      BuildContext context, AttachmentModel attachment) async {
+    try {
+      final bytes = _attachmentBytes(attachment);
+      final output = await FilePicker.platform.saveFile(
+        dialogTitle: 'حفظ المرفق',
+        fileName: attachment.displayName,
+        bytes: Uint8List.fromList(bytes),
+      );
+      if (context.mounted && output != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم حفظ المرفق: $output')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر حفظ المرفق: $e')));
+      }
+    }
+  }
+
+  Future<void> _openAttachments(
+      BuildContext context, TransactionModel tx) async {
+    final state = context.read<AppStateNotifier>();
+    var attachments = await state.getAttachmentsForTransaction(tx.id);
+    if (!context.mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (modalContext) => StatefulBuilder(
+        builder: (ctx, refresh) {
+          Future<void> reload() async {
+            final loaded = await state.getAttachmentsForTransaction(tx.id);
+            if (ctx.mounted) {
+              refresh(() => attachments = loaded);
+            }
+          }
+
+          Future<void> addAttachment() async {
+            try {
+              final picked = await FilePicker.platform.pickFiles(
+                type: FileType.custom,
+                allowedExtensions: AttachmentPolicy.allowedExtensions,
+                allowMultiple: false,
+                withData: true,
+              );
+              if (picked == null || picked.files.isEmpty) return;
+              final file = picked.files.single;
+              final bytes = file.bytes;
+              if (bytes == null) {
+                throw StateError('تعذر قراءة محتوى الملف المحدد.');
+              }
+              await state.addAttachmentToTransaction(
+                txId: tx.id, originalName: file.name, bytes: bytes);
+              await reload();
+            } catch (e) {
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('تعذر إضافة المرفق: $e')));
+              }
+            }
+          }
+
+          Future<void> removeAttachment(AttachmentModel attachment) async {
+            final approved = await showDialog<bool>(
+              context: ctx,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('حذف المرفق'),
+                content: Text('حذف "${attachment.displayName}" من هذه الحركة؟'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('إلغاء')),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('حذف')),
+                ],
+              ),
+            );
+            if (approved != true) return;
+            try {
+              await state.deleteAttachmentFromTransaction(
+                txId: tx.id, attachmentId: attachment.id);
+              await reload();
+            } catch (e) {
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('تعذر حذف المرفق: $e')));
+              }
+            }
+          }
+
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.72,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('مرفقات الحركة — ${tx.description}',
+                      style: Theme.of(ctx).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    if (state.activeScope != 'real')
+                      const Text(
+                        'المرفقات متاحة للبيانات الحقيقية فقط.',
+                        style: TextStyle(color: Colors.grey)),
+                    OutlinedButton.icon(
+                      onPressed: state.activeScope == 'real' ? addAttachment : null,
+                      icon: const Icon(Icons.attach_file),
+                      label: const Text('إضافة صورة أو مستند'),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: attachments.isEmpty
+                          ? const Center(child: Text('لا توجد مرفقات لهذه الحركة.'))
+                          : ListView.builder(
+                              itemCount: attachments.length,
+                              itemBuilder: (_, index) {
+                                final attachment = attachments[index];
+                                final isImage =
+                                    attachment.mimeType.startsWith('image/');
+                                Widget? preview;
+                                if (isImage) {
+                                  try {
+                                    preview = ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.memory(
+                                        Uint8List.fromList(
+                                          _attachmentBytes(attachment)),
+                                        height: 160,
+                                        width: double.infinity,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) =>
+                                          const SizedBox.shrink(),
+                                      ),
+                                    );
+                                  } catch (_) {
+                                    preview = null;
+                                  }
+                                }
+                                return Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        if (preview != null) ...[
+                                          preview,
+                                          const SizedBox(height: 8),
+                                        ],
+                                        Text(attachment.displayName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                        Text(
+                                          '${attachment.mimeType} • '
+                                          '${(attachment.effectiveSize / 1024).toStringAsFixed(1)} KB',
+                                          style: const TextStyle(
+                                            fontSize: 12, color: Colors.grey)),
+                                        const SizedBox(height: 6),
+                                        Wrap(
+                                          spacing: 8,
+                                          children: [
+                                            OutlinedButton.icon(
+                                              onPressed: () =>
+                                                _downloadAttachment(ctx, attachment),
+                                              icon: const Icon(Icons.download_outlined),
+                                              label: const Text('تنزيل'),
+                                            ),
+                                            TextButton.icon(
+                                              onPressed: () =>
+                                                removeAttachment(attachment),
+                                              icon: const Icon(Icons.delete_outline),
+                                              label: const Text('حذف'),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _confirmDelete(BuildContext context, TransactionModel tx) async {
