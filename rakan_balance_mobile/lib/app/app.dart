@@ -10,6 +10,7 @@ import '../presentation/screens/pin_lock_screen.dart';
 import '../presentation/screens/settings_screen.dart';
 import '../presentation/screens/statements_screen.dart';
 import '../presentation/screens/transfer_screen.dart';
+import '../presentation/screens/transactions_screen.dart';
 import '../presentation/state/app_state_notifier.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
@@ -57,9 +58,10 @@ class _MainShellScreenState extends State<MainShellScreen> {
   final List<Widget> _screens = const [
     DashboardScreen(),
     AccountsScreen(),
-    TransferScreen(),
+    TransactionsScreen(),
     DuesScreen(),
     StatementsScreen(),
+    TransferScreen(),
     NotesScreen(),
     BackupRestoreScreen(),
     SettingsScreen(),
@@ -68,12 +70,25 @@ class _MainShellScreenState extends State<MainShellScreen> {
   final List<String> _titles = const [
     'لوحة التحكم والملخص المالي',
     'دليل الحسابات والملاحظات الخاصة',
-    'حركة بينية (نقل مديونية)',
+    'دفتر الحركات المالية',
     'الاستحقاقات والسداد والتذكيرات',
     'كشف الحساب والتقارير',
+    'حركة بينية (نقل مديونية)',
     'الملاحظات العامة',
-    'النسخ والاستعادة الذرية',
+    'النسخ والاستعادة',
     'الإعدادات والمظهر',
+  ];
+
+  final List<IconData> _icons = const [
+    Icons.dashboard_outlined,
+    Icons.people_outline,
+    Icons.receipt_long_outlined,
+    Icons.event_note_outlined,
+    Icons.assessment_outlined,
+    Icons.swap_horiz,
+    Icons.note_outlined,
+    Icons.backup_outlined,
+    Icons.settings_outlined,
   ];
 
   @override
@@ -94,23 +109,39 @@ class _MainShellScreenState extends State<MainShellScreen> {
         textDirection: TextDirection.rtl,
         child: _screens[_currentIndex],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (idx) => setState(() => _currentIndex = idx),
-        selectedItemColor: AppColors.emerald600,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'الرئيسية'),
-          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'الحسابات'),
-          BottomNavigationBarItem(icon: Icon(Icons.swap_horiz), label: 'بينية'),
-          BottomNavigationBarItem(icon: Icon(Icons.event_note), label: 'الاستحقاقات'),
-          BottomNavigationBarItem(icon: Icon(Icons.assessment), label: 'التقارير'),
-          BottomNavigationBarItem(icon: Icon(Icons.note), label: 'الملاحظات'),
-          BottomNavigationBarItem(icon: Icon(Icons.backup), label: 'النسخ'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'الإعدادات'),
+      drawer: Drawer(child: SafeArea(child: ListView(
+        children: [
+          const Padding(padding: EdgeInsets.all(16),
+            child: Text('راكان بلانس — الأقسام',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+          for (var index = 0; index < _titles.length; index++)
+            ListTile(
+              leading: Icon(_icons[index]),
+              selected: index == _currentIndex,
+              title: Text(_titles[index]),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _currentIndex = index);
+              },
+            ),
         ],
-      ),
+      ))),
+      bottomNavigationBar: _currentIndex < 5
+          ? BottomNavigationBar(
+              currentIndex: _currentIndex,
+              onTap: (idx) => setState(() => _currentIndex = idx),
+              selectedItemColor: AppColors.emerald600,
+              unselectedItemColor: Colors.grey,
+              type: BottomNavigationBarType.fixed,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'الرئيسية'),
+                BottomNavigationBarItem(icon: Icon(Icons.people), label: 'الحسابات'),
+                BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'الحركات'),
+                BottomNavigationBarItem(icon: Icon(Icons.event_note), label: 'الاستحقاقات'),
+                BottomNavigationBarItem(icon: Icon(Icons.assessment), label: 'التقارير'),
+              ],
+            )
+          : null,
     );
   }
 }

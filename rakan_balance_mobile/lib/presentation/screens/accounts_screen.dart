@@ -39,6 +39,17 @@ class _AccountsScreenState extends State<AccountsScreen> {
             onChanged: (val) => setState(() => _searchQuery = val),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(children: [
+            Expanded(child: FilledButton.icon(
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('إضافة حساب جديد'),
+              onPressed: () => _showCreateAccountDialog(context),
+            )),
+          ]),
+        ),
+        const SizedBox(height: 8),
         Expanded(
           child: filteredAccounts.isEmpty
               ? const Center(child: Text('لا توجد حسابات مطابقة'))
@@ -91,6 +102,58 @@ class _AccountsScreenState extends State<AccountsScreen> {
     );
   }
 
+  Future<void> _showCreateAccountDialog(BuildContext context) async {
+    final state = context.read<AppStateNotifier>();
+    final name = TextEditingController();
+    final category = TextEditingController(text: 'عام');
+    final opening = TextEditingController(text: '0.00');
+    final notes = TextEditingController();
+    var saving = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: const Text('إضافة حساب'),
+          content: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'اسم الحساب *')),
+              TextField(controller: category, decoration: const InputDecoration(labelText: 'التصنيف *')),
+              TextField(controller: opening, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: const InputDecoration(labelText: 'الرصيد الافتتاحي بالريال')),
+              TextField(controller: notes, maxLines: 2,
+                decoration: const InputDecoration(labelText: 'ملاحظات خاصة')),
+              if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+            ],
+          )),
+          actions: [
+            TextButton(onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء')),
+            FilledButton(onPressed: saving ? null : () async {
+              final parsed = MoneyUtils.toMinorUnits(opening.text);
+              if (!parsed.success) { refresh(() => error = parsed.error); return; }
+              refresh(() { saving = true; error = null; });
+              try {
+                await state.createAccount(name: name.text, categoryName: category.text,
+                  openingBalanceMinor: parsed.minor, privateNotes: notes.text);
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                if (ctx.mounted) refresh(() => error = e.toString());
+              } finally {
+                if (ctx.mounted) refresh(() => saving = false);
+              }
+            }, child: const Text('حفظ')),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+    category.dispose();
+    opening.dispose();
+    notes.dispose();
+  }
+
   void _showAccountDetailsModal(BuildContext context, AccountModel account) {
     showModalBottomSheet(
       context: context,
@@ -133,14 +196,83 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Center(child: Text('إغلاق')),
-              ),
+              Wrap(spacing: 8, children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await _showEditAccountDialog(context, account);
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('تعديل'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await context.read<AppStateNotifier>().setAccountArchived(
+                        account.id, account.status != 'archived');
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString())));
+                      }
+                    }
+                  },
+                  icon: Icon(account.status == 'archived' ? Icons.unarchive : Icons.archive_outlined),
+                  label: Text(account.status == 'archived' ? 'إلغاء الأرشفة' : 'أرشفة'),
+                ),
+                TextButton(onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إغلاق')),
+              ]),
             ],
           ),
         );
       },
     );
   }
+
+  Future<void> _showEditAccountDialog(BuildContext context, AccountModel account) async {
+    final state = context.read<AppStateNotifier>();
+    final name = TextEditingController(text: account.name);
+    final notes = TextEditingController(text: account.notes ?? '');
+    String? error;
+    var saving = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: const Text('تعديل الحساب والملاحظات الخاصة'),
+          content: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name,
+                decoration: const InputDecoration(labelText: 'اسم الحساب')),
+              TextField(controller: notes, maxLines: 4,
+                decoration: const InputDecoration(labelText: 'الملاحظات الخاصة')),
+              if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+            ],
+          )),
+          actions: [
+            TextButton(onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء')),
+            FilledButton(onPressed: saving ? null : () async {
+              refresh(() { saving = true; error = null; });
+              try {
+                await state.updateAccount(accountId: account.id,
+                  name: name.text, privateNotes: notes.text);
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                if (ctx.mounted) refresh(() => error = e.toString());
+              } finally {
+                if (ctx.mounted) refresh(() => saving = false);
+              }
+            }, child: const Text('حفظ')),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+    notes.dispose();
+  }
+
 }

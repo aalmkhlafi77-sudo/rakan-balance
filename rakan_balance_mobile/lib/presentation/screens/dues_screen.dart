@@ -15,7 +15,7 @@ class _DuesScreenState extends State<DuesScreen> {
   String? _selectedAccountId;
   EntryType _entryType = EntryType.owedByAccount;
   final _amountController = TextEditingController();
-  String _dueDate = DateTime.now().toIso8601String().split('T')[0];
+  final _dueDateController = TextEditingController(text: DateTime.now().toIso8601String().split('T')[0]);
   final _notesController = TextEditingController();
   String? _error;
 
@@ -83,15 +83,14 @@ class _DuesScreenState extends State<DuesScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     decoration: const InputDecoration(labelText: 'تاريخ الاستحقاق (YYYY-MM-DD)'),
-                    controller: TextEditingController(text: _dueDate),
-                    onChanged: (val) => _dueDate = val,
+                    controller: _dueDateController,
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: () async {
                       setState(() => _error = null);
                       final parseRes = MoneyUtils.toMinorUnits(_amountController.text);
-                      if (!parseRes.success || _selectedAccountId == null) {
+                      if (!parseRes.success || parseRes.minor <= 0 || _selectedAccountId == null) {
                         setState(() => _error = parseRes.error ?? 'اختر حساباً ومبلغاً صالحاً.');
                         return;
                       }
@@ -100,7 +99,7 @@ class _DuesScreenState extends State<DuesScreen> {
                         await state.createDue(
                           accountId: _selectedAccountId!,
                           entryType: _entryType,
-                          dueDate: _dueDate,
+                          dueDate: _dueDateController.text,
                           amountMinor: parseRes.minor,
                           notes: _notesController.text,
                         );
@@ -138,25 +137,73 @@ class _DuesScreenState extends State<DuesScreen> {
               itemCount: state.dues.length,
               itemBuilder: (context, index) {
                 final due = state.dues[index];
-                final acc = state.accounts.firstWhere((a) => a.id == due.accountId, orElse: () => state.accounts.first);
+                final accountMatches = state.accounts.where((a) => a.id == due.accountId);
+                final accountName = accountMatches.isEmpty ? 'حساب مفقود' : accountMatches.first.name;
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
-                    title: Text('${acc.name} — ${due.dueDate}'),
+                    title: Text('$accountName — ${due.dueDate}'),
                     subtitle: Text(
                       'الأصل: ${MoneyUtils.formatMinorAmount(due.originalAmountMinor)} | المتبقي: ${MoneyUtils.formatMinorAmount(due.remainingAmountMinor)} ر.س',
                     ),
-                    trailing: due.remainingAmountMinor == 0
-                        ? const Chip(label: Text('مسدد'), backgroundColor: Colors.greenAccent)
-                        : TextButton(
-                            onPressed: () => _showSettleModal(context, due.id, due.remainingAmountMinor),
-                            child: const Text('تسجيل سداد'),
-                          ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (action) {
+                        if (action == 'settle' && due.remainingAmountMinor > 0) {
+                          _showSettleModal(context, due.id, due.remainingAmountMinor);
+                        }
+                        if (action == 'remind') _showReminderDialog(context, due.id);
+                        if (action == 'delete' && due.settledAmountMinor == 0) {
+                          _deleteUnpaidDue(context, due.id);
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        if (due.remainingAmountMinor > 0)
+                          const PopupMenuItem(value: 'settle', child: Text('تسجيل سداد')),
+                        const PopupMenuItem(value: 'remind', child: Text('إضافة تذكير')),
+                        if (due.settledAmountMinor == 0)
+                          const PopupMenuItem(value: 'delete', child: Text('حذف الاستحقاق غير المسدد')),
+                      ],
+                    ),
                   ),
                 );
               },
             ),
+          const SizedBox(height: 20),
+          const Text('التذكيرات اليدوية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          if (state.reminders.isEmpty)
+            const Text('لا توجد تذكيرات مسجلة')
+          else
+            ...state.reminders.map((reminder) => Card(
+              child: CheckboxListTile(
+                title: Text(reminder.templateText),
+                subtitle: Text(reminder.remindAt),
+                value: reminder.isCompleted,
+                secondary: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'حذف التذكير',
+                  onPressed: () async {
+                    try { await state.deleteReminder(reminder.id); }
+                    catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text('تعذر حذف التذكير: $e')));
+                      }
+                    }
+                  },
+                ),
+                onChanged: (value) async {
+                  try { await state.setReminderCompleted(reminder.id, value ?? false); }
+                  catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(content: Text('تعذر تحديث التذكير: $e')));
+                    }
+                  }
+                },
+              ),
+            )),
         ],
       ),
     );
@@ -186,7 +233,7 @@ class _DuesScreenState extends State<DuesScreen> {
             ElevatedButton(
               onPressed: () async {
                 final res = MoneyUtils.toMinorUnits(payController.text);
-                if (!res.success || res.minor > maxMinor) {
+                if (!res.success || res.minor <= 0 || res.minor > maxMinor) {
                   ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: Text('المبلغ المدخل غير صالح أو يتجاوز المتبقي.')),
                   );
@@ -212,4 +259,71 @@ class _DuesScreenState extends State<DuesScreen> {
       },
     );
   }
+  Future<void> _deleteUnpaidDue(BuildContext context, String dueId) async {
+    final state = context.read<AppStateNotifier>();
+    final accepted = await showDialog<bool>(context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف استحقاق غير مسدد'),
+        content: const Text('سيُحذف الاستحقاق وتذكيراته دون تغيير الأرصدة المالية.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+        ]));
+    if (accepted != true) return;
+    try { await state.deleteUnpaidDue(dueId); }
+    catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر الحذف: $e')));
+      }
+    }
+  }
+
+  Future<void> _showReminderDialog(BuildContext context, String dueId) async {
+    final state = context.read<AppStateNotifier>();
+    final date = TextEditingController(
+      text: DateTime.now().toIso8601String().split('T').first);
+    final message = TextEditingController();
+    String? error;
+    var saving = false;
+    await showDialog<void>(context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: const Text('إضافة تذكير يدوي'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: date,
+              decoration: const InputDecoration(labelText: 'تاريخ التذكير YYYY-MM-DD')),
+            TextField(controller: message,
+              decoration: const InputDecoration(labelText: 'نص التذكير')),
+            if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+          ]),
+          actions: [
+            TextButton(onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء')),
+            FilledButton(onPressed: saving ? null : () async {
+              refresh(() { saving = true; error = null; });
+              try {
+                await state.createReminder(dueId: dueId,
+                  remindAt: date.text, templateText: message.text);
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                if (ctx.mounted) refresh(() => error = e.toString());
+              } finally {
+                if (ctx.mounted) refresh(() => saving = false);
+              }
+            }, child: const Text('حفظ')),
+          ],
+        )));
+    date.dispose();
+    message.dispose();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _notesController.dispose();
+    _dueDateController.dispose();
+    super.dispose();
+  }
+
 }
