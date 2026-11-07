@@ -56,7 +56,7 @@ jobs:
   flutter-ios-simulator:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: rakan_balance_mobile
@@ -78,3 +78,25 @@ jobs:
         run: flutter build ios --simulator --no-codesign
       - name: Confirm simulator Runner app exists
         run: test -d build/ios/iphonesimulator/Runner.app
+      - name: Boot an available iPhone simulator and run UI smoke test
+        run: |
+          DEVICE_UDID="$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin); print(next(x['udid'] for group in d['devices'].values() for x in group if x.get('isAvailable') and x['name'].startswith('iPhone')))")"
+          test -n "$DEVICE_UDID"
+          xcrun simctl shutdown all || true
+          xcrun simctl boot "$DEVICE_UDID" || true
+          python3 - "$DEVICE_UDID" <<'PY'
+          import subprocess
+          import sys
+
+          udid = sys.argv[1]
+          subprocess.run(
+              ["xcrun", "simctl", "bootstatus", udid, "-b"],
+              check=True,
+              timeout=180,
+          )
+          subprocess.run(
+              ["flutter", "test", "integration_test/app_smoke_test.dart", "-d", udid],
+              check=True,
+              timeout=600,
+          )
+          PY
