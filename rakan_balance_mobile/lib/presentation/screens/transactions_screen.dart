@@ -1,10 +1,11 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:printing/printing.dart';
 
 import '../../domain/financial/money_utils.dart';
+import '../../domain/attachments/attachment_preview_service.dart';
 import '../../domain/models/transaction_model.dart';
 import '../../domain/models/attachment_model.dart';
 import '../../domain/validators/attachment_policy.dart';
@@ -189,21 +190,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     description.dispose();
   }
 
-  List<int> _attachmentBytes(AttachmentModel attachment) {
-    final raw = attachment.effectiveDataUrl;
-    final comma = raw.indexOf(',');
-    final encoded = comma >= 0 ? raw.substring(comma + 1) : raw;
-    return base64Decode(encoded);
-  }
-
   Future<void> _downloadAttachment(
       BuildContext context, AttachmentModel attachment) async {
     try {
-      final bytes = _attachmentBytes(attachment);
+      final bytes = AttachmentPreviewService.decodeBytes(attachment);
       final output = await FilePicker.platform.saveFile(
         dialogTitle: 'حفظ المرفق',
         fileName: attachment.displayName,
-        bytes: Uint8List.fromList(bytes),
+        bytes: bytes,
       );
       if (context.mounted && output != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -213,6 +207,150 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('تعذر حفظ المرفق: $e')));
+      }
+    }
+  }
+
+  IconData _attachmentIcon(AttachmentModel attachment) {
+    switch (AttachmentPreviewService.kindOf(attachment)) {
+      case AttachmentPreviewKind.image:
+        return Icons.image_outlined;
+      case AttachmentPreviewKind.pdf:
+        return Icons.picture_as_pdf_outlined;
+      case AttachmentPreviewKind.text:
+        return Icons.description_outlined;
+      case AttachmentPreviewKind.unsupported:
+        final mime = attachment.mimeType.toLowerCase();
+        if (mime.contains('spreadsheet') || mime.contains('excel')) {
+          return Icons.table_chart_outlined;
+        }
+        if (mime.contains('word') || mime.contains('document')) {
+          return Icons.article_outlined;
+        }
+        return Icons.insert_drive_file_outlined;
+    }
+  }
+
+  Future<void> _previewAttachment(
+    BuildContext context,
+    AttachmentModel attachment,
+  ) async {
+    try {
+      final preview = AttachmentPreviewService.build(attachment);
+      if (!context.mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          Widget body;
+          switch (preview.kind) {
+            case AttachmentPreviewKind.image:
+              body = InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 5,
+                child: Center(
+                  child: Image.memory(
+                    preview.bytes,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) =>
+                        const Text('تعذر عرض الصورة.'),
+                  ),
+                ),
+              );
+              break;
+            case AttachmentPreviewKind.pdf:
+              body = PdfPreview(
+                build: (_) async => preview.bytes,
+                pdfFileName: attachment.displayName,
+                allowPrinting: false,
+                allowSharing: false,
+                canChangePageFormat: false,
+                canChangeOrientation: false,
+                canDebug: false,
+                useActions: false,
+                onError: (_, error) => Center(
+                  child: Text('تعذر عرض PDF: $error'),
+                ),
+              );
+              break;
+            case AttachmentPreviewKind.text:
+              body = Scrollbar(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(12),
+                  child: SelectableText(
+                    preview.text ?? '',
+                    textDirection: TextDirection.rtl,
+                  ),
+                ),
+              );
+              break;
+            case AttachmentPreviewKind.unsupported:
+              body = const Center(
+                child: Text(
+                  'لا تتوفر معاينة داخلية لهذا النوع. '
+                  'يمكن تنزيل الملف وفتحه بالتطبيق المناسب.',
+                  textAlign: TextAlign.center,
+                ),
+              );
+              break;
+          }
+
+          return Dialog(
+            insetPadding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.maxFinite,
+              height: MediaQuery.of(dialogContext).size.height * 0.82,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                    child: Row(
+                      children: [
+                        Icon(_attachmentIcon(attachment)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                attachment.displayName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                '${attachment.mimeType} · '
+                                '${AttachmentPreviewService.humanSize(preview.bytes.length)}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'إغلاق',
+                          onPressed: () => Navigator.pop(dialogContext),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(child: body),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر معاينة المرفق: $e')),
+        );
       }
     }
   }
@@ -318,21 +456,26 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               itemCount: attachments.length,
                               itemBuilder: (_, index) {
                                 final attachment = attachments[index];
-                                final isImage =
-                                    attachment.mimeType.startsWith('image/');
+                                final kind =
+                                    AttachmentPreviewService.kindOf(attachment);
                                 Widget? preview;
-                                if (isImage) {
+                                if (kind == AttachmentPreviewKind.image) {
                                   try {
-                                    preview = ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.memory(
-                                        Uint8List.fromList(
-                                          _attachmentBytes(attachment)),
-                                        height: 160,
-                                        width: double.infinity,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, __, ___) =>
-                                          const SizedBox.shrink(),
+                                    final data =
+                                        AttachmentPreviewService.build(attachment);
+                                    preview = GestureDetector(
+                                      onTap: () =>
+                                          _previewAttachment(ctx, attachment),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.memory(
+                                          data.bytes,
+                                          height: 160,
+                                          width: double.infinity,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) =>
+                                              const SizedBox.shrink(),
+                                        ),
                                       ),
                                     );
                                   } catch (_) {
@@ -349,18 +492,45 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                           preview,
                                           const SizedBox(height: 8),
                                         ],
-                                        Text(attachment.displayName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold)),
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              _attachmentIcon(attachment),
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                attachment.displayName,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                         Text(
                                           '${attachment.mimeType} • '
-                                          '${(attachment.effectiveSize / 1024).toStringAsFixed(1)} KB',
+                                          '${AttachmentPreviewService.humanSize(attachment.effectiveSize)}',
                                           style: const TextStyle(
                                             fontSize: 12, color: Colors.grey)),
                                         const SizedBox(height: 6),
                                         Wrap(
                                           spacing: 8,
                                           children: [
+                                            if (kind !=
+                                                AttachmentPreviewKind.unsupported)
+                                              OutlinedButton.icon(
+                                                onPressed: () =>
+                                                    _previewAttachment(
+                                                      ctx,
+                                                      attachment,
+                                                    ),
+                                                icon: const Icon(
+                                                  Icons.visibility_outlined,
+                                                ),
+                                                label: const Text('معاينة'),
+                                              ),
                                             OutlinedButton.icon(
                                               onPressed: () =>
                                                 _downloadAttachment(ctx, attachment),
