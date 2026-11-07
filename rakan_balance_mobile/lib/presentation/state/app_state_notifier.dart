@@ -276,9 +276,14 @@ class AppStateNotifier extends ChangeNotifier {
     required int amountMinor,
     String? notes,
   }) async {
+    if (!_accounts.any((a) => a.id == accountId && a.status == 'active') ||
+        amountMinor <= 0 || amountMinor > MoneyUtils.maxSafeHalalas ||
+        !MoneyUtils.isValidDateString(dueDate)) {
+      throw ArgumentError('بيانات الاستحقاق غير صالحة.');
+    }
     final now = DateTime.now().toIso8601String();
     final due = DueItemModel(
-      id: 'due_${DateTime.now().millisecondsSinceEpoch}',
+      id: _newId('due'),
       accountId: accountId,
       entryType: entryType,
       dueDate: dueDate,
@@ -300,11 +305,15 @@ class AppStateNotifier extends ChangeNotifier {
     required int amountMinor,
     required String date,
   }) async {
+    if (!MoneyUtils.isValidDateString(date) ||
+        amountMinor <= 0 || amountMinor > MoneyUtils.maxSafeHalalas) {
+      throw ArgumentError('مبلغ أو تاريخ الدفعة غير صالح.');
+    }
     final due = _dues.firstWhere((d) => d.id == dueId);
     final now = DateTime.now().toIso8601String();
 
     final payment = TransactionModel(
-      id: 'tx_pay_${DateTime.now().millisecondsSinceEpoch}',
+      id: _newId('tx_pay'),
       accountId: due.accountId,
       entryType: due.entryType == EntryType.owedByAccount ? EntryType.owedToAccount : EntryType.owedByAccount,
       amountMinor: amountMinor,
@@ -316,7 +325,7 @@ class AppStateNotifier extends ChangeNotifier {
     );
 
     final allocation = PaymentAllocationModel(
-      id: 'alloc_${DateTime.now().millisecondsSinceEpoch}',
+      id: _newId('alloc'),
       dueItemId: due.id,
       paymentTransactionId: payment.id,
       amountMinor: amountMinor,
