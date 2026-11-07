@@ -28,6 +28,15 @@ class AppStateNotifier extends ChangeNotifier {
   List<ReminderModel> _reminders = [];
   List<NoteModel> _notes = [];
 
+  AppStateNotifier();
+
+  /// Isolated SQLite test injection only; never opens or mutates production storage.
+  AppStateNotifier.forTesting(Database db) {
+    _db = db;
+    _storage = SqliteStorageAdapter(db);
+    _isLoading = false;
+  }
+
   bool get isLoading => _isLoading;
   String get activeScope => _activeScope;
   ThemeMode get themeMode => _themeMode;
