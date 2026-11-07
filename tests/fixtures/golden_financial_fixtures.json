@@ -1,0 +1,297 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-11-07T08:00:00.000Z",
+  "currency": "SAR",
+  "minorUnit": "halala",
+  "maxSafeHalalas": 10000000000000,
+  "description": "Comprehensive reference golden test suite for RAKAN BALANCE financial calculations across Web (TypeScript) and Mobile (Dart/SQLite). All values are synthetic and independently calculated.",
+  "cases": [
+    {
+      "id": "GOLDEN_01_OPENING_BALANCES",
+      "category": "opening_balance",
+      "description": "Verifies account balances with zero transactions across positive (owed by), negative (owed to), and zero opening balance",
+      "inputs": {
+        "accounts": [
+          { "id": "acc_pos", "name": "طرف مدين افتتاحي", "openingBalanceMinor": 500000, "status": "active" },
+          { "id": "acc_neg", "name": "طرف دائن افتتاحي", "openingBalanceMinor": -350025, "status": "active" },
+          { "id": "acc_zero", "name": "طرف متزن افتتاحي", "openingBalanceMinor": 0, "status": "active" }
+        ],
+        "transactions": []
+      },
+      "expected": {
+        "balances": {
+          "acc_pos": 500000,
+          "acc_neg": -350025,
+          "acc_zero": 0
+        },
+        "systemSummary": {
+          "totalOwedByMinor": 500000,
+          "totalOwedToMinor": 350025,
+          "netBalanceMinor": 149975
+        }
+      },
+      "formula": "B(account) = openingBalanceMinor + 0; TotalOwedBy = sum(B > 0); TotalOwedTo = sum(|B < 0|); Net = TotalOwedBy - TotalOwedTo"
+    },
+    {
+      "id": "GOLDEN_02_ENTRY_TYPES_AND_BALANCE_CROSSING",
+      "category": "transactions_and_crossing",
+      "description": "Applies owedByAccount (+M) and owedToAccount (-M) transactions causing the account balance to cross from positive to negative",
+      "inputs": {
+        "accounts": [
+          { "id": "acc_cross", "name": "عميل متقلب الرصيد", "openingBalanceMinor": 10000, "status": "active" }
+        ],
+        "transactions": [
+          { "id": "tx_c1", "accountId": "acc_cross", "entryType": "owedByAccount", "amountMinor": 25050, "date": "2026-03-01" },
+          { "id": "tx_c2", "accountId": "acc_cross", "entryType": "owedToAccount", "amountMinor": 50000, "date": "2026-03-02" }
+        ]
+      },
+      "expected": {
+        "stepBalances": [
+          { "step": "opening", "balanceMinor": 10000 },
+          { "step": "after_tx_c1", "signedAmount": 25050, "balanceMinor": 35050 },
+          { "step": "after_tx_c2", "signedAmount": -50000, "balanceMinor": -14950 }
+        ],
+        "finalBalanceMinor": -14950,
+        "humanFormatted": "-149.50"
+      },
+      "formula": "B_final = 10000 + 25050 - 50000 = -14950 Halalas (-149.50 SAR)"
+    },
+    {
+      "id": "GOLDEN_03_HALALA_PRECISION_ONE_CENT",
+      "category": "halala_precision",
+      "description": "Precision verification for exact single halala (0.01 SAR = 1 Halala)",
+      "inputs": {
+        "amountsToParse": [
+          { "input": "0.01", "shouldSucceed": true, "expectedMinor": 1 },
+          { "input": "0.1", "shouldSucceed": true, "expectedMinor": 10 },
+          { "input": "1.00", "shouldSucceed": true, "expectedMinor": 100 },
+          { "input": "150.25", "shouldSucceed": true, "expectedMinor": 15025 },
+          { "input": "-5.00", "shouldSucceed": true, "expectedMinor": -500 },
+          { "input": "0.001", "shouldSucceed": false, "expectedMinor": null, "error": "more_than_two_decimals" },
+          { "input": "10.20.30", "shouldSucceed": false, "expectedMinor": null, "error": "multiple_decimal_points" },
+          { "input": "abc", "shouldSucceed": false, "expectedMinor": null, "error": "invalid_number_format" }
+        ],
+        "transactionValidationRejections": [
+          { "description": "Negative transaction amount", "amountMinor": -500, "shouldPassTransactionValidation": false },
+          { "description": "Zero transaction amount", "amountMinor": 0, "shouldPassTransactionValidation": false }
+        ]
+      },
+      "expected": {
+        "oneHalalaMinor": 1,
+        "formattedOneHalala": "0.01"
+      },
+      "formula": "1 SAR = 100 Halalas; 0.01 SAR = 1 Halala"
+    },
+    {
+      "id": "GOLDEN_04_MAX_LIMIT_BOUNDARY",
+      "category": "boundary_limits",
+      "description": "Verifies maximum allowed operating limit: 10,000,000,000,000 Halalas (100 Billion SAR) and rejection of excess",
+      "inputs": {
+        "maxValidMinor": 10000000000000,
+        "maxValidString": "100000000000.00",
+        "excessMinor": 10000000000001,
+        "excessString": "100000000000.01"
+      },
+      "expected": {
+        "maxValidParsedMinor": 10000000000000,
+        "excessShouldFail": true,
+        "jsMaxSafeInteger": 9007199254740991
+      },
+      "formula": "MAX_SAFE_MINOR_AMOUNT = 10^13 Halalas <= Number.MAX_SAFE_INTEGER (9 * 10^15)"
+    },
+    {
+      "id": "GOLDEN_05_INDEPENDENT_SUBACCOUNTS",
+      "category": "hierarchy_independence",
+      "description": "Ensures parent and child accounts maintain strictly isolated balances with no double-counting in dashboard summary",
+      "inputs": {
+        "accounts": [
+          { "id": "acc_parent", "name": "مجموعة شركات الشروق", "parentId": null, "openingBalanceMinor": 200000, "status": "active" },
+          { "id": "acc_child_1", "name": "فرع الرياض", "parentId": "acc_parent", "openingBalanceMinor": 150000, "status": "active" },
+          { "id": "acc_child_2", "name": "فرع جدة", "parentId": "acc_parent", "openingBalanceMinor": -50000, "status": "active" }
+        ],
+        "transactions": [
+          { "id": "tx_h1", "accountId": "acc_child_1", "entryType": "owedByAccount", "amountMinor": 30000, "date": "2026-03-05" }
+        ]
+      },
+      "expected": {
+        "accountBalances": {
+          "acc_parent": 200000,
+          "acc_child_1": 180000,
+          "acc_child_2": -50000
+        },
+        "systemSummary": {
+          "totalOwedByMinor": 380000,
+          "totalOwedToMinor": 50000,
+          "netBalanceMinor": 330000
+        }
+      },
+      "formula": "B(acc_parent)=200000; B(acc_child_1)=150000+30000=180000; B(acc_child_2)=-50000; TotalOwedBy=200000+180000=380000; TotalOwedTo=50000; Net=330000"
+    },
+    {
+      "id": "GOLDEN_06_INTER_ACCOUNT_TRANSFER_INVARIANCE",
+      "category": "inter_account_transfer",
+      "description": "Validates atomic debt transfer between two active accounts with zero net system balance change",
+      "inputs": {
+        "sourceAccount": { "id": "src_1", "name": "المصدر أحمد", "openingBalanceMinor": 100000, "status": "active" },
+        "destinationAccount": { "id": "dst_1", "name": "الوجهة خالد", "openingBalanceMinor": 20000, "status": "active" },
+        "transferAmountMinor": 40000,
+        "date": "2026-03-10",
+        "description": "تحويل مديونية جزء من الفاتورة"
+      },
+      "expected": {
+        "entriesCount": 2,
+        "sourceEntry": {
+          "accountId": "src_1",
+          "entryType": "owedToAccount",
+          "signedImpactMinor": -40000,
+          "transferRole": "source",
+          "counterpartyAccountId": "dst_1"
+        },
+        "destinationEntry": {
+          "accountId": "dst_1",
+          "entryType": "owedByAccount",
+          "signedImpactMinor": 40000,
+          "transferRole": "destination",
+          "counterpartyAccountId": "src_1"
+        },
+        "sourceNewBalanceMinor": 60000,
+        "destinationNewBalanceMinor": 60000,
+        "deltaSystemBalanceMinor": 0
+      },
+      "formula": "Delta_src = -40000; Delta_dst = +40000; Delta_system = Delta_src + Delta_dst = 0"
+    },
+    {
+      "id": "GOLDEN_07_TRANSFER_REJECTIONS",
+      "category": "inter_account_transfer_rejections",
+      "description": "Specifies strict business rule rejections for invalid inter-account transfers",
+      "testCases": [
+        {
+          "scenario": "same_source_and_destination",
+          "input": { "sourceAccountId": "acc_1", "destinationAccountId": "acc_1", "amountMinor": 5000 },
+          "shouldReject": true,
+          "expectedError": "same_account_transfer_rejected"
+        },
+        {
+          "scenario": "transfer_exceeds_source_balance",
+          "input": { "sourceAccountId": "src_small", "destinationAccountId": "dst_1", "amountMinor": 80000 },
+          "sourceAvailableBalanceMinor": 50000,
+          "shouldReject": true,
+          "expectedError": "amount_exceeds_source_balance"
+        },
+        {
+          "scenario": "archived_account_participant",
+          "input": { "sourceAccountId": "src_1", "destinationAccountId": "dst_archived", "amountMinor": 10000 },
+          "destinationStatus": "archived",
+          "shouldReject": true,
+          "expectedError": "account_is_archived"
+        }
+      ]
+    },
+    {
+      "id": "GOLDEN_08_STATEMENT_PERIODS_AND_SAME_DAY_ORDERING",
+      "category": "account_statement",
+      "description": "Calculates opening balance before date filter, running balances for transactions in period, and closing balance, including deterministic order for same-day movements",
+      "inputs": {
+        "account": { "id": "acc_stmt", "name": "حساب كشف الحساب", "openingBalanceMinor": 50000 },
+        "fromDate": "2026-03-05",
+        "toDate": "2026-03-10",
+        "allTransactions": [
+          { "id": "t_prior", "accountId": "acc_stmt", "entryType": "owedByAccount", "amountMinor": 20000, "date": "2026-03-01", "createdAt": "2026-03-01T10:00:00Z" },
+          { "id": "t_in_1", "accountId": "acc_stmt", "entryType": "owedToAccount", "amountMinor": 15000, "date": "2026-03-05", "createdAt": "2026-03-05T08:00:00Z" },
+          { "id": "t_in_2", "accountId": "acc_stmt", "entryType": "owedByAccount", "amountMinor": 35000, "date": "2026-03-05", "createdAt": "2026-03-05T12:00:00Z" },
+          { "id": "t_in_3", "accountId": "acc_stmt", "entryType": "owedToAccount", "amountMinor": 10000, "date": "2026-03-10", "createdAt": "2026-03-10T09:00:00Z" },
+          { "id": "t_post", "accountId": "acc_stmt", "entryType": "owedByAccount", "amountMinor": 50000, "date": "2026-03-20", "createdAt": "2026-03-20T10:00:00Z" }
+        ]
+      },
+      "expected": {
+        "openingBalanceForPeriod": 70000,
+        "totalOwedByInPeriod": 35000,
+        "totalOwedToInPeriod": 25000,
+        "closingBalanceForPeriod": 80000,
+        "orderedRowsInPeriod": [
+          { "transactionId": "t_in_1", "date": "2026-03-05", "signedAmount": -15000, "runningBalance": 55000 },
+          { "transactionId": "t_in_2", "date": "2026-03-05", "signedAmount": 35000, "runningBalance": 90000 },
+          { "transactionId": "t_in_3", "date": "2026-03-10", "signedAmount": -10000, "runningBalance": 80000 }
+        ]
+      },
+      "formula": "B_prior = 50000 + 20000 = 70000 (Opening for period); Row 1 = 70000 - 15000 = 55000; Row 2 = 55000 + 35000 = 90000; Row 3 = 90000 - 10000 = 80000; Closing = 80000"
+    },
+    {
+      "id": "GOLDEN_09_DUE_SETTLEMENT_LIFECYCLE_N2",
+      "category": "dues_and_settlement_n2",
+      "description": "Verifies N2 due creation does not mutate balances, and partial followed by final settlement creates single-movement ledger payments",
+      "inputs": {
+        "account": { "id": "acc_due", "name": "حساب متابعة استحقاق", "openingBalanceMinor": 100000, "status": "active" },
+        "initialDue": {
+          "id": "due_101",
+          "accountId": "acc_due",
+          "entryType": "owedByAccount",
+          "dueDate": "2026-04-15",
+          "originalAmountMinor": 60000,
+          "settledAmountMinor": 0,
+          "status": "pending"
+        },
+        "partialPaymentMinor": 25000,
+        "finalPaymentMinor": 35000
+      },
+      "expected": {
+        "afterCreation": {
+          "ledgerTransactionsCount": 0,
+          "accountBalanceMinor": 100000,
+          "dueRemainingMinor": 60000,
+          "dueStatus": "pending"
+        },
+        "afterPartialPayment": {
+          "ledgerTransaction": {
+            "accountId": "acc_due",
+            "entryType": "owedToAccount",
+            "amountMinor": 25000,
+            "signedImpactMinor": -25000
+          },
+          "allocation": {
+            "dueItemId": "due_101",
+            "amountMinor": 25000
+          },
+          "dueSettledAmountMinor": 25000,
+          "dueRemainingMinor": 35000,
+          "dueStatus": "partially_settled",
+          "newAccountBalanceMinor": 75000
+        },
+        "afterFinalPayment": {
+          "dueSettledAmountMinor": 60000,
+          "dueRemainingMinor": 0,
+          "dueStatus": "settled",
+          "finalAccountBalanceMinor": 40000
+        }
+      },
+      "formula": "Due remaining = original - settled; Payment creates exactly 1 Transaction with opposite direction, 1 Allocation, and updates due.settledAmount."
+    },
+    {
+      "id": "GOLDEN_10_BACKUP_INTEGRITY_AND_TAMPER_DETECTION",
+      "category": "backup_and_security",
+      "description": "Specifies SHA-256 canonical hashing rules and rejection of altered payloads or corrupted manifests",
+      "inputs": {
+        "dataPayload": {
+          "accounts": [
+            { "id": "acc_b1", "name": "حساب النسخ 1", "openingBalanceMinor": 15000, "categoryId": "cat_1", "status": "active", "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z" }
+          ],
+          "categories": [
+            { "id": "cat_1", "name": "عام", "sortOrder": 0 }
+          ],
+          "transactions": [],
+          "attachments": [],
+          "notes": [],
+          "dues": [],
+          "allocations": [],
+          "reminders": []
+        }
+      },
+      "canonicalHashingRule": "Digest = SHA-256(UTF-8(JSON.stringify(dataPayload))); manifest.recordCounts must match data array lengths exactly",
+      "expected": {
+        "validManifestName": "RAKAN_BALANCE_BACKUP",
+        "validBackupFormatVersion": 2,
+        "validSchemaVersion": 2
+      }
+    }
+  ]
+}
