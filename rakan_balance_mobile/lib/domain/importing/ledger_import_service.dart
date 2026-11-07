@@ -183,7 +183,9 @@ class LedgerImportService {
     for (var index = 1; index < table.length; index++) {
       final values = table[index];
       if (values.every((cell) => _display(cell).isEmpty)) continue;
-      result.add(_rowMap(headers, values));
+      final mapped = _rowMap(headers, values);
+      mapped['__sourcerow'] = '${index + 1}';
+      result.add(mapped);
     }
     return result;
   }
@@ -344,8 +346,10 @@ class LedgerImportService {
     final lower = fileName.toLowerCase();
     if (lower.endsWith('.csv')) {
       final text = utf8.decode(bytes, allowMalformed: false);
-      final table = const CsvToListConverter(shouldParseNumbers: false)
-          .convert(text);
+      final table = const CsvToListConverter(
+        shouldParseNumbers: false,
+        allowInvalid: false,
+      ).convert(text);
       final rows = _tableToRows(table);
       final accountRows = <Map<String, String>>[];
       final transactionRows = <Map<String, String>>[];
@@ -478,7 +482,7 @@ class LedgerImportService {
 
     for (var index = 0; index < accountRows.length; index++) {
       final row = accountRows[index];
-      final rowNumber = index + 2;
+      final rowNumber = int.tryParse(row['__sourcerow'] ?? '') ?? index + 2;
       final name = _value(row, _accountName);
       final category = _value(row, _category);
       final rawOpening = _value(row, _openingBalance) ?? '0';
@@ -565,7 +569,7 @@ class LedgerImportService {
 
     for (var index = 0; index < transactionRows.length; index++) {
       final row = transactionRows[index];
-      final rowNumber = index + 2;
+      final rowNumber = int.tryParse(row['__sourcerow'] ?? '') ?? index + 2;
 
       if (row.containsKey('__invalidrecordtype')) {
         issues.add(ImportIssue(
