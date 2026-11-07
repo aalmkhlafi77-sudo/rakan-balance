@@ -9,6 +9,7 @@
 
 import 'fake-indexeddb/auto';
 import { runFinancialVerificationSuite } from '../domain/financial_rules_spec.ts';
+import { runGoldenFixturesTests } from '../../tests/fixtures/run_golden_fixtures_test.ts';
 import {
   createIsolatedTestStorage,
   DB_NAME,
@@ -155,7 +156,19 @@ async function main(): Promise<number> {
       console.log('-'.repeat(80));
     }
 
-    // 3. Verify zero touch / zero pollution on simulated user environment
+    // 3. Execute Golden Fixtures Reference Verification Suite
+    console.log('\n' + '='.repeat(80));
+    console.log('   RAKAN BALANCE — GOLDEN FINANCIAL FIXTURES TEST SUITE   ');
+    console.log('='.repeat(80));
+    const goldenResults = await runGoldenFixturesTests();
+    for (const gr of goldenResults.results) {
+      console.log(`[${gr.passed ? 'PASS' : 'FAIL'}] ${gr.id}: ${gr.name}`);
+      console.log(`       ${gr.message}`);
+    }
+    console.log('-'.repeat(80));
+    console.log(`GOLDEN SUMMARY: ${goldenResults.passedCount} PASSED, ${goldenResults.failedCount} FAILED (Total: ${goldenResults.results.length})`);
+
+    // 4. Verify zero touch / zero pollution on simulated user environment
     const [accsAfter, catsAfter, txsAfter, attsAfter, notesAfter, demoNotesAfter] =
       await Promise.all([
         simulatedUserStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
@@ -192,17 +205,17 @@ async function main(): Promise<number> {
     console.log(`Simulated Demo Note Preserved: ${demoNotePreserved ? 'YES' : 'NO'}`);
     console.log('='.repeat(80));
 
-    console.log(`\nTEST SUMMARY: ${passedCount} PASSED, ${failedCount} FAILED, 0 PENDING (Total: ${results.length})`);
+    console.log(`\nTEST SUMMARY: Invariants (${passedCount}/${results.length}) | Golden Fixtures (${goldenResults.passedCount}/${goldenResults.results.length})`);
     console.log(`Time elapsed: ${elapsedMs}ms`);
 
     if (!fingerprintsMatch || !demoNotePreserved || !realAccountPreserved || !realTxPreserved) {
       console.error('\nSECURITY CRITICAL ERROR: The test suite modified user environment data!');
       exitCode = 1;
-    } else if (failedCount > 0) {
-      console.error(`\nFAILED: ${failedCount} test(s) failed.`);
+    } else if (failedCount > 0 || goldenResults.failedCount > 0) {
+      console.error(`\nFAILED: Invariant failures: ${failedCount}, Golden failures: ${goldenResults.failedCount}.`);
       exitCode = 1;
     } else {
-      console.log(`\nSUCCESS: All ${results.length} invariant tests passed & 100% data isolation verified.`);
+      console.log(`\nSUCCESS: All ${results.length} invariant tests AND all ${goldenResults.results.length} golden fixtures passed & 100% data isolation verified.`);
       exitCode = 0;
     }
   } finally {

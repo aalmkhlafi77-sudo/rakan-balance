@@ -44,9 +44,26 @@
 
 ## 3. توثيق احتساب بصمات التجزئة SHA-256
 
-لضمان توافق التحقق بين TypeScript وDart، تتبع الخوارزمية الخطوات الإلزامية التالية:
+لضمان توافق التحقق التام بين TypeScript وDart، تتبع الخوارزمية الخطوات الإلزامية التالية:
 
-1. **البيانات المشمولة بالتجزئة:** كائن `data` فقط دون الترويسة `manifest`.
-2. **ترتيب المفاتيح والتسلسل:** يتم تحويل كائن `data` إلى سلسلة نصية بتنسيق JSON القياسي المرمز بـ UTF-8:
-   $$\text{Checksum} = \text{SHA-256}(\text{UTF-8}(\text{JSON.stringify}(\text{data})))$$
-3. **أعداد السجلات (Record Counts):** يجب أن يتطابق عدد السجلات في كل مصفوفة من المصفوفات التسعة (`accounts`, `categories`, `transactions`, `attachments`, `notes`, `dues`, `allocations`, `reminders`) بدقة مع الأعداد المذكورة في `manifest.recordCounts`.
+1. **البيانات المشمولة بالتجزئة:** كائن محتوى البيانات `data` فقط دون الترويسة `manifest`.
+2. **ترتيب المفاتيح المتطابق (Canonical Key Insertion Order):**
+   سواء في TypeScript (`backup_service.ts`) أو Dart (`mobile_backup_service.dart` / `backup_validator.dart`)، يُنشأ كائن التجزئة بالترتيب القياسي التالي:
+   ```json
+   {
+     "accounts": [...],
+     "categories": [...],
+     "transactions": [...],
+     "attachments": [...],
+     "notes": [...],
+     "dues": [...],
+     "allocations": [...],
+     "reminders": [...],
+     "settings": { ... }
+   }
+   ```
+   *ملاحظة توافقية:* في حال استيراد نسخ N1 السابقة التي لا تحتوي على `dues` أو `allocations` أو `reminders`، يتم احتساب التجزئة على المصفوفات الأساسية الخمس مع `settings` فقط بالترتيب الأصلي، لضمان قبول النسخ السابقة دون كسر البصمة.
+3. **الترميز والتجزئة:**
+   $$\text{Checksum} = \text{SHA-256}(\text{UTF-8}(\text{JSON.stringify}(\text{payloadToHash})))$$
+4. **تدقيق أعداد السجلات (Record Counts):**
+   يجب أن يتطابق عدد السجلات في كل مصفوفة موجودة بدقة مع القيمة المذكورة في `manifest.recordCounts`. أي اختلاف بين العدد الفعلي والبيان الوصفي يُعد تلفاً صريحاً ويوجب رفض الاستعادة قبل أي كتابة في قاعدة البيانات.

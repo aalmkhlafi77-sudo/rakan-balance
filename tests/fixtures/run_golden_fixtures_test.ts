@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Golden Fixtures Verification Runner
  * Verifies that the production financial calculation engine satisfies all 10 Golden Reference Fixtures
- * without modifying any production code or live database.
+ * with full atomic lifecycle checks (IndexedDB isolated test storage) and authentic corrupt backup rejection.
+ * STRICTLY executes on ephemeral test storage; NEVER touches production RakanBalanceDB_v2!
  */
 
+import 'fake-indexeddb/auto';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
@@ -19,8 +21,18 @@ import {
   validateInterAccountTransfer,
   validateTransferPairs,
 } from '../../src/domain/inter_account_transfer.ts';
-import { computeSHA256 } from '../../src/storage/backup_service.ts';
-import { AccountModel, TransactionModel, EntryType } from '../../src/domain/types.ts';
+import { computeSHA256, validateBackupFile } from '../../src/storage/backup_service.ts';
+import {
+  createIsolatedTestStorage,
+  DB_NAME,
+  STORES_REAL,
+} from '../../src/storage/indexed_db.ts';
+import {
+  AccountModel,
+  TransactionModel,
+  DueItemContract,
+  PaymentAllocationContract,
+} from '../../src/domain/types.ts';
 
 export interface FixtureTestResult {
   id: string;
@@ -191,37 +203,40 @@ export async function runGoldenFixturesTests(): Promise<{ passedCount: number; f
       `Entries=${entries.length}, SystemDelta=${systemDelta}, SrcNew=${bSrcNew}, DstNew=${bDstNew}`);
   }
 
-  // 7. GOLDEN_07_TRANSFER_REJECTIONS
+  // 7. GOLDEN_07_TRANSFER_REJECTIONS (Iterates dynamically over JSON fixture testCases)
   {
     const tc = fixtureData.cases.find((c: any) => c.id === 'GOLDEN_07_TRANSFER_REJECTIONS');
-    const acc1: AccountModel = { id: 'acc_1', name: 'أحمد', parentId: null, categoryId: 'cat_1', openingBalanceMinor: 50000, status: 'active', createdAt: '', updatedAt: '' };
-    const accArchived: AccountModel = { id: 'dst_archived', name: 'مؤرشف', parentId: null, categoryId: 'cat_1', openingBalanceMinor: 20000, status: 'archived', createdAt: '', updatedAt: '' };
+    let allScenariosRejected = true;
+    const scenarioDetails: string[] = [];
 
-    // Case 1: Same source and destination
-    const resSame = validateInterAccountTransfer(
-      { sourceAccountId: 'acc_1', destinationAccountId: 'acc_1', amountMinor: 5000, date: '2026-03-10', description: 'تجربة' },
-      [acc1],
-      []
-    );
+    for (const scenarioCase of tc.testCases) {
+      const accounts: AccountModel[] = scenarioCase.accounts.map((a: any) => ({
+        ...a,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }));
 
-    // Case 2: Transfer exceeds source balance
-    const resExceeds = validateInterAccountTransfer(
-      { sourceAccountId: 'acc_1', destinationAccountId: 'dst_1', amountMinor: 80000, date: '2026-03-10', description: 'تجاوز' },
-      [acc1, { ...acc1, id: 'dst_1' }],
-      []
-    );
+      const txs: TransactionModel[] = (scenarioCase.currentTransactions || []).map((t: any) => ({
+        ...t,
+        attachmentIds: [],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }));
 
-    // Case 3: Archived participant
-    const resArchived = validateInterAccountTransfer(
-      { sourceAccountId: 'acc_1', destinationAccountId: 'dst_archived', amountMinor: 10000, date: '2026-03-10', description: 'مؤرشف' },
-      [acc1, accArchived],
-      []
-    );
+      const res = validateInterAccountTransfer(scenarioCase.input, accounts, txs);
 
-    const ok = !resSame.isValid && !resExceeds.isValid && !resArchived.isValid;
+      if (scenarioCase.shouldReject) {
+        if (res.isValid) {
+          allScenariosRejected = false;
+          scenarioDetails.push(`${scenarioCase.scenario}: UNEXPECTED_PASS`);
+        } else {
+          scenarioDetails.push(`${scenarioCase.scenario}: REJECTED_OK`);
+        }
+      }
+    }
 
-    assert(tc.id, 'Transfer rejection rules enforcement', ok,
-      `SameAccRejected=${!resSame.isValid}, ExceedsRejected=${!resExceeds.isValid}, ArchivedRejected=${!resArchived.isValid}`);
+    assert(tc.id, 'Transfer rejection rules enforcement (from JSON fixture)', allScenariosRejected,
+      scenarioDetails.join(' | '));
   }
 
   // 8. GOLDEN_08_STATEMENT_PERIODS_AND_SAME_DAY_ORDERING
@@ -259,76 +274,286 @@ export async function runGoldenFixturesTests(): Promise<{ passedCount: number; f
       `Opening=${stmt.openingBalanceMinor}, Closing=${stmt.closingBalanceMinor}, RowsCount=${stmt.rows.length}`);
   }
 
-  // 9. GOLDEN_09_DUE_SETTLEMENT_LIFECYCLE_N2
+  // 9. GOLDEN_09_DUE_SETTLEMENT_LIFECYCLE_N2 (Full Atomic Lifecycle & Rollback on Failure)
   {
     const tc = fixtureData.cases.find((c: any) => c.id === 'GOLDEN_09_DUE_SETTLEMENT_LIFECYCLE_N2');
-    const acc: AccountModel = {
-      ...tc.inputs.account,
-      parentId: null,
-      categoryId: 'cat_1',
-      createdAt: '',
-      updatedAt: '',
-    };
+    const testDbId = `gold_due_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const isolatedStorage = createIsolatedTestStorage(testDbId);
 
-    // Before settlement: Due does not touch balance
-    const b0 = calculateAccountBalance(acc, []);
+    try {
+      const acc: AccountModel = {
+        id: tc.inputs.account.id,
+        name: tc.inputs.account.name,
+        parentId: null,
+        categoryId: 'cat_gold_due',
+        openingBalanceMinor: tc.inputs.account.openingBalanceMinor,
+        status: tc.inputs.account.status,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      };
+      await isolatedStorage.put(STORES_REAL.ACCOUNTS, acc);
 
-    // Partial settlement creates 1 ledger transaction
-    const txPartial: TransactionModel = {
-      id: 'tx_pay_1',
-      accountId: acc.id,
-      entryType: 'owedToAccount',
-      amountMinor: tc.inputs.partialPaymentMinor,
-      date: '2026-04-10',
-      description: 'سداد جزئي',
-      attachmentIds: [],
-      createdAt: '',
-      updatedAt: '',
-    };
+      // Phase 1: Create due record
+      const initialDue: DueItemContract = {
+        id: tc.inputs.initialDue.id,
+        accountId: tc.inputs.initialDue.accountId,
+        entryType: tc.inputs.initialDue.entryType,
+        dueDate: tc.inputs.initialDue.dueDate,
+        originalAmountMinor: tc.inputs.initialDue.originalAmountMinor,
+        settledAmountMinor: 0,
+        status: 'pending',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      };
+      await isolatedStorage.addDue(initialDue, false);
 
-    const bAfterPartial = calculateAccountBalance(acc, [txPartial]);
+      const duesAfterCreation = await isolatedStorage.getAll<DueItemContract>(STORES_REAL.DUES);
+      const txsAfterCreation = await isolatedStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const b0 = calculateAccountBalance(acc, txsAfterCreation);
 
-    // Final settlement creates second payment
-    const txFinal: TransactionModel = {
-      id: 'tx_pay_2',
-      accountId: acc.id,
-      entryType: 'owedToAccount',
-      amountMinor: tc.inputs.finalPaymentMinor,
-      date: '2026-04-15',
-      description: 'سداد نهائي',
-      attachmentIds: [],
-      createdAt: '',
-      updatedAt: '',
-    };
+      const creationVerified =
+        duesAfterCreation.length === 1 &&
+        txsAfterCreation.length === tc.expected.afterCreation.ledgerTransactionsCount &&
+        b0 === tc.expected.afterCreation.accountBalanceMinor;
 
-    const bAfterFinal = calculateAccountBalance(acc, [txPartial, txFinal]);
+      // Phase 2: Execute legitimate Partial Payment atomically
+      const txPartial: TransactionModel = {
+        id: 'tx_pay_partial_1',
+        accountId: acc.id,
+        entryType: 'owedToAccount',
+        amountMinor: tc.inputs.partialPaymentMinor,
+        date: '2026-04-10',
+        description: 'سداد جزئي معتمد',
+        attachmentIds: [],
+        createdAt: '2026-04-10T10:00:00Z',
+        updatedAt: '2026-04-10T10:00:00Z',
+      };
+      const allocPartial: PaymentAllocationContract = {
+        id: 'alloc_partial_1',
+        dueItemId: initialDue.id,
+        paymentTransactionId: txPartial.id,
+        amountMinor: tc.inputs.partialPaymentMinor,
+      };
 
-    const ok =
-      b0 === tc.expected.afterCreation.accountBalanceMinor &&
-      bAfterPartial === tc.expected.afterPartialPayment.newAccountBalanceMinor &&
-      bAfterFinal === tc.expected.afterFinalPayment.finalAccountBalanceMinor;
+      await isolatedStorage.recordDuePaymentAtomic(initialDue.id, txPartial, allocPartial, false);
 
-    assert(tc.id, 'N2 due creation non-interference & atomic partial settlement', ok,
-      `InitialBalance=${b0}, AfterPartial=${bAfterPartial}, AfterFinal=${bAfterFinal}`);
+      const duesAfterPartial = await isolatedStorage.getAll<DueItemContract>(STORES_REAL.DUES);
+      const txsAfterPartial = await isolatedStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const allocsAfterPartial = await isolatedStorage.getAll<PaymentAllocationContract>(STORES_REAL.ALLOCATIONS);
+      const bAfterPartial = calculateAccountBalance(acc, txsAfterPartial);
+
+      const partialVerified =
+        duesAfterPartial[0].settledAmountMinor === tc.expected.afterPartialPayment.dueSettledAmountMinor &&
+        duesAfterPartial[0].status === tc.expected.afterPartialPayment.dueStatus &&
+        txsAfterPartial.length === 1 &&
+        allocsAfterPartial.length === 1 &&
+        bAfterPartial === tc.expected.afterPartialPayment.newAccountBalanceMinor;
+
+      // Phase 3: Attempt Overpayment and verify atomic rejection
+      let overpaymentRejected = false;
+      try {
+        const txOverpay: TransactionModel = {
+          id: 'tx_pay_overpay',
+          accountId: acc.id,
+          entryType: 'owedToAccount',
+          amountMinor: tc.inputs.overpaymentMinor, // 40,000 exceeds 35,000 remaining!
+          date: '2026-04-12',
+          description: 'سداد زائد مرفوض',
+          attachmentIds: [],
+          createdAt: '2026-04-12T10:00:00Z',
+          updatedAt: '2026-04-12T10:00:00Z',
+        };
+        const allocOverpay: PaymentAllocationContract = {
+          id: 'alloc_overpay',
+          dueItemId: initialDue.id,
+          paymentTransactionId: txOverpay.id,
+          amountMinor: tc.inputs.overpaymentMinor,
+        };
+        await isolatedStorage.recordDuePaymentAtomic(initialDue.id, txOverpay, allocOverpay, false);
+      } catch {
+        overpaymentRejected = true;
+      }
+
+      // Phase 4: Simulated failure injection (mismatched direction payment) & atomic rollback check
+      let atomicRollbackVerified = false;
+      try {
+        const txMismatchedDirection: TransactionModel = {
+          id: 'tx_pay_fail_dir',
+          accountId: acc.id,
+          entryType: 'owedByAccount', // WRONG DIRECTION: must be opposite of due!
+          amountMinor: tc.inputs.atomicFailureSimulation.invalidDirectionPaymentMinor,
+          date: '2026-04-13',
+          description: 'سداد باتجاه خاطئ',
+          attachmentIds: [],
+          createdAt: '2026-04-13T10:00:00Z',
+          updatedAt: '2026-04-13T10:00:00Z',
+        };
+        const allocMismatched: PaymentAllocationContract = {
+          id: 'alloc_fail_dir',
+          dueItemId: initialDue.id,
+          paymentTransactionId: txMismatchedDirection.id,
+          amountMinor: tc.inputs.atomicFailureSimulation.invalidDirectionPaymentMinor,
+        };
+        await isolatedStorage.recordDuePaymentAtomic(initialDue.id, txMismatchedDirection, allocMismatched, false);
+      } catch {
+        // Verify rollback: no new transactions or allocations were stored, due remained intact
+        const txsAfterFailed = await isolatedStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+        const duesAfterFailed = await isolatedStorage.getAll<DueItemContract>(STORES_REAL.DUES);
+        const allocsAfterFailed = await isolatedStorage.getAll<PaymentAllocationContract>(STORES_REAL.ALLOCATIONS);
+
+        atomicRollbackVerified =
+          txsAfterFailed.length === 1 &&
+          allocsAfterFailed.length === 1 &&
+          duesAfterFailed[0].settledAmountMinor === tc.expected.afterPartialPayment.dueSettledAmountMinor;
+      }
+
+      // Phase 5: Execute final remaining payment to settle due completely
+      const txFinal: TransactionModel = {
+        id: 'tx_pay_final_2',
+        accountId: acc.id,
+        entryType: 'owedToAccount',
+        amountMinor: tc.inputs.finalPaymentMinor,
+        date: '2026-04-15',
+        description: 'سداد نهائي مكمل',
+        attachmentIds: [],
+        createdAt: '2026-04-15T10:00:00Z',
+        updatedAt: '2026-04-15T10:00:00Z',
+      };
+      const allocFinal: PaymentAllocationContract = {
+        id: 'alloc_final_2',
+        dueItemId: initialDue.id,
+        paymentTransactionId: txFinal.id,
+        amountMinor: tc.inputs.finalPaymentMinor,
+      };
+
+      await isolatedStorage.recordDuePaymentAtomic(initialDue.id, txFinal, allocFinal, false);
+
+      const duesAfterFinal = await isolatedStorage.getAll<DueItemContract>(STORES_REAL.DUES);
+      const txsAfterFinal = await isolatedStorage.getAll<TransactionModel>(STORES_REAL.TRANSACTIONS);
+      const bAfterFinal = calculateAccountBalance(acc, txsAfterFinal);
+
+      const finalVerified =
+        duesAfterFinal[0].settledAmountMinor === tc.expected.afterFinalPayment.dueSettledAmountMinor &&
+        duesAfterFinal[0].status === tc.expected.afterFinalPayment.dueStatus &&
+        txsAfterFinal.length === 2 &&
+        bAfterFinal === tc.expected.afterFinalPayment.finalAccountBalanceMinor;
+
+      const ok = creationVerified && partialVerified && overpaymentRejected && atomicRollbackVerified && finalVerified;
+
+      assert(tc.id, 'N2 due creation non-interference & atomic partial settlement lifecycle', ok,
+        `Created=${creationVerified}, Partial=${partialVerified}, OverpayRejected=${overpaymentRejected}, RollbackVerified=${atomicRollbackVerified}, FinalSettled=${finalVerified}`);
+    } finally {
+      await isolatedStorage.destroyDatabase();
+    }
   }
 
-  // 10. GOLDEN_10_BACKUP_INTEGRITY_AND_TAMPER_DETECTION
+  // 10. GOLDEN_10_BACKUP_INTEGRITY_AND_TAMPER_DETECTION (Authentic Corrupted Backup Rejection)
   {
     const tc = fixtureData.cases.find((c: any) => c.id === 'GOLDEN_10_BACKUP_INTEGRITY_AND_TAMPER_DETECTION');
     const dataPayload = tc.inputs.dataPayload;
     const jsonStr = JSON.stringify(dataPayload);
-    const digest = await computeSHA256(jsonStr);
+    const validDigest = await computeSHA256(jsonStr);
 
-    const validChecksum = typeof digest === 'string' && digest.length === 64;
+    const validManifest = {
+      formatName: 'RAKAN_BALANCE_BACKUP',
+      backupFormatVersion: 2,
+      schemaVersion: 2,
+      exportedAt: '2026-11-07T00:00:00Z',
+      appName: 'راكان بلانس | RAKAN BALANCE',
+      checksum: validDigest,
+      recordCounts: {
+        accounts: 1,
+        categories: 1,
+        transactions: 0,
+        attachments: 0,
+        notes: 0,
+        dues: 0,
+        allocations: 0,
+        reminders: 0,
+      },
+    };
 
-    // Tampered payload
-    const tamperedData = { ...dataPayload, accounts: [] };
-    const tamperedDigest = await computeSHA256(JSON.stringify(tamperedData));
+    // 1. Verify that valid bundle is accepted
+    const validBundleString = JSON.stringify({ manifest: validManifest, data: dataPayload });
+    const validValidationResult = await validateBackupFile(validBundleString);
 
-    const ok = validChecksum && digest !== tamperedDigest;
+    // 2. Iterate through corrupted backup scenarios defined in JSON fixture
+    let allCorruptionsRejected = true;
+    const corruptionResults: string[] = [];
 
-    assert(tc.id, 'Backup integrity: SHA-256 calculation and tamper detection', ok,
-      `DigestLength=${digest.length}, TamperDetected=${digest !== tamperedDigest}`);
+    for (const scenario of tc.corruptedBackupScenarios) {
+      let corruptedString = '';
+
+      if (scenario.tamperedPayload) {
+        corruptedString = scenario.tamperedPayload;
+      } else if (scenario.scenario === 'tampered_checksum') {
+        const tamperedManifest = { ...validManifest, checksum: scenario.tamperModification.checksum };
+        corruptedString = JSON.stringify({ manifest: tamperedManifest, data: dataPayload });
+      } else if (scenario.scenario === 'record_counts_mismatch') {
+        const tamperedManifest = {
+          ...validManifest,
+          recordCounts: { ...validManifest.recordCounts, accounts: scenario.tamperModification.recordCounts.accounts },
+        };
+        corruptedString = JSON.stringify({ manifest: tamperedManifest, data: dataPayload });
+      } else if (scenario.scenario === 'unsupported_backup_format_version') {
+        const tamperedManifest = {
+          ...validManifest,
+          backupFormatVersion: scenario.tamperModification.backupFormatVersion,
+        };
+        corruptedString = JSON.stringify({ manifest: tamperedManifest, data: dataPayload });
+      }
+
+      const res = await validateBackupFile(corruptedString);
+
+      if (res.isValid) {
+        allCorruptionsRejected = false;
+        corruptionResults.push(`${scenario.scenario}: UNEXPECTED_ACCEPT`);
+      } else {
+        corruptionResults.push(`${scenario.scenario}: REJECTED_OK`);
+      }
+    }
+
+    // 3. Test Actual Failed Restore Atomic Rollback on Isolated DB
+    const testDbId = `gold_restore_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const isolatedStorage = createIsolatedTestStorage(testDbId);
+    let failedRestoreRollbackVerified = false;
+
+    try {
+      const canaryAccount: AccountModel = {
+        id: 'acc_canary_restore_1',
+        name: 'حساب كناري قبل الاستعادة',
+        parentId: null,
+        categoryId: 'cat_canary',
+        openingBalanceMinor: 88800,
+        status: 'active',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      };
+      await isolatedStorage.put(STORES_REAL.ACCOUNTS, canaryAccount);
+
+      // Attempt atomic restore of a corrupted payload that deliberately throws
+      try {
+        const throwingBundleData: any = {
+          accounts: [{ id: 'bad_acc', get name(): string { throw new Error('Simulated atomic restore corruption'); } }],
+          categories: [],
+          transactions: [],
+          attachments: [],
+          notes: [],
+        };
+        await isolatedStorage.atomicRestore(throwingBundleData);
+      } catch {
+        // Verify canary account was preserved by transaction rollback
+        const accountsAfter = await isolatedStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS);
+        failedRestoreRollbackVerified = accountsAfter.some((a) => a.id === 'acc_canary_restore_1');
+      }
+    } finally {
+      await isolatedStorage.destroyDatabase();
+    }
+
+    const ok = validValidationResult.isValid && allCorruptionsRejected && failedRestoreRollbackVerified;
+
+    assert(tc.id, 'Backup integrity: authentic corrupt backup rejection and atomic restore rollback', ok,
+      `ValidAccepted=${validValidationResult.isValid}, Corruptions=${corruptionResults.join(' | ')}, RollbackPreserved=${failedRestoreRollbackVerified}`);
   }
 
   return { passedCount, failedCount, results };

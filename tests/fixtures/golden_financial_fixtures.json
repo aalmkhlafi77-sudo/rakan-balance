@@ -167,21 +167,33 @@
       "testCases": [
         {
           "scenario": "same_source_and_destination",
-          "input": { "sourceAccountId": "acc_1", "destinationAccountId": "acc_1", "amountMinor": 5000 },
+          "input": { "sourceAccountId": "acc_1", "destinationAccountId": "acc_1", "amountMinor": 5000, "date": "2026-03-10", "description": "تحويل لنفس الحساب" },
+          "accounts": [
+            { "id": "acc_1", "name": "أحمد", "parentId": null, "categoryId": "cat_1", "openingBalanceMinor": 50000, "status": "active" }
+          ],
+          "currentTransactions": [],
           "shouldReject": true,
           "expectedError": "same_account_transfer_rejected"
         },
         {
           "scenario": "transfer_exceeds_source_balance",
-          "input": { "sourceAccountId": "src_small", "destinationAccountId": "dst_1", "amountMinor": 80000 },
-          "sourceAvailableBalanceMinor": 50000,
+          "input": { "sourceAccountId": "src_small", "destinationAccountId": "dst_1", "amountMinor": 80000, "date": "2026-03-10", "description": "تجاوز الرصيد" },
+          "accounts": [
+            { "id": "src_small", "name": "مصدر صغير", "parentId": null, "categoryId": "cat_1", "openingBalanceMinor": 50000, "status": "active" },
+            { "id": "dst_1", "name": "وجهة 1", "parentId": null, "categoryId": "cat_1", "openingBalanceMinor": 10000, "status": "active" }
+          ],
+          "currentTransactions": [],
           "shouldReject": true,
           "expectedError": "amount_exceeds_source_balance"
         },
         {
           "scenario": "archived_account_participant",
-          "input": { "sourceAccountId": "src_1", "destinationAccountId": "dst_archived", "amountMinor": 10000 },
-          "destinationStatus": "archived",
+          "input": { "sourceAccountId": "src_1", "destinationAccountId": "dst_archived", "amountMinor": 10000, "date": "2026-03-10", "description": "تحويل لطرف مؤرشف" },
+          "accounts": [
+            { "id": "src_1", "name": "مصدر نشط", "parentId": null, "categoryId": "cat_1", "openingBalanceMinor": 50000, "status": "active" },
+            { "id": "dst_archived", "name": "وجهة مؤرشفة", "parentId": null, "categoryId": "cat_1", "openingBalanceMinor": 20000, "status": "archived" }
+          ],
+          "currentTransactions": [],
           "shouldReject": true,
           "expectedError": "account_is_archived"
         }
@@ -232,7 +244,12 @@
           "status": "pending"
         },
         "partialPaymentMinor": 25000,
-        "finalPaymentMinor": 35000
+        "finalPaymentMinor": 35000,
+        "overpaymentMinor": 40000,
+        "atomicFailureSimulation": {
+          "shouldRollbackOnFailure": true,
+          "invalidDirectionPaymentMinor": 10000
+        }
       },
       "expected": {
         "afterCreation": {
@@ -240,6 +257,17 @@
           "accountBalanceMinor": 100000,
           "dueRemainingMinor": 60000,
           "dueStatus": "pending"
+        },
+        "overpaymentRejection": {
+          "attemptedAmountMinor": 40000,
+          "remainingBeforeAttempt": 35000,
+          "shouldReject": true,
+          "expectedError": "overpayment_exceeds_remaining"
+        },
+        "atomicFailureRejection": {
+          "attemptedAmountMinor": 10000,
+          "shouldRollbackAllStores": true,
+          "expectedPreservedRemainingMinor": 35000
         },
         "afterPartialPayment": {
           "ledgerTransaction": {
@@ -264,7 +292,7 @@
           "finalAccountBalanceMinor": 40000
         }
       },
-      "formula": "Due remaining = original - settled; Payment creates exactly 1 Transaction with opposite direction, 1 Allocation, and updates due.settledAmount."
+      "formula": "Due remaining = original - settled; Payment creates exactly 1 Transaction with opposite direction, 1 Allocation, and updates due.settledAmount. Overpayment and mismatched direction trigger atomic abort leaving database untouched."
     },
     {
       "id": "GOLDEN_10_BACKUP_INTEGRITY_AND_TAMPER_DETECTION",
@@ -286,11 +314,42 @@
           "reminders": []
         }
       },
-      "canonicalHashingRule": "Digest = SHA-256(UTF-8(JSON.stringify(dataPayload))); manifest.recordCounts must match data array lengths exactly",
+      "corruptedBackupScenarios": [
+        {
+          "scenario": "tampered_checksum",
+          "description": "Valid data payload but checksum modified by attacker",
+          "tamperModification": { "checksum": "0000000000000000000000000000000000000000000000000000000000000000" },
+          "shouldReject": true,
+          "expectedError": "checksum_mismatch"
+        },
+        {
+          "scenario": "record_counts_mismatch",
+          "description": "Manifest claims 5 accounts but payload contains only 1",
+          "tamperModification": { "recordCounts": { "accounts": 5 } },
+          "shouldReject": true,
+          "expectedError": "record_counts_mismatch"
+        },
+        {
+          "scenario": "corrupted_json_syntax",
+          "description": "Truncated or malformed JSON payload string",
+          "tamperedPayload": "{ \"manifest\": { \"formatName\": \"RAKAN_BALANCE_BACKUP\" ...",
+          "shouldReject": true,
+          "expectedError": "malformed_json"
+        },
+        {
+          "scenario": "unsupported_backup_format_version",
+          "description": "Future or incompatible format version",
+          "tamperModification": { "backupFormatVersion": 99 },
+          "shouldReject": true,
+          "expectedError": "unsupported_version"
+        }
+      ],
+      "canonicalHashingRule": "Digest = SHA-256(UTF-8(JSON.stringify(payloadToHash))); manifest.recordCounts must match data array lengths exactly",
       "expected": {
         "validManifestName": "RAKAN_BALANCE_BACKUP",
         "validBackupFormatVersion": 2,
-        "validSchemaVersion": 2
+        "validSchemaVersion": 2,
+        "rejectAllCorrupted": true
       }
     }
   ]
