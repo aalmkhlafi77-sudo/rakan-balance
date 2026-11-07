@@ -163,6 +163,12 @@ class BackupValidator {
 
       for (final raw in duesList) {
         final due = Map<String, dynamic>.from(raw as Map);
+        if (!['owedByAccount', 'owedToAccount'].contains(due['entryType']) ||
+            !['pending', 'partially_settled', 'settled', 'overdue']
+                .contains(due['status'])) {
+          return (isValid: false, error: 'نوع أو حالة الاستحقاق غير صالح.',
+            parsedBundle: null);
+        }
         if (due['sourceTransactionId'] != null) {
           final source = transactionsList.where(
             (tx) => tx['id'] == due['sourceTransactionId']).toList();
