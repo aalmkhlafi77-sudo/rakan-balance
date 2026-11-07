@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../domain/financial/account_statement_csv.dart';
+import '../../domain/financial/account_statement_pdf.dart';
 import '../../domain/financial/balance_calculator.dart';
 import '../../domain/financial/money_utils.dart';
 import '../../domain/models/account_model.dart';
@@ -22,6 +23,7 @@ class _StatementsScreenState extends State<StatementsScreen> {
   String? _selectedAccountId;
   String? _fromDate;
   String? _toDate;
+  bool _pdfBusy = false;
 
   String _iso(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-'
@@ -102,6 +104,27 @@ class _StatementsScreenState extends State<StatementsScreen> {
     }
   }
 
+  Future<void> _runPdfAction(Future<void> Function() action) async {
+    if (_pdfBusy) return;
+    setState(() => _pdfBusy = true);
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تعذر إنشاء مستند PDF: $e. '
+              'قد يلزم اتصال بالإنترنت في أول استخدام لتحميل الخط العربي.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pdfBusy = false);
+    }
+  }
+
   Widget _metric(String label, int minor, {bool signed = true}) {
     final value = MoneyUtils.formatMinorAmount(minor);
     final displayed = signed && minor > 0 ? '+$value' : value;
@@ -154,12 +177,49 @@ class _StatementsScreenState extends State<StatementsScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
-              if (selected != null)
+              if (selected != null) ...[
                 IconButton(
                   tooltip: 'تصدير CSV',
                   onPressed: () => _exportCsv(context, selected, state),
                   icon: const Icon(Icons.download_outlined),
                 ),
+                IconButton(
+                  tooltip: 'طباعة كشف PDF',
+                  onPressed: _pdfBusy
+                      ? null
+                      : () => _runPdfAction(
+                            () => AccountStatementPdf.printStatement(
+                              account: selected,
+                              accounts: state.accounts,
+                              transactions: state.transactions,
+                              fromDate: _fromDate,
+                              toDate: _toDate,
+                            ),
+                          ),
+                  icon: const Icon(Icons.print_outlined),
+                ),
+                IconButton(
+                  tooltip: 'مشاركة كشف PDF',
+                  onPressed: _pdfBusy
+                      ? null
+                      : () => _runPdfAction(
+                            () => AccountStatementPdf.shareStatement(
+                              account: selected,
+                              accounts: state.accounts,
+                              transactions: state.transactions,
+                              fromDate: _fromDate,
+                              toDate: _toDate,
+                            ),
+                          ),
+                  icon: _pdfBusy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.picture_as_pdf_outlined),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),

@@ -19,6 +19,8 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   shared_preferences: ^2.2.2
   file_picker: 10.3.10
+  pdf: ^3.12.0
+  printing: ^5.14.3
   path_provider: ^2.1.2
   cupertino_icons: ^1.0.6
 
