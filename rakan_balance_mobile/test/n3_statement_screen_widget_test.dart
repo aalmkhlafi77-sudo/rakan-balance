@@ -48,15 +48,18 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('كشف الحساب والتقارير التفصيلية'), findsOneWidget);
       expect(find.text('اختر حساباً لعرض كشفه المالي.'), findsOneWidget);
 
       await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
       await tester.tap(find.text('طرف اختبار').last);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
 
       expect(find.text('رصيد أول المدة'), findsOneWidget);
       expect(find.text('عليه خلال الفترة'), findsOneWidget);
@@ -66,6 +69,8 @@ void main() {
       expect(find.text('سداد'), findsOneWidget);
       expect(find.textContaining('270.00 ر.س'), findsWidgets);
     } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
       state.dispose();
       await db.close();
     }
