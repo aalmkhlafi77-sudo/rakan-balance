@@ -45,7 +45,7 @@ void main() {
   });
 
   test('rejects mismatched MIME and declared size', () {
-    final wrongMime = const AttachmentModel(
+    const wrongMime = AttachmentModel(
       id: 'att',
       filename: 'file.pdf',
       mimeType: 'application/pdf',
