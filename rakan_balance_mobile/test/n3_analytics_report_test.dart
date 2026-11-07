@@ -36,8 +36,8 @@ TransactionModel tx({
       date: date,
       description: 'حركة $id',
       attachmentIds: const [],
-      createdAt: '$dateT00:00:00Z',
-      updatedAt: '$dateT00:00:00Z',
+      createdAt: '${date}T00:00:00Z',
+      updatedAt: '${date}T00:00:00Z',
     );
 
 void main() {
