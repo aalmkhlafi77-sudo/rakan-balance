@@ -613,6 +613,13 @@ class LedgerImportService {
     final importedNames = <String>{};
     final importedRefs = <String>{};
     final importedRefOwners = <String, String>{};
+    // Collect all account names first: an external ref must not shadow a
+    // different account's name, even when that row occurs later in the file.
+    final batchNameKeys = <String>{
+      for (final row in accountRows)
+        if (_value(row, _accountName) != null)
+          _token(_value(row, _accountName)),
+    };
 
     for (var index = 0; index < accountRows.length; index++) {
       final row = accountRows[index];
@@ -669,8 +676,11 @@ class LedgerImportService {
             _token(account.name) == normalizedRef);
         final conflictsWithExistingAlias = existingAliasOwners.any(
             (account) => _token(account.name) != normalizedName);
+        final conflictsWithBatchName =
+            batchNameKeys.contains(normalizedRef) &&
+            normalizedRef != normalizedName;
         if ((importedOwner != null && importedOwner != normalizedName) ||
-            conflictsWithExistingAlias) {
+            conflictsWithExistingAlias || conflictsWithBatchName) {
           issues.add(ImportIssue(
             section: 'accounts',
             rowNumber: rowNumber,
