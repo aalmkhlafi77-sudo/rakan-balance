@@ -19,6 +19,7 @@ class AppStateNotifier extends ChangeNotifier {
   SqliteStorageAdapter? _storage;
 
   bool _isLoading = true;
+  String? _initializationError;
   String _activeScope = 'real'; // 'real' | 'demo'
   ThemeMode _themeMode = ThemeMode.light;
   bool _isPinLocked = false;
@@ -43,6 +44,7 @@ class AppStateNotifier extends ChangeNotifier {
   }
 
   bool get isLoading => _isLoading;
+  String? get initializationError => _initializationError;
   String get activeScope => _activeScope;
   ThemeMode get themeMode => _themeMode;
   bool get isPinLocked => _isPinLocked;
@@ -57,6 +59,7 @@ class AppStateNotifier extends ChangeNotifier {
 
   Future<void> init() async {
     _isLoading = true;
+    _initializationError = null;
     notifyListeners();
 
     try {
@@ -67,7 +70,10 @@ class AppStateNotifier extends ChangeNotifier {
       _storage = SqliteStorageAdapter(_db!);
       await reloadWorkspace();
     } catch (e) {
-      debugPrint('Failed to initialize database: $e');
+      // Fail closed if secure storage or database initialization fails.
+      _initializationError = 'تعذر تهيئة التخزين الآمن أو قاعدة البيانات.';
+      _isPinLocked = true;
+      debugPrint('Failed to initialize application: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
