@@ -1,4 +1,4 @@
-/// SQLite Table definitions for RAKAN BALANCE Mobile (Database Version 3)
+/// SQLite Table definitions for RAKAN BALANCE Mobile (Database Version 4)
 class TablesSchema {
   // Real Workspace Tables
   static const String accounts = 'accounts';
@@ -30,6 +30,7 @@ class TablesSchema {
       openingBalanceMinor INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
       notes TEXT,
+      phone TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -44,6 +45,7 @@ class TablesSchema {
       openingBalanceMinor INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
       notes TEXT,
+      phone TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -74,6 +76,7 @@ class TablesSchema {
       date TEXT NOT NULL,
       description TEXT NOT NULL,
       attachmentIds TEXT,
+      notes TEXT,
       transferId TEXT,
       transferRole TEXT,
       counterpartyAccountId TEXT,
@@ -92,6 +95,7 @@ class TablesSchema {
       date TEXT NOT NULL,
       description TEXT NOT NULL,
       attachmentIds TEXT,
+      notes TEXT,
       transferId TEXT,
       transferRole TEXT,
       counterpartyAccountId TEXT,
@@ -108,6 +112,10 @@ class TablesSchema {
       mimeType TEXT NOT NULL,
       sizeBytes INTEGER NOT NULL,
       base64Data TEXT NOT NULL,
+      transactionId TEXT,
+      originalName TEXT,
+      size INTEGER,
+      dataUrl TEXT,
       createdAt TEXT NOT NULL
     );
   ''';
@@ -116,6 +124,9 @@ class TablesSchema {
     CREATE TABLE IF NOT EXISTS $notes (
       id TEXT PRIMARY KEY,
       content TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      color TEXT NOT NULL DEFAULT 'slate',
+      archived INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -125,6 +136,9 @@ class TablesSchema {
     CREATE TABLE IF NOT EXISTS $demoNotes (
       id TEXT PRIMARY KEY,
       content TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      color TEXT NOT NULL DEFAULT 'slate',
+      archived INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -134,12 +148,14 @@ class TablesSchema {
     CREATE TABLE IF NOT EXISTS $dues (
       id TEXT PRIMARY KEY,
       accountId TEXT NOT NULL,
+      sourceTransactionId TEXT,
       entryType TEXT NOT NULL,
       dueDate TEXT NOT NULL,
       originalAmountMinor INTEGER NOT NULL,
       settledAmountMinor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       notes TEXT,
+      phone TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       FOREIGN KEY (accountId) REFERENCES $accounts (id)
@@ -150,12 +166,14 @@ class TablesSchema {
     CREATE TABLE IF NOT EXISTS $demoDues (
       id TEXT PRIMARY KEY,
       accountId TEXT NOT NULL,
+      sourceTransactionId TEXT,
       entryType TEXT NOT NULL,
       dueDate TEXT NOT NULL,
       originalAmountMinor INTEGER NOT NULL,
       settledAmountMinor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       notes TEXT,
+      phone TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       FOREIGN KEY (accountId) REFERENCES $demoAccounts (id)
