@@ -89,6 +89,38 @@ void main() {
       expect(statement.closingBalanceMinor, -3000);
       expect(statement.rows.single.runningBalanceMinor, -3000);
     });
+    test('dashboard totals correctly separate positive and negative accounts', () {
+      final summary = BalanceCalculator.calculateSystemSummary(
+        accounts: [_account('positive', 10000), _account('negative', -7000),
+          _account('third', 2000)],
+        transactions: <TransactionModel>[]);
+      expect(summary.totalOwedByMinor, 12000);
+      expect(summary.totalOwedToMinor, 7000);
+      expect(summary.netBalanceMinor, 5000);
+    });
+    test('subaccount balances are counted directly without parent duplication', () {
+      final child = AccountModel(id: 'child', parentId: 'parent',
+        name: 'child', categoryId: 'cat', openingBalanceMinor: 3000,
+        createdAt: '', updatedAt: '');
+      final summary = BalanceCalculator.calculateSystemSummary(
+        accounts: [_account('parent', 5000), child],
+        transactions: <TransactionModel>[]);
+      expect(summary.totalOwedByMinor, 8000);
+      expect(summary.netBalanceMinor, 8000);
+    });
+    test('hierarchy check rejects self and descendant parent links', () {
+      final root = _account('root', 0);
+      final child = AccountModel(id: 'child', parentId: 'root',
+        name: 'child', categoryId: 'cat', openingBalanceMinor: 0,
+        createdAt: '', updatedAt: '');
+      final grandchild = AccountModel(id: 'grandchild', parentId: 'child',
+        name: 'grandchild', categoryId: 'cat', openingBalanceMinor: 0,
+        createdAt: '', updatedAt: '');
+      final accounts = [root, child, grandchild];
+      expect(BalanceCalculator.hasHierarchyCycle('root', 'root', accounts), true);
+      expect(BalanceCalculator.hasHierarchyCycle('root', 'grandchild', accounts), true);
+      expect(BalanceCalculator.hasHierarchyCycle('grandchild', null, accounts), false);
+    });
     test('stable statement sort includes date, createdAt and ID', () {
       final txs = [
         _tx('z', 'ref', EntryType.owedByAccount, 200),
