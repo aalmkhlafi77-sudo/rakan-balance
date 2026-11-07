@@ -16,6 +16,7 @@ class AccountStatementCsv {
   static String build({
     required AccountModel account,
     required Iterable<TransactionModel> transactions,
+    Iterable<AccountModel> accounts = const [],
     String? fromDate,
     String? toDate,
   }) {
@@ -89,9 +90,20 @@ class AccountStatementCsv {
       } else {
         periodOwedTo += -signed;
       }
+      var description = tx.description;
+      if (tx.transferId != null && tx.counterpartyAccountId != null) {
+        final counterpart = accounts.where(
+          (candidate) => candidate.id == tx.counterpartyAccountId).toList();
+        if (counterpart.isNotEmpty) {
+          final relation = tx.transferRole == TransferRole.source
+              ? 'نقل مديونية إلى: '
+              : 'مديونية محولة من: ';
+          description = '$description ($relation${counterpart.first.name})';
+        }
+      }
       lines.add([
         _cell(tx.date),
-        _cell(tx.description),
+        _cell(description),
         '${signed > 0 ? signed : 0}',
         '${signed < 0 ? -signed : 0}',
         '$running',
