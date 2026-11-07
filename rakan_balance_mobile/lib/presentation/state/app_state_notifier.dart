@@ -10,6 +10,7 @@ import '../../domain/validators/backup_validator.dart';
 import '../../domain/financial/balance_calculator.dart';
 import '../../platform/security/pin_security_service.dart';
 import '../../domain/financial/money_utils.dart';
+import '../../domain/importing/ledger_import_service.dart';
 import '../../domain/validators/transaction_validator.dart';
 import '../../domain/validators/attachment_policy.dart';
 import '../../domain/models/account_model.dart';
@@ -488,6 +489,29 @@ class AppStateNotifier extends ChangeNotifier {
     await _storage!.deleteAttachmentAtomic(
       txId: txId, attachmentId: attachmentId, isDemo: false);
     await reloadWorkspace();
+  }
+
+  Future<LedgerImportCommitResult> importLedger(
+    LedgerImportPreview preview,
+  ) async {
+    if (_storage == null) {
+      throw StateError('قاعدة البيانات غير مهيأة.');
+    }
+    if (_activeScope != 'real') {
+      throw StateError(
+        'الاستيراد متاح للبيانات الحقيقية فقط. '
+        'يمكنك معاينة الملف دون تنفيذه في المساحة التجريبية.',
+      );
+    }
+    if (!preview.canCommit) {
+      throw StateError('المعاينة تحتوي على أخطاء مانعة أو لا تحتوي سجلات جديدة.');
+    }
+    final result = await _storage!.importLedgerAtomic(
+      preview: preview,
+      isDemo: false,
+    );
+    await reloadWorkspace();
+    return result;
   }
 
   /// Backups contain only real workspace financial records, never PIN secrets.
