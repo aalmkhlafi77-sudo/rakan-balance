@@ -324,7 +324,7 @@ void main() {
       totalPayableMinor: 0,
       netMinor: 100,
       activeAccountCount: 1,
-      accounts: const [
+      accounts: [
         AccountAnalyticsRow(
           accountId: 'a',
           name: '=SUM(A1:A2)',
@@ -335,8 +335,8 @@ void main() {
           lastActivityDate: null,
         ),
       ],
-      categories: const [],
-      monthly: const [],
+      categories: [],
+      monthly: [],
     );
 
     final csv = AnalyticsReportBuilder.buildCsv(report);
