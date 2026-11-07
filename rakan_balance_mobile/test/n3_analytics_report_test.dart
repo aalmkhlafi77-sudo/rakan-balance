@@ -345,6 +345,73 @@ void main() {
     expect(csv, isNot(contains('PRIVATE_NOTE')));
   });
 
+  test('reciprocal internal transfers do not inflate system net', () {
+    final report = AnalyticsReportBuilder.build(
+      accounts: [
+        account(id: 'source', name: 'المصدر', categoryId: 'c', opening: 3000),
+        account(id: 'destination', name: 'الوجهة', categoryId: 'c', opening: -1000),
+      ],
+      transactions: [
+        tx(
+          id: 'transfer-source',
+          accountId: 'source',
+          type: EntryType.owedToAccount,
+          amount: 500,
+          date: '2026-11-07',
+        ),
+        tx(
+          id: 'transfer-destination',
+          accountId: 'destination',
+          type: EntryType.owedByAccount,
+          amount: 500,
+          date: '2026-11-07',
+        ),
+      ],
+      categoryNames: const {'c': 'عام'},
+      throughDate: DateTime.utc(2026, 11, 7),
+      monthCount: 1,
+    );
+
+    expect(report.netMinor, 2000);
+    expect(report.totalReceivableMinor, 2500);
+    expect(report.totalPayableMinor, 500);
+    expect(report.monthly.single.netMinor, 2000);
+    expect(report.categories.single.netMinor, 2000);
+  });
+
+  test('archived accounts only affect report when explicitly included', () {
+    final accounts = [
+      account(id: 'active', name: 'نشط', categoryId: 'c', opening: 100),
+      account(
+        id: 'archived',
+        name: 'مؤرشف',
+        categoryId: 'c',
+        opening: 900,
+        status: 'archived',
+      ),
+    ];
+    final activeOnly = AnalyticsReportBuilder.build(
+      accounts: accounts,
+      transactions: const [],
+      categoryNames: const {'c': 'عام'},
+      throughDate: DateTime.utc(2026, 11, 7),
+      monthCount: 1,
+    );
+    final withArchived = AnalyticsReportBuilder.build(
+      accounts: accounts,
+      transactions: const [],
+      categoryNames: const {'c': 'عام'},
+      throughDate: DateTime.utc(2026, 11, 7),
+      monthCount: 1,
+      includeArchived: true,
+    );
+
+    expect(activeOnly.netMinor, 100);
+    expect(activeOnly.accounts, hasLength(1));
+    expect(withArchived.netMinor, 1000);
+    expect(withArchived.accounts, hasLength(2));
+  });
+
   test('month range is bounded', () {
     expect(
       () => AnalyticsReportBuilder.build(
