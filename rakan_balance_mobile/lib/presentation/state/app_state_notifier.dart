@@ -1,8 +1,11 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../data/sqlite/database_helper.dart';
 import '../../data/sqlite/sqlite_storage_adapter.dart';
 import '../../domain/financial/balance_calculator.dart';
+import '../../domain/financial/money_utils.dart';
+import '../../domain/validators/transaction_validator.dart';
 import '../../domain/models/account_model.dart';
 import '../../domain/models/due_item_model.dart';
 import '../../domain/models/transaction_model.dart';
@@ -115,6 +118,129 @@ class AppStateNotifier extends ChangeNotifier {
     );
     if (acc.id.isEmpty) return 0;
     return BalanceCalculator.calculateAccountBalance(account: acc, transactions: _transactions);
+  }
+
+  String _newId(String prefix) {
+    final random = Random.secure();
+    return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_${random.nextInt(1 << 32)}';
+  }
+
+  /// Add an account and its category, without creating a financial movement.
+  Future<void> createAccount({
+    required String name,
+    required String categoryName,
+    required int openingBalanceMinor,
+    String? privateNotes,
+  }) async {
+    if (_db == null) throw StateError('قاعدة البيانات غير مهيأة.');
+    final cleanedName = name.trim();
+    final cleanedCategory = categoryName.trim();
+    if (cleanedName.isEmpty || cleanedCategory.isEmpty) {
+      throw ArgumentError('اسم الحساب وتصنيفه مطلوبان.');
+    }
+    if (openingBalanceMinor.abs() > MoneyUtils.maxSafeHalalas) {
+      throw ArgumentError('الرصيد الافتتاحي خارج الحدود المالية.');
+    }
+    final isDemo = _activeScope == 'demo';
+    final accountTable = isDemo ? 'demo_accounts' : 'accounts';
+    final categoryTable = isDemo ? 'demo_categories' : 'categories';
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    await _db!.transaction((txn) async {
+      final existing = await txn.query(categoryTable,
+        where: 'name = ?', whereArgs: [cleanedCategory], limit: 1);
+      final categoryId = existing.isNotEmpty
+          ? existing.first['id'] as String : _newId('cat');
+      if (existing.isEmpty) {
+        await txn.insert(categoryTable, {
+          'id': categoryId, 'name': cleanedCategory, 'sortOrder': 0,
+        });
+      }
+      await txn.insert(accountTable, AccountModel(
+        id: _newId('acc'), name: cleanedName, categoryId: categoryId,
+        openingBalanceMinor: openingBalanceMinor, notes: privateNotes?.trim(),
+        createdAt: now, updatedAt: now,
+      ).toMap());
+    });
+    await reloadWorkspace();
+  }
+
+  Future<void> updateAccount({
+    required String accountId,
+    required String name,
+    required String? privateNotes,
+  }) async {
+    final account = _accounts.where((a) => a.id == accountId).toList();
+    if (account.length != 1 || name.trim().isEmpty) {
+      throw ArgumentError('الحساب أو الاسم غير صالح.');
+    }
+    final table = _activeScope == 'demo' ? 'demo_accounts' : 'accounts';
+    final count = await _db!.update(table, {
+      'name': name.trim(),
+      'notes': privateNotes?.trim(),
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [accountId]);
+    if (count != 1) throw StateError('تعذر تحديث الحساب.');
+    await reloadWorkspace();
+  }
+
+  Future<void> setAccountArchived(String accountId, bool archived) async {
+    if (!_accounts.any((a) => a.id == accountId)) {
+      throw StateError('الحساب غير موجود.');
+    }
+    final table = _activeScope == 'demo' ? 'demo_accounts' : 'accounts';
+    final count = await _db!.update(table, {
+      'status': archived ? 'archived' : 'active',
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [accountId]);
+    if (count != 1) throw StateError('تعذر تغيير حالة الحساب.');
+    await reloadWorkspace();
+  }
+
+  Future<void> createTransaction({
+    required String accountId,
+    required EntryType entryType,
+    required int amountMinor,
+    required String date,
+    required String description,
+  }) async {
+    final valid = TransactionValidator.validate(
+      accountId: accountId, entryType: entryType, amountMinor: amountMinor,
+      date: date, description: description, accounts: _accounts);
+    if (!valid.isValid) throw ArgumentError(valid.error);
+    if (description.trim().isEmpty) throw ArgumentError('بيان الحركة مطلوب.');
+    final now = DateTime.now().toUtc().toIso8601String();
+    final tx = TransactionModel(
+      id: _newId('tx'), accountId: accountId, entryType: entryType,
+      amountMinor: amountMinor, date: date, description: description.trim(),
+      attachmentIds: const [], createdAt: now, updatedAt: now,
+    );
+    final table = _activeScope == 'demo' ? 'demo_transactions' : 'transactions';
+    await _db!.insert(table, tx.toMap());
+    await reloadWorkspace();
+  }
+
+  Future<void> updateRegularTransaction(TransactionModel tx) async {
+    final valid = TransactionValidator.validate(
+      accountId: tx.accountId, entryType: tx.entryType,
+      amountMinor: tx.amountMinor, date: tx.date,
+      description: tx.description, accounts: _accounts);
+    if (!valid.isValid || tx.description.trim().isEmpty) {
+      throw ArgumentError(valid.error ?? 'بيان الحركة مطلوب.');
+    }
+    final original = _transactions.where((t) => t.id == tx.id).toList();
+    if (original.length != 1 || original.single.transferId != null) {
+      throw StateError('الحركة غير موجودة أو مرتبطة بتحويل بيني.');
+    }
+    await _storage!.updateTransactionGuarded(
+      updatedTx: tx, isDemo: _activeScope == 'demo');
+    await reloadWorkspace();
+  }
+
+  Future<void> deleteRegularTransaction(String txId) async {
+    await _storage!.deleteTransactionGuarded(
+      txId: txId, isDemo: _activeScope == 'demo');
+    await reloadWorkspace();
   }
 
   // Inter-Account Transfer
