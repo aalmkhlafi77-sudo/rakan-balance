@@ -19,6 +19,8 @@ class ImportScreen extends StatefulWidget {
 
 class _ImportScreenState extends State<ImportScreen> {
   LedgerImportPreview? _preview;
+  LedgerImportPreview? _lastCommittedPreview;
+  LedgerImportCommitResult? _lastResult;
   bool _busy = false;
   String? _status;
   bool _success = false;
@@ -43,6 +45,8 @@ class _ImportScreenState extends State<ImportScreen> {
       _busy = true;
       _status = null;
       _preview = null;
+      _lastCommittedPreview = null;
+      _lastResult = null;
     });
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -135,7 +139,11 @@ class _ImportScreenState extends State<ImportScreen> {
         success: true,
       );
       if (mounted) {
-        setState(() => _preview = null);
+        setState(() {
+          _lastCommittedPreview = preview;
+          _lastResult = result;
+          _preview = null;
+        });
       }
     } catch (e) {
       _setStatus(
@@ -146,21 +154,81 @@ class _ImportScreenState extends State<ImportScreen> {
     }
   }
 
+  Future<void> _saveBytes({
+    required String dialogTitle,
+    required String fileName,
+    required String extension,
+    required Uint8List bytes,
+    required String successLabel,
+  }) async {
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: [extension],
+      bytes: bytes,
+    );
+    if (path != null) {
+      _setStatus('$successLabel: $path', success: true);
+    }
+  }
+
   Future<void> _saveTemplate({
     required String fileName,
     required String content,
-  }) async {
-    final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'حفظ قالب الاستيراد',
-      fileName: fileName,
-      type: FileType.custom,
-      allowedExtensions: const ['csv'],
-      bytes: Uint8List.fromList(utf8.encode('﻿$content')),
-    );
-    if (path != null) {
-      _setStatus('تم حفظ القالب: $path', success: true);
+  }) =>
+      _saveBytes(
+        dialogTitle: 'حفظ قالب الاستيراد',
+        fileName: fileName,
+        extension: 'csv',
+        bytes: Uint8List.fromList(utf8.encode('\uFEFF$content')),
+        successLabel: 'تم حفظ القالب',
+      );
+
+  Future<void> _saveXlsxTemplate() async {
+    try {
+      final bytes = LedgerImportService.buildXlsxTemplate();
+      await _saveBytes(
+        dialogTitle: 'حفظ قالب Excel',
+        fileName: 'rakan_import_template.xlsx',
+        extension: 'xlsx',
+        bytes: bytes,
+        successLabel: 'تم حفظ قالب Excel',
+      );
+    } catch (e) {
+      _setStatus('تعذر إنشاء قالب Excel: $e');
     }
   }
+
+  Future<void> _saveIssuesReport(LedgerImportPreview preview) =>
+      _saveBytes(
+        dialogTitle: 'حفظ تقرير التحقق',
+        fileName: 'rakan_import_validation_report.csv',
+        extension: 'csv',
+        bytes: Uint8List.fromList(
+          utf8.encode(LedgerImportService.buildIssuesCsv(preview)),
+        ),
+        successLabel: 'تم حفظ تقرير التحقق',
+      );
+
+  Future<void> _saveCommitReport(
+    LedgerImportPreview preview,
+    LedgerImportCommitResult result,
+  ) =>
+      _saveBytes(
+        dialogTitle: 'حفظ تقرير نتيجة الاستيراد',
+        fileName: 'rakan_import_result_report.csv',
+        extension: 'csv',
+        bytes: Uint8List.fromList(
+          utf8.encode(
+            LedgerImportService.buildCommitReportCsv(
+              preview: preview,
+              result: result,
+            ),
+          ),
+        ),
+        successLabel: 'تم حفظ تقرير نتيجة الاستيراد',
+      );
 
   Widget _summaryCard(String label, String value) {
     return Expanded(
@@ -359,8 +427,40 @@ class _ImportScreenState extends State<ImportScreen> {
               icon: const Icon(Icons.receipt_long_outlined),
               label: const Text('قالب الحركات CSV'),
             ),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _saveXlsxTemplate,
+              icon: const Icon(Icons.grid_on_outlined),
+              label: const Text('قالب Excel شامل'),
+            ),
           ],
         ),
+        if (_lastCommittedPreview != null && _lastResult != null) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'اكتمل الاستيراد ويمكن حفظ تقرير النتيجة للمراجعة.',
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _saveCommitReport(
+                              _lastCommittedPreview!,
+                              _lastResult!,
+                            ),
+                    icon: const Icon(Icons.download_done_outlined),
+                    label: const Text('تقرير النتيجة'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (preview != null) ...[
           const SizedBox(height: 12),
           Row(
@@ -379,6 +479,14 @@ class _ImportScreenState extends State<ImportScreen> {
             ],
           ),
           _issues(preview),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : () => _saveIssuesReport(preview),
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('تنزيل تقرير التحقق CSV'),
+            ),
+          ),
           _previewRows(preview),
           const SizedBox(height: 8),
           FilledButton.icon(
