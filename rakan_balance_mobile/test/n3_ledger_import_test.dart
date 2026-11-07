@@ -328,6 +328,69 @@ void main() {
     expect(previewPdf.blockingIssues.first.message, contains('صيغة الملف غير مدعومة'));
   });
 
+  test('conflicting external refs block import rather than mispost movements', () {
+    final preview = LedgerImportService.previewFromRows(
+      sourceName: 'conflicting-refs.csv',
+      accountRows: [
+        {
+          'externalref': 'SHARED-1',
+          'name': 'الحساب الأول',
+          'category': 'عام',
+          'openingbalance': '0',
+        },
+        {
+          'externalref': 'SHARED-1',
+          'name': 'الحساب الثاني',
+          'category': 'عام',
+          'openingbalance': '0',
+        },
+      ],
+      transactionRows: [
+        {
+          'accountref': 'SHARED-1',
+          'entrytype': 'لك',
+          'amount': '25.00',
+          'date': '2026-11-07',
+          'description': 'حركة بمرجع ملتبس',
+        },
+      ],
+      existingAccounts: const [],
+      existingTransactions: const [],
+    );
+
+    expect(preview.canCommit, false);
+    expect(preview.blockingIssues.any(
+        (issue) => issue.message.contains('المرجع الخارجي')), true);
+  });
+
+  test('external ref cannot impersonate another existing account alias', () {
+    final existing = AccountModel(
+      id: 'existing-1',
+      name: 'الحساب الأصلي',
+      categoryId: 'cat',
+      openingBalanceMinor: 0,
+      createdAt: '',
+      updatedAt: '',
+    );
+    final preview = LedgerImportService.previewFromRows(
+      sourceName: 'alias-conflict.csv',
+      accountRows: [
+        {
+          'externalref': 'existing-1',
+          'name': 'حساب مختلف',
+          'category': 'عام',
+          'openingbalance': '0',
+        },
+      ],
+      transactionRows: const [],
+      existingAccounts: [existing],
+      existingTransactions: const [],
+    );
+
+    expect(preview.canCommit, false);
+    expect(preview.blockingIssues, isNotEmpty);
+  });
+
   test('atomic import commits account and movement with exact halalas', () async {
     final db = await DatabaseHelper.initInMemoryDatabase();
     try {
