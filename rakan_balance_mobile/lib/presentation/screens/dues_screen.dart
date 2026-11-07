@@ -186,16 +186,20 @@ class _DuesScreenState extends State<DuesScreen> {
                   onPressed: () async {
                     try { await state.deleteReminder(reminder.id); }
                     catch (e) {
-                      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(content: Text('تعذر حذف التذكير: $e')));
+                      if (mounted) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text('تعذر حذف التذكير: $e')));
+                      }
                     }
                   },
                 ),
                 onChanged: (value) async {
                   try { await state.setReminderCompleted(reminder.id, value ?? false); }
                   catch (e) {
-                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
-                      SnackBar(content: Text('تعذر تحديث التذكير: $e')));
+                    if (mounted) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(content: Text('تعذر تحديث التذكير: $e')));
+                    }
                   }
                 },
               ),
@@ -268,8 +272,10 @@ class _DuesScreenState extends State<DuesScreen> {
     if (accepted != true) return;
     try { await state.deleteUnpaidDue(dueId); }
     catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر الحذف: $e')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر الحذف: $e')));
+      }
     }
   }
 
