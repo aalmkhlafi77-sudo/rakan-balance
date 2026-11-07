@@ -155,7 +155,6 @@ class TablesSchema {
       settledAmountMinor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       notes TEXT,
-      phone TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       FOREIGN KEY (accountId) REFERENCES $accounts (id)
@@ -173,7 +172,6 @@ class TablesSchema {
       settledAmountMinor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
       notes TEXT,
-      phone TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
       FOREIGN KEY (accountId) REFERENCES $demoAccounts (id)
