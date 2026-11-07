@@ -30,6 +30,13 @@ class BackupValidator {
         return (isValid: false, error: 'إصدار النسخة الاحتياطية غير مدعوم.', parsedBundle: null);
       }
 
+      final schemaVersion = manifest['schemaVersion'] as int?;
+      if (schemaVersion == null || schemaVersion < 1 || schemaVersion > 2 ||
+          backupFormatVersion != schemaVersion) {
+        return (isValid: false, error: 'إصدار مخطط النسخة الاحتياطية غير مدعوم.',
+          parsedBundle: null);
+      }
+
       // B. SHA-256 Checksum Verification
       final expectedChecksum = manifest['checksum'] as String?;
       if (expectedChecksum == null || expectedChecksum.isEmpty) {
