@@ -21,7 +21,7 @@ void main() {
     ]);
     expect(csv.startsWith('\uFEFF'), true);
     expect(csv, contains('رصيد أول الفترة'));
-    expect(csv, contains('الرصيد الختامي'));
+    expect(csv, contains('رصيد آخر الفترة'));
     expect(csv, contains('12501,125.01'));
     expect(csv, contains('15002,150.02'));
     expect(csv.indexOf('فاتورة'), lessThan(csv.indexOf('سداد')));
