@@ -35,6 +35,7 @@ class AppStateNotifier extends ChangeNotifier {
   List<PaymentAllocationModel> _allocations = [];
   List<ReminderModel> _reminders = [];
   List<NoteModel> _notes = [];
+  Map<String, String> _categoryNames = {};
 
   AppStateNotifier() : _pinService = PinSecurityService(SecurePinCredentialStore());
 
@@ -59,6 +60,7 @@ class AppStateNotifier extends ChangeNotifier {
   List<PaymentAllocationModel> get allocations => _allocations;
   List<ReminderModel> get reminders => _reminders;
   List<NoteModel> get notes => _notes;
+  Map<String, String> get categoryNames => Map.unmodifiable(_categoryNames);
 
   Future<void> init() async {
     _isLoading = true;
@@ -130,12 +132,14 @@ class AppStateNotifier extends ChangeNotifier {
     final isDemo = _activeScope == 'demo';
     final accTable = isDemo ? 'demo_accounts' : 'accounts';
     final txTable = isDemo ? 'demo_transactions' : 'transactions';
+    final categoryTable = isDemo ? 'demo_categories' : 'categories';
     final dueTable = isDemo ? 'demo_dues' : 'dues';
     final allocTable = isDemo ? 'demo_payment_allocations' : 'payment_allocations';
     final remTable = isDemo ? 'demo_reminders' : 'reminders';
     final noteTable = isDemo ? 'demo_notes' : 'notes';
 
     final accMaps = await _db!.query(accTable);
+    final categoryMaps = await _db!.query(categoryTable, orderBy: 'sortOrder ASC, name ASC');
     final txMaps = await _db!.query(txTable, orderBy: 'date DESC, createdAt DESC');
     final dueMaps = await _db!.query(dueTable, orderBy: 'dueDate ASC');
     final allocMaps = await _db!.query(allocTable);
@@ -143,6 +147,10 @@ class AppStateNotifier extends ChangeNotifier {
     final noteMaps = await _db!.query(noteTable, orderBy: 'updatedAt DESC');
 
     _accounts = accMaps.map((m) => AccountModel.fromMap(m)).toList();
+    _categoryNames = {
+      for (final row in categoryMaps)
+        row['id'] as String: row['name'] as String,
+    };
     _transactions = txMaps.map((m) => TransactionModel.fromMap(m)).toList();
     _dues = dueMaps.map((m) => DueItemModel.fromMap(m)).toList();
     _allocations = allocMaps.map((m) => PaymentAllocationModel.fromMap(m)).toList();
