@@ -212,8 +212,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
                       await context.read<AppStateNotifier>().setAccountArchived(
                         account.id, account.status != 'archived');
                     } catch (e) {
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(e.toString())));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString())));
+                      }
                     }
                   },
                   icon: Icon(account.status == 'archived' ? Icons.unarchive : Icons.archive_outlined),
