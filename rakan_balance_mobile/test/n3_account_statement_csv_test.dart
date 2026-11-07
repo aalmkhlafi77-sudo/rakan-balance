@@ -20,7 +20,7 @@ void main() {
       tx('first', 'acc1', '2026-11-02', EntryType.owedByAccount, 5002, 'فاتورة'),
     ]);
     expect(csv.startsWith('\uFEFF'), true);
-    expect(csv, contains('الرصيد الافتتاحي'));
+    expect(csv, contains('رصيد أول الفترة'));
     expect(csv, contains('الرصيد الختامي'));
     expect(csv, contains('12501,125.01'));
     expect(csv, contains('15002,150.02'));
@@ -46,4 +46,46 @@ void main() {
     expect(csv, contains('-1,-0.01'));
     expect(csv, contains('1,0.01'));
   });
+
+  test('period statement carries prior movements into opening balance and filters rows', () {
+    final account = AccountModel(
+      id: 'acc', name: 'فترة', categoryId: 'c',
+      openingBalanceMinor: 20000, createdAt: '', updatedAt: '');
+    TransactionModel tx(String id, String date, EntryType type, int amount) =>
+        TransactionModel(
+          id: id, accountId: 'acc', entryType: type, amountMinor: amount,
+          date: date, description: id, attachmentIds: const [],
+          createdAt: date, updatedAt: date);
+    final csv = AccountStatementCsv.build(
+      account: account,
+      transactions: [
+        tx('before-1', '2026-11-01', EntryType.owedByAccount, 15000),
+        tx('before-2', '2026-11-02', EntryType.owedToAccount, 8000),
+        tx('inside', '2026-11-04', EntryType.owedToAccount, 30000),
+        tx('after', '2026-11-05', EntryType.owedByAccount, 999),
+      ],
+      fromDate: '2026-11-04',
+      toDate: '2026-11-04',
+    );
+    expect(csv, contains('27000,270.00'));
+    expect(csv, contains('-3000,-30.00'));
+    expect(csv, contains('inside'));
+    expect(csv, isNot(contains('before-1')));
+    expect(csv, isNot(contains('before-2')));
+    expect(csv, isNot(contains('after')));
+    expect(csv, contains('0,30000'));
+  });
+
+  test('statement rejects invalid or inverted date ranges', () {
+    final account = AccountModel(
+      id: 'acc', name: 'فترة', categoryId: 'c',
+      openingBalanceMinor: 0, createdAt: '', updatedAt: '');
+    expect(() => AccountStatementCsv.build(
+      account: account, transactions: const [],
+      fromDate: '2026-02-30'), throwsArgumentError);
+    expect(() => AccountStatementCsv.build(
+      account: account, transactions: const [],
+      fromDate: '2026-12-01', toDate: '2026-11-01'), throwsArgumentError);
+  });
+
 }
