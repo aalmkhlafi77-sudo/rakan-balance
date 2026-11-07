@@ -166,4 +166,33 @@ void main() {
     }
   });
 
+
+  test('demo notes remain isolated from real notes and demo deletion cannot touch real data', () async {
+    final db = await DatabaseHelper.initInMemoryDatabase();
+    final state = AppStateNotifier.forTesting(db);
+    try {
+      await state.reloadWorkspace();
+      await state.createGeneralNote('ملاحظة حقيقية');
+      expect((await db.query(TablesSchema.notes)).length, 1);
+      expect(await db.query(TablesSchema.demoNotes), isEmpty);
+
+      await state.toggleScope('demo');
+      await state.createGeneralNote('ملاحظة تجريبية');
+      expect(state.notes.single.content, 'ملاحظة تجريبية');
+      expect((await db.query(TablesSchema.demoNotes)).length, 1);
+      expect((await db.query(TablesSchema.notes)).single['content'], 'ملاحظة حقيقية');
+
+      final demoId = state.notes.single.id;
+      await state.deleteGeneralNote(demoId);
+      expect(await db.query(TablesSchema.demoNotes), isEmpty);
+      expect((await db.query(TablesSchema.notes)).single['content'], 'ملاحظة حقيقية');
+
+      await state.toggleScope('real');
+      expect(state.notes.single.content, 'ملاحظة حقيقية');
+    } finally {
+      state.dispose();
+      await db.close();
+    }
+  });
+
 }
