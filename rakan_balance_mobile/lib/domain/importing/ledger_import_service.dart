@@ -612,6 +612,7 @@ class LedgerImportService {
     };
     final importedNames = <String>{};
     final importedRefs = <String>{};
+    final importedRefOwners = <String, String>{};
 
     for (var index = 0; index < accountRows.length; index++) {
       final row = accountRows[index];
@@ -658,6 +659,29 @@ class LedgerImportService {
 
       final normalizedName = _token(name);
       final normalizedRef = ref == null ? null : _token(ref);
+
+      // A shared external reference for two different account names is
+      // ambiguous: silently skipping one would post its movements to another.
+      if (normalizedRef != null && normalizedRef.isNotEmpty) {
+        final importedOwner = importedRefOwners[normalizedRef];
+        final existingAliasOwners = existingAccounts.where((account) =>
+            _token(account.id) == normalizedRef ||
+            _token(account.name) == normalizedRef);
+        final conflictsWithExistingAlias = existingAliasOwners.any(
+            (account) => _token(account.name) != normalizedName);
+        if ((importedOwner != null && importedOwner != normalizedName) ||
+            conflictsWithExistingAlias) {
+          issues.add(ImportIssue(
+            section: 'accounts',
+            rowNumber: rowNumber,
+            message: 'المرجع الخارجي مرتبط بحساب مختلف؛ '
+                'يجب تصحيح المراجع قبل الاستيراد.',
+            blocking: true,
+          ));
+          continue;
+        }
+        importedRefOwners[normalizedRef] = normalizedName;
+      }
 
       final duplicate = existingByName.containsKey(normalizedName) ||
           importedNames.contains(normalizedName) ||
