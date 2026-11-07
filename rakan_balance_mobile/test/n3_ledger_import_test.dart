@@ -32,6 +32,62 @@ void main() {
     expect(preview.canCommit, true);
   });
 
+  test('generated XLSX template round-trips through the import preview', () async {
+    final bytes = LedgerImportService.buildXlsxTemplate();
+    expect(bytes, isNotEmpty);
+
+    final preview = await LedgerImportService.previewFile(
+      bytes: bytes,
+      fileName: 'rakan_import_template.xlsx',
+      existingAccounts: const [],
+      existingTransactions: const [],
+    );
+
+    expect(preview.blockingIssues, isEmpty);
+    expect(preview.accounts, hasLength(1));
+    expect(preview.transactions, hasLength(1));
+    expect(preview.accounts.single.externalRef, 'A-001');
+    expect(preview.transactions.single.accountRef, 'A-001');
+    expect(preview.transactions.single.amountMinor, 12550);
+    expect(preview.canCommit, true);
+  });
+
+  test('validation and commit reports are UTF-8 CSV with visible outcomes', () {
+    const preview = LedgerImportPreview(
+      sourceName: 'input.csv',
+      accounts: [],
+      transactions: [],
+      issues: [
+        ImportIssue(
+          section: 'accounts',
+          rowNumber: 2,
+          message: 'حساب مكرر',
+          blocking: false,
+        ),
+      ],
+    );
+    const result = LedgerImportCommitResult(
+      importedAccounts: 2,
+      skippedAccounts: 1,
+      importedTransactions: 3,
+      skippedTransactions: 1,
+    );
+
+    final validation = LedgerImportService.buildIssuesCsv(preview);
+    final committed = LedgerImportService.buildCommitReportCsv(
+      preview: preview,
+      result: result,
+    );
+
+    expect(validation.startsWith('\uFEFF'), true);
+    expect(validation, contains('حساب مكرر'));
+    expect(validation, contains('تنبيه'));
+    expect(committed.startsWith('\uFEFF'), true);
+    expect(committed, contains('تم التنفيذ ذريًا'));
+    expect(committed, contains('الحسابات المستوردة,2'));
+    expect(committed, contains('الحركات المستوردة,3'));
+  });
+
   test('preview detects duplicates and resolves imported account references', () {
     final existingAccount = AccountModel(
       id: 'existing',
