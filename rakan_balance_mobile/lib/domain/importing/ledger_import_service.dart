@@ -146,6 +146,7 @@ class LedgerImportService {
         .toString()
         .trim()
         .toLowerCase()
+        .replaceAll('﻿', '')
         .replaceAll(RegExp(r'[\s_\-]+'), '');
   }
 
@@ -550,7 +551,7 @@ class LedgerImportService {
       var duplicate = !seenImportTransactions.add(signature);
       if (!duplicate && existingAccount != null) {
         duplicate = existingTransactions.any((existing) => _sameTransaction(
-              accountId: existingAccount!.id,
+              accountId: existingAccount.id,
               entryType: entryType,
               amountMinor: amount.minor,
               date: date,
