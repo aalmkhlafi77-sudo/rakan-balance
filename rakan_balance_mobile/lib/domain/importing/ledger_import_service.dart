@@ -224,6 +224,117 @@ class LedgerImportService {
         existing.description.trim() == description.trim();
   }
 
+  static String _csvCell(String value) {
+    final safe = RegExp(r'^[\s]*[=+@-]').hasMatch(value) ? '\t$value' : value;
+    return '"${safe.replaceAll('"', '""')}"';
+  }
+
+  static String buildIssuesCsv(LedgerImportPreview preview) {
+    final lines = <String>[
+      ['المصدر', _csvCell(preview.sourceName)].join(','),
+      [
+        'حسابات جديدة',
+        '${preview.importableAccounts}',
+        'حركات جديدة',
+        '${preview.importableTransactions}',
+        'مكررات',
+        '${preview.duplicateAccounts + preview.duplicateTransactions}',
+        'أخطاء مانعة',
+        '${preview.blockingIssues.length}',
+      ].join(','),
+      '',
+      'القسم,الصف,الحالة,الرسالة',
+    ];
+    for (final issue in preview.issues) {
+      lines.add([
+        _csvCell(issue.section),
+        '${issue.rowNumber}',
+        _csvCell(issue.blocking ? 'مرفوض' : 'تنبيه'),
+        _csvCell(issue.message),
+      ].join(','));
+    }
+    if (preview.issues.isEmpty) {
+      lines.add('file,0,${_csvCell('سليم')},${_csvCell('لا توجد أخطاء أو تكرارات')}');
+    }
+    return '\uFEFF${lines.join('\r\n')}\r\n';
+  }
+
+  static String buildCommitReportCsv({
+    required LedgerImportPreview preview,
+    required LedgerImportCommitResult result,
+  }) {
+    final lines = <String>[
+      ['المصدر', _csvCell(preview.sourceName)].join(','),
+      ['الحالة', _csvCell('تم التنفيذ ذريًا')].join(','),
+      ['الحسابات المستوردة', '${result.importedAccounts}'].join(','),
+      ['الحسابات المتجاهلة', '${result.skippedAccounts}'].join(','),
+      ['الحركات المستوردة', '${result.importedTransactions}'].join(','),
+      ['الحركات المتجاهلة', '${result.skippedTransactions}'].join(','),
+      '',
+      'القسم,الصف,الحالة,الرسالة',
+    ];
+    for (final issue in preview.issues) {
+      lines.add([
+        _csvCell(issue.section),
+        '${issue.rowNumber}',
+        _csvCell(issue.blocking ? 'مرفوض' : 'تنبيه'),
+        _csvCell(issue.message),
+      ].join(','));
+    }
+    return '\uFEFF${lines.join('\r\n')}\r\n';
+  }
+
+  static Uint8List buildXlsxTemplate() {
+    final workbook = Excel.createExcel();
+    if (workbook.tables.containsKey('Sheet1')) {
+      workbook.rename('Sheet1', 'Accounts');
+    }
+    final accounts = workbook['Accounts'];
+    accounts.isRTL = true;
+    accounts.appendRow([
+      TextCellValue('externalRef'),
+      TextCellValue('name'),
+      TextCellValue('category'),
+      TextCellValue('openingBalance'),
+      TextCellValue('phone'),
+      TextCellValue('notes'),
+    ]);
+    accounts.appendRow([
+      TextCellValue('A-001'),
+      TextCellValue('أحمد'),
+      TextCellValue('أفراد'),
+      TextCellValue('0.00'),
+      TextCellValue('0500000000'),
+      TextCellValue(''),
+    ]);
+
+    final transactions = workbook['Transactions'];
+    transactions.isRTL = true;
+    transactions.appendRow([
+      TextCellValue('accountRef'),
+      TextCellValue('entryType'),
+      TextCellValue('amount'),
+      TextCellValue('date'),
+      TextCellValue('description'),
+      TextCellValue('notes'),
+    ]);
+    transactions.appendRow([
+      TextCellValue('A-001'),
+      TextCellValue('لك'),
+      TextCellValue('125.50'),
+      TextCellValue('2026-11-07'),
+      TextCellValue('مثال حركة'),
+      TextCellValue(''),
+    ]);
+
+    workbook.setDefaultSheet('Accounts');
+    final bytes = workbook.save();
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('تعذر إنشاء قالب Excel.');
+    }
+    return Uint8List.fromList(bytes);
+  }
+
   static Future<LedgerImportPreview> previewFile({
     required Uint8List bytes,
     required String fileName,
