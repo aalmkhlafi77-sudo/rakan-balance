@@ -335,6 +335,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
       final csv = AccountStatementCsv.build(
         account: account,
         transactions: state.transactions,
+        accounts: state.accounts,
         fromDate: fromDate,
         toDate: toDate,
       );
