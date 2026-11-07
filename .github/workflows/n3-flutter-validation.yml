@@ -129,23 +129,28 @@ jobs:
         run: |
           set -euo pipefail
           python3 -u - <<'PY'
-          import os, subprocess, sys
+          import os, subprocess, threading
           args = ["flutter", "test", "integration_test/app_smoke_test.dart",
                   "-d", os.environ["DEVICE_UDID"], "-r", "expanded"]
           print("SIM_PHASE: start Flutter integration test", flush=True)
           proc = subprocess.Popen(args, stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, text=True, bufsize=1)
+          def relay():
+              for line in proc.stdout:
+                  print(line, end="", flush=True)
+          reader = threading.Thread(target=relay, daemon=True)
+          reader.start()
           try:
-              output, _ = proc.communicate(timeout=420)
+              result = proc.wait(timeout=420)
           except subprocess.TimeoutExpired:
               proc.kill()
-              output, _ = proc.communicate(timeout=30)
-              print(output, flush=True)
-              print("SIM_PHASE: Flutter integration test exceeded 420s; see live phase checkpoints", flush=True)
+              proc.wait(timeout=30)
+              reader.join(timeout=10)
+              print("SIM_PHASE: integration test exceeded 420s; inspect preceding trace", flush=True)
               raise SystemExit(124)
-          print(output, flush=True)
-          print(f"SIM_PHASE: integration test exited {proc.returncode}", flush=True)
-          raise SystemExit(proc.returncode)
+          reader.join(timeout=10)
+          print(f"SIM_PHASE: integration test exited {result}", flush=True)
+          raise SystemExit(result)
           PY
       - name: Capture simulator diagnostics on failure
         if: failure()
