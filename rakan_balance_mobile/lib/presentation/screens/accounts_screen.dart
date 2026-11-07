@@ -139,9 +139,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   openingBalanceMinor: parsed.minor, privateNotes: notes.text);
                 if (ctx.mounted) Navigator.pop(ctx);
               } catch (e) {
-                refresh(() => error = e.toString());
+                if (ctx.mounted) refresh(() => error = e.toString());
               } finally {
-                refresh(() => saving = false);
+                if (ctx.mounted) refresh(() => saving = false);
               }
             }, child: const Text('حفظ')),
           ],
@@ -227,7 +227,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
         );
       },
     );
-  }  Future<void> _showEditAccountDialog(BuildContext context, AccountModel account) async {
+  }
+
+  Future<void> _showEditAccountDialog(BuildContext context, AccountModel account) async {
     final state = context.read<AppStateNotifier>();
     final name = TextEditingController(text: account.name);
     final notes = TextEditingController(text: account.notes ?? '');
@@ -258,9 +260,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   name: name.text, privateNotes: notes.text);
                 if (ctx.mounted) Navigator.pop(ctx);
               } catch (e) {
-                refresh(() => error = e.toString());
+                if (ctx.mounted) refresh(() => error = e.toString());
               } finally {
-                refresh(() => saving = false);
+                if (ctx.mounted) refresh(() => saving = false);
               }
             }, child: const Text('حفظ')),
           ],
