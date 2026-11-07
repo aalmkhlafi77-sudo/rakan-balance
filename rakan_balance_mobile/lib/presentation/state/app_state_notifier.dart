@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../data/sqlite/database_helper.dart';
 import '../../data/sqlite/sqlite_storage_adapter.dart';
+import '../../data/sqlite/mobile_backup_service.dart';
+import '../../domain/validators/backup_validator.dart';
 import '../../domain/financial/balance_calculator.dart';
 import '../../platform/security/pin_security_service.dart';
 import '../../domain/financial/money_utils.dart';
@@ -427,9 +429,30 @@ class AppStateNotifier extends ChangeNotifier {
     await reloadWorkspace();
   }
 
-  // Backup restore
-  Future<void> restoreBackup(Map<String, dynamic> bundleData) async {
-    await _storage!.atomicRestoreBackup(bundleData);
+  /// Backups contain only real workspace financial records, never PIN secrets.
+  Future<String> exportBackupJson() async {
+    if (_db == null) throw StateError('قاعدة البيانات غير مهيأة.');
+    if (_activeScope != 'real') {
+      throw StateError('انتقل إلى البيانات الحقيقية قبل تصدير النسخة الاحتياطية.');
+    }
+    return MobileBackupService.exportJson(_db!,
+      theme: _themeMode == ThemeMode.dark ? 'dark' : 'light');
+  }
+
+  /// Verify checksum and all referential invariants BEFORE any destructive SQL.
+  Future<void> restoreBackupJson(String jsonText) async {
+    if (_db == null || _storage == null) {
+      throw StateError('قاعدة البيانات غير مهيأة.');
+    }
+    if (_activeScope != 'real') {
+      throw StateError('انتقل إلى البيانات الحقيقية قبل استعادة النسخة الاحتياطية.');
+    }
+    final verified = BackupValidator.validateBackupJson(jsonText);
+    if (!verified.isValid) {
+      throw FormatException(verified.error ?? 'ملف النسخة الاحتياطية غير صالح.');
+    }
+    final data = verified.parsedBundle!['data'] as Map<String, dynamic>;
+    await _storage!.atomicRestoreBackup(data);
     await reloadWorkspace();
   }
 }
