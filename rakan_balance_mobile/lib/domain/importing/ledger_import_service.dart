@@ -423,10 +423,15 @@ class LedgerImportService {
 
       final List<List<dynamic>> table;
       try {
+        // The csv package defaults to CRLF; imported and generated CSV
+        // files may use LF, CRLF or legacy CR line endings.
+        final normalizedCsv =
+            text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
         table = const CsvToListConverter(
+          eol: '\n',
           shouldParseNumbers: false,
           allowInvalid: false,
-        ).convert(text);
+        ).convert(normalizedCsv);
       } catch (e) {
         return LedgerImportPreview(
           sourceName: fileName,
