@@ -50,10 +50,23 @@ class MobileBackupService {
           'updatedAt': tx.updatedAt,
         }).toList();
 
+    // v3 attachments had no transactionId column; recover ownership from the
+    // authoritative movement attachmentIds where possible rather than dropping links.
+    final attachmentOwners = <String, String>{};
+    for (final tx in transactions) {
+      final txId = tx['id'] as String;
+      for (final id in tx['attachmentIds'] as List<String>) {
+        if (attachmentOwners.containsKey(id) && attachmentOwners[id] != txId) {
+          throw StateError('المرفق مرتبط بأكثر من حركة مالية.');
+        }
+        attachmentOwners[id] = txId;
+      }
+    }
+
     final attachments = (await db.query(TablesSchema.attachments))
         .map((row) => {
           'id': row['id'],
-          'transactionId': row['transactionId'],
+          'transactionId': row['transactionId'] ?? attachmentOwners[row['id']],
           'originalName': row['originalName'] ?? row['filename'],
           'mimeType': row['mimeType'],
           'size': row['size'] ?? row['sizeBytes'],
