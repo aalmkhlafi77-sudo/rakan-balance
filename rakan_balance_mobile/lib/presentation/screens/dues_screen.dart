@@ -106,9 +106,9 @@ class _DuesScreenState extends State<DuesScreen> {
                           amountMinor: parseRes.minor,
                           notes: _notesController.text,
                         );
-                        _amountController.clear();
-                        _notesController.clear();
                         if (mounted) {
+                          _amountController.clear();
+                          _notesController.clear();
                           ScaffoldMessenger.of(this.context).showSnackBar(
                             const SnackBar(content: Text('تم تسجيل الاستحقاق بنجاح دون حركة مالية.')),
                           );
