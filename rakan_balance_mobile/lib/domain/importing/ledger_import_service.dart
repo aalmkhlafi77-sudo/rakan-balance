@@ -664,9 +664,10 @@ class LedgerImportService {
       final signature =
           '$normalizedAccountRef|${entryType.name}|${amount.minor}|$date|${description.trim()}';
       var duplicate = !seenImportTransactions.add(signature);
-      if (!duplicate && existingAccount != null) {
+      final matchedExistingAccount = existingAccount;
+      if (!duplicate && matchedExistingAccount != null) {
         duplicate = existingTransactions.any((existing) => _sameTransaction(
-              accountId: existingAccount.id,
+              accountId: matchedExistingAccount.id,
               entryType: entryType,
               amountMinor: amount.minor,
               date: date,
