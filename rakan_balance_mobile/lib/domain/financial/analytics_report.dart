@@ -6,6 +6,7 @@ import 'money_utils.dart';
 class AccountAnalyticsRow {
   final String accountId;
   final String name;
+  final String categoryId;
   final String categoryName;
   final int balanceMinor;
   final int transactionCount;
@@ -14,6 +15,7 @@ class AccountAnalyticsRow {
   const AccountAnalyticsRow({
     required this.accountId,
     required this.name,
+    required this.categoryId,
     required this.categoryName,
     required this.balanceMinor,
     required this.transactionCount,
@@ -135,6 +137,7 @@ class AnalyticsReportBuilder {
         AccountAnalyticsRow(
           accountId: account.id,
           name: account.name,
+          categoryId: account.categoryId,
           categoryName: categoryNames[account.categoryId] ?? 'غير مصنف',
           balanceMinor: balance,
           transactionCount: txs.length,
@@ -150,7 +153,7 @@ class AnalyticsReportBuilder {
 
     final categoryBuckets = <String, List<AccountAnalyticsRow>>{};
     for (final row in accountRows) {
-      categoryBuckets.putIfAbsent(row.categoryName, () => []).add(row);
+      categoryBuckets.putIfAbsent(row.categoryId, () => []).add(row);
     }
     final categoryRows = <CategoryAnalyticsRow>[];
     for (final entry in categoryBuckets.entries) {
@@ -165,16 +168,10 @@ class AnalyticsReportBuilder {
           payable += -row.balanceMinor;
         }
       }
-      final categoryId = selectedAccounts
-          .firstWhere(
-            (account) =>
-                (categoryNames[account.categoryId] ?? 'غير مصنف') == entry.key,
-          )
-          .categoryId;
       categoryRows.add(
         CategoryAnalyticsRow(
-          categoryId: categoryId,
-          categoryName: entry.key,
+          categoryId: entry.key,
+          categoryName: entry.value.first.categoryName,
           accountCount: entry.value.length,
           receivableMinor: receivable,
           payableMinor: payable,
