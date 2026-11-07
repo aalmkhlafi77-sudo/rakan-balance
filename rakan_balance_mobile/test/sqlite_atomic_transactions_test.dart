@@ -47,7 +47,7 @@ void main() {
       await db.insert(TablesSchema.accounts, AccountModel(id: 'dst', name: 'الوجهة', categoryId: 'c1', openingBalanceMinor: 10000, createdAt: '', updatedAt: '').toMap());
 
       await adapter.saveTransferAtomic(
-        input: InterAccountTransferInput(sourceAccountId: 'src', destinationAccountId: 'dst', amountMinor: 10000, date: '2026-02-01', description: ''),
+        input: InterAccountTransferInput(sourceAccountId: 'src', destinationAccountId: 'dst', amountMinor: 10000, date: '2026-02-01', description: 'تحويل اختبار'),
         isDemo: false,
       );
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../financial/money_utils.dart';
+import '../financial/inter_account_transfer_engine.dart';
 import '../models/account_model.dart';
 import '../models/due_item_model.dart';
 import '../models/transaction_model.dart';
@@ -87,6 +88,15 @@ class BackupValidator {
         if (!accounts.any((a) => a.id == tx.accountId)) {
           return (isValid: false, error: 'توجد حركة مرتبطة بحساب غير موجود.', parsedBundle: null);
         }
+      }
+
+      // Reject orphaned, mismatched or incomplete inter-account transfer pairs.
+      final transferCheck =
+          InterAccountTransferEngine.validateTransferJournal(transactions);
+      if (!transferCheck.isValid) {
+        return (isValid: false,
+          error: transferCheck.error ?? 'بيانات الحركة البينية غير سليمة.',
+          parsedBundle: null);
       }
 
       // Validate N2 dues & allocations ledger integrity

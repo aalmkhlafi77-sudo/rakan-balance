@@ -1,96 +1,57 @@
-/// Utility class for strict integer money arithmetic in Halalas (Minor Units).
-/// Preserves exact 1:1 financial rules from the web reference implementation (`src/domain/money.ts`).
+/// Exact base-10 money parsing aligned to the TypeScript web domain.
+/// Signed values are supported at the DOMAIN layer (opening balances may be negative).
+/// Transaction/transfer validators independently require strictly positive amounts.
 class MoneyUtils {
-  /// Maximum safe minor amount: 10,000,000,000,000 Halalas (100 Billion SAR).
   static const int maxSafeHalalas = 10000000000000;
 
-  /// Validates date string format YYYY-MM-DD
   static bool isValidDateString(String dateStr) {
     if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateStr)) return false;
     try {
       final parsed = DateTime.parse('${dateStr}T00:00:00Z');
-      final year = parsed.year.toString().padLeft(4, '0');
-      final month = parsed.month.toString().padLeft(2, '0');
-      final day = parsed.day.toString().padLeft(2, '0');
-      return '$year-$month-$day' == dateStr;
+      return '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}' == dateStr;
     } catch (_) {
       return false;
     }
   }
 
-  /// Converts decimal string or number to integer Halalas without IEEE 754 floating point issues.
-  /// Rejects negative amounts, NaN, infinite, >2 decimal places, or amounts exceeding [maxSafeHalalas].
+  /// Parse decimal input without floating-point arithmetic or rounding.
+  /// Fractional digits beyond two are rejected even when they are zero.
   static ({bool success, int minor, String? error}) toMinorUnits(dynamic amount) {
     if (amount == null) {
-      return (success: false, minor: 0, error: 'المبلغ مطلوب ولا يمكن أن يكون فارغًا.');
+      return (success: false, minor: 0, error: 'المبلغ غير محدد.');
+    }
+    if (amount is! String && amount is! num) {
+      return (success: false, minor: 0, error: 'نوع بيانات المبلغ غير مدعوم.');
+    }
+    if (amount is double && !amount.isFinite) {
+      return (success: false, minor: 0, error: 'المبلغ الرقمي غير صالح.');
     }
 
-    String inputStr;
-    if (amount is int) {
-      if (amount < 0) return (success: false, minor: 0, error: 'المبلغ لا يمكن أن يكون سالباً.');
-      inputStr = '$amount.00';
-    } else if (amount is double) {
-      if (amount.isNaN || amount.isInfinite || amount < 0) {
-        return (success: false, minor: 0, error: 'المبلغ المدخل غير صالح أو غير معرف.');
-      }
-      inputStr = amount.toStringAsFixed(4);
-    } else if (amount is String) {
-      inputStr = amount.trim();
-      if (inputStr.isEmpty) {
-        return (success: false, minor: 0, error: 'المبلغ مطلوب ولا يمكن أن يكون فارغًا.');
-      }
-    } else {
-      return (success: false, minor: 0, error: 'نوع المدخلات غير يدعم المعالجة المالية.');
+    final input = amount.toString().trim();
+    if (!RegExp(r'^-?\d+(\.\d{1,2})?$').hasMatch(input)) {
+      return (success: false, minor: 0, error: 'تنسيق المبلغ غير صالح؛ الحد الأقصى منزلتان عشريتان.');
     }
 
-    // Direct String parsing to avoid double precision loss
-    final parts = inputStr.split('.');
-    if (parts.length > 2) {
-      return (success: false, minor: 0, error: 'صيغة المبلغ غير صالحة.');
+    final negative = input.startsWith('-');
+    final raw = negative ? input.substring(1) : input;
+    final parts = raw.split('.');
+    final whole = BigInt.parse(parts[0]);
+    final fractional = parts.length == 1
+        ? 0
+        : int.parse(parts[1].padRight(2, '0'));
+    final value = whole * BigInt.from(100) + BigInt.from(fractional);
+    if (value > BigInt.from(maxSafeHalalas)) {
+      return (success: false, minor: 0, error: 'المبلغ يتجاوز الحد التشغيلي المعتمد.');
     }
-
-    final integerPartStr = parts[0];
-    if (integerPartStr.isEmpty || !RegExp(r'^\d+$').hasMatch(integerPartStr)) {
-      return (success: false, minor: 0, error: 'صيغة المبلغ غير صالحة.');
-    }
-
-    String decimalPartStr = parts.length > 1 ? parts[1] : '00';
-    if (decimalPartStr.length > 2) {
-      // Check if truncated digits are non-zero
-      final extraDigits = decimalPartStr.substring(2);
-      if (int.tryParse(extraDigits) != null && int.parse(extraDigits) > 0) {
-        return (success: false, minor: 0, error: 'المبلغ لا يمكن أن يحتوي على أكثر من منزلتين عشريتين (هللات).');
-      }
-      decimalPartStr = decimalPartStr.substring(0, 2);
-    } else if (decimalPartStr.length == 1) {
-      decimalPartStr = '${decimalPartStr}0';
-    } else if (decimalPartStr.isEmpty) {
-      decimalPartStr = '00';
-    }
-
-    final intPart = int.tryParse(integerPartStr);
-    final decPart = int.tryParse(decimalPartStr);
-
-    if (intPart == null || decPart == null) {
-      return (success: false, minor: 0, error: 'صيغة المبلغ غير صالحة.');
-    }
-
-    final totalMinor = (intPart * 100) + decPart;
-
-    if (totalMinor > maxSafeHalalas) {
-      return (success: false, minor: 0, error: 'المبلغ يتجاوز الحد التشغيلي المعتمد (100 مليار ريال).');
-    }
-
-    return (success: true, minor: totalMinor, error: null);
+    final minor = value.toInt() * (negative ? -1 : 1);
+    return (success: true, minor: minor, error: null);
   }
 
-  /// Formats Halalas integer to display string with 2 decimal places (e.g. 15025 -> "150.25")
   static String formatMinorAmount(int minorUnits) {
     final absVal = minorUnits.abs();
     final riyals = absVal ~/ 100;
     final halalas = absVal % 100;
     final sign = minorUnits < 0 ? '-' : '';
-    final halalasStr = halalas.toString().padLeft(2, '0');
-    return '$sign$riyals.$halalasStr';
+    return '$sign$riyals.${halalas.toString().padLeft(2, '0')}';
   }
 }

@@ -1,3 +1,6 @@
+import 'dart:math';
+import '../../domain/models/account_model.dart';
+import '../../domain/financial/money_utils.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../domain/financial/inter_account_transfer_engine.dart';
 import '../../domain/models/due_item_model.dart';
@@ -10,6 +13,35 @@ class SqliteStorageAdapter {
 
   SqliteStorageAdapter(this._db);
 
+  /// Validate ledger rules inside the SAME SQLite transaction that writes the pair.
+  Future<void> _validateTransferInTxn(
+    Transaction txn,
+    InterAccountTransferInput input,
+    bool isDemo, {
+    String? editingTransferId,
+  }) async {
+    final accountsTable = isDemo ? TablesSchema.demoAccounts : TablesSchema.accounts;
+    final txTable = isDemo ? TablesSchema.demoTransactions : TablesSchema.transactions;
+    final accounts = (await txn.query(accountsTable))
+        .map((row) => AccountModel.fromMap(row)).toList();
+    final transactions = (await txn.query(txTable))
+        .map((row) => TransactionModel.fromMap(row)).toList();
+    final validation = InterAccountTransferEngine.validateTransfer(
+      input: input,
+      accounts: accounts,
+      currentTransactions: transactions,
+      editingTransferId: editingTransferId,
+    );
+    if (!validation.isValid) throw StateError(validation.error ?? 'تحويل مالي غير صالح.');
+  }
+
+  void _requireValidPair(List<Map<String, Object?>> rows) {
+    final validation = InterAccountTransferEngine.validateTransferPair(
+      rows.map((row) => TransactionModel.fromMap(row)).toList(),
+    );
+    if (!validation.isValid) throw StateError(validation.error ?? 'زوج الحركة البينية غير سليم.');
+  }
+
   // =========================================================================
   // N1: Inter-Account Transfer Atomic SQLite Operations
   // =========================================================================
@@ -19,7 +51,8 @@ class SqliteStorageAdapter {
     required bool isDemo,
   }) async {
     await _db.transaction((txn) async {
-      final transferId = 'trsf_${DateTime.now().millisecondsSinceEpoch}_${input.sourceAccountId.substring(0, 3)}';
+      await _validateTransferInTxn(txn, input, isDemo);
+      final transferId = 'trsf_${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(1 << 32)}';
 
       final accountsTable = isDemo ? TablesSchema.demoAccounts : TablesSchema.accounts;
       final txTable = isDemo ? TablesSchema.demoTransactions : TablesSchema.transactions;
@@ -66,6 +99,8 @@ class SqliteStorageAdapter {
       if (existingMaps.length != 2) {
         throw Exception('الحركة البينية غير موجودة أو تالفة.');
       }
+      _requireValidPair(existingMaps);
+      await _validateTransferInTxn(txn, input, isDemo, editingTransferId: transferId);
 
       // Delete old pair
       await txn.delete(txTable, where: 'transferId = ?', whereArgs: [transferId]);
@@ -84,6 +119,8 @@ class SqliteStorageAdapter {
         destinationAccountName: dstMaps.first['name'] as String,
       );
 
+      final pairValidation = InterAccountTransferEngine.validateTransferPair(entries);
+      if (!pairValidation.isValid) throw StateError(pairValidation.error ?? 'زوج الحركة البينية غير سليم.');
       for (final entry in entries) {
         await txn.insert(txTable, entry.toMap(), conflictAlgorithm: ConflictAlgorithm.abort);
       }
@@ -100,6 +137,7 @@ class SqliteStorageAdapter {
       if (existingMaps.length != 2) {
         throw Exception('الحركة البينية التالفة لا يمكن حذفها إفرادياً.');
       }
+      _requireValidPair(existingMaps);
       await txn.delete(txTable, where: 'transferId = ?', whereArgs: [transferId]);
     });
   }
@@ -168,8 +206,15 @@ class SqliteStorageAdapter {
       if (dueMaps.isEmpty) throw Exception('الاستحقاق غير موجود.');
 
       final due = DueItemModel.fromMap(dueMaps.first);
-      if (payment.amountMinor > due.remainingAmountMinor) {
-        throw Exception('الدفعة تتجاوز المبلغ المتبقي للاستحقاق.');
+      if (payment.amountMinor <= 0 || payment.amountMinor > MoneyUtils.maxSafeHalalas ||
+          payment.amountMinor > due.remainingAmountMinor ||
+          payment.accountId != due.accountId ||
+          payment.entryType == due.entryType ||
+          payment.transferId != null ||
+          allocation.dueItemId != dueId ||
+          allocation.paymentTransactionId != payment.id ||
+          allocation.amountMinor != payment.amountMinor) {
+        throw StateError('سداد الاستحقاق غير صالح أو لا يطابق تخصيص الحركة المالية.');
       }
 
       final updatedSettled = due.settledAmountMinor + payment.amountMinor;

@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rakan_balance_mobile/domain/validators/backup_validator.dart';
+import 'package:rakan_balance_mobile/domain/financial/inter_account_transfer_engine.dart';
+import 'package:rakan_balance_mobile/domain/models/account_model.dart';
+import 'package:rakan_balance_mobile/domain/models/transfer_model.dart';
 
 void main() {
   group('SHA-256 Web Export Backup Compatibility Suite', () {
@@ -58,6 +61,58 @@ void main() {
       final res = BackupValidator.validateBackupJson(jsonEncode(bundleObj));
       expect(res.isValid, true);
       expect(res.error, isNull);
+    });
+
+    test('BackupValidator accepts only complete reciprocal transfer pairs', () {
+      final accounts = [
+        AccountModel(id: 'src', name: 'Source', categoryId: 'cat',
+          openingBalanceMinor: 20000, createdAt: '', updatedAt: ''),
+        AccountModel(id: 'dst', name: 'Destination', categoryId: 'cat',
+          openingBalanceMinor: 0, createdAt: '', updatedAt: ''),
+      ];
+      final pair = InterAccountTransferEngine.buildTransferEntries(
+        input: InterAccountTransferInput(sourceAccountId: 'src',
+          destinationAccountId: 'dst', amountMinor: 5000,
+          date: '2026-11-02', description: 'نقل مديونية'),
+        transferId: 'transfer-test', sourceAccountName: 'Source',
+        destinationAccountName: 'Destination');
+
+      String buildBackup(List<Map<String, dynamic>> transactions) {
+        final data = <String, dynamic>{
+          'accounts': accounts.map((a) => a.toMap()).toList(),
+          'categories': <dynamic>[],
+          'transactions': transactions,
+          'attachments': <dynamic>[],
+          'notes': <dynamic>[],
+          'dues': <dynamic>[],
+          'allocations': <dynamic>[],
+          'reminders': <dynamic>[],
+        };
+        return jsonEncode({
+          'manifest': {
+            'formatName': 'RAKAN_BALANCE_BACKUP',
+            'backupFormatVersion': 2,
+            'schemaVersion': 2,
+            'checksum': sha256.convert(utf8.encode(jsonEncode(data))).toString(),
+            'recordCounts': {
+              'accounts': 2, 'categories': 0, 'transactions': transactions.length,
+              'attachments': 0, 'notes': 0,
+              'dues': 0, 'allocations': 0, 'reminders': 0,
+            },
+          },
+          'data': data,
+        });
+      }
+
+      final valid = buildBackup(pair.map((tx) => tx.toMap()).toList());
+      expect(BackupValidator.validateBackupJson(valid).isValid, true);
+
+      final orphan = buildBackup([pair.first.toMap()]);
+      expect(BackupValidator.validateBackupJson(orphan).isValid, false);
+
+      final broken = pair.map((tx) => tx.toMap()).toList();
+      broken[1] = {...broken[1], 'counterpartyAccountId': 'unknown'};
+      expect(BackupValidator.validateBackupJson(buildBackup(broken)).isValid, false);
     });
 
     test('BackupValidator rejects tampered json with mismatched SHA-256 checksum', () {

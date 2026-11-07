@@ -19,7 +19,8 @@ void main() {
       expect(invalidDecimals.success, false);
 
       final negative = MoneyUtils.toMinorUnits('-50.00');
-      expect(negative.success, false);
+      expect(negative.success, true); // Web monetary domain permits signed opening balances.
+      expect(negative.minor, -5000);
     });
 
     test('Test 2: Money balance equation invariant B = opening + sum(signed)', () {

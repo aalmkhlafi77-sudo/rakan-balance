@@ -124,7 +124,7 @@ class _TransferScreenState extends State<TransferScreen> {
           // Description
           TextField(
             controller: _descController,
-            decoration: const InputDecoration(labelText: 'وصف الحركة (اختياري)'),
+            decoration: const InputDecoration(labelText: 'وصف الحركة (إلزامي)'),
           ),
           const SizedBox(height: 20),
 
@@ -174,6 +174,7 @@ class _TransferScreenState extends State<TransferScreen> {
               final val = InterAccountTransferEngine.validateTransfer(
                 input: input,
                 accounts: state.accounts,
+                currentTransactions: state.transactions,
               );
 
               if (!val.isValid) {
