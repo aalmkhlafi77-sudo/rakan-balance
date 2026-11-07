@@ -51,12 +51,17 @@ class _PinLockScreenState extends State<PinLockScreen> {
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 24, letterSpacing: 8),
               decoration: const InputDecoration(hintText: '••••'),
-              onChanged: (val) {
+              onChanged: (val) async {
                 if (val.length == 4) {
-                  final ok = state.unlockWithPin(val);
+                  final ok = await state.unlockWithPin(val);
+                  if (!mounted) return;
                   if (!ok) {
+                    final seconds = await state.pinLockoutSecondsRemaining();
+                    if (!mounted) return;
                     setState(() {
-                      _error = 'رمز الحماية خاطئ.';
+                      _error = seconds > 0
+                          ? 'محاولات كثيرة. حاول مجددًا بعد $seconds ثانية.'
+                          : 'رمز الحماية خاطئ.';
                       _pinController.clear();
                     });
                   }
@@ -68,4 +73,10 @@ class _PinLockScreenState extends State<PinLockScreen> {
       ),
     );
   }
+  @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
+  }
+
 }
