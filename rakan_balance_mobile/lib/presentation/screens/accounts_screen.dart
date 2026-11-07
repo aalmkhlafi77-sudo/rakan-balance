@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../domain/financial/money_utils.dart';
+import '../../domain/financial/account_statement_csv.dart';
 import '../../domain/models/account_model.dart';
 import '../state/app_state_notifier.dart';
 
@@ -221,6 +225,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   icon: Icon(account.status == 'archived' ? Icons.unarchive : Icons.archive_outlined),
                   label: Text(account.status == 'archived' ? 'إلغاء الأرشفة' : 'أرشفة'),
                 ),
+                OutlinedButton.icon(
+                  onPressed: () => _exportAccountStatement(context, account),
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: const Text('تصدير كشف الحساب CSV'),
+                ),
                 TextButton(onPressed: () => Navigator.pop(ctx),
                   child: const Text('إغلاق')),
               ]),
@@ -273,6 +282,91 @@ class _AccountsScreenState extends State<AccountsScreen> {
     );
     name.dispose();
     notes.dispose();
+  }
+
+  Future<void> _exportAccountStatement(
+      BuildContext context, AccountModel account) async {
+    final state = context.read<AppStateNotifier>();
+    final from = TextEditingController();
+    final to = TextEditingController();
+    try {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('نطاق كشف الحساب'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'اترك التاريخين فارغين لتصدير كامل السجل. '
+                'عند تحديد بداية الفترة يُحسب رصيد أول المدة من جميع الحركات السابقة.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: from,
+                decoration: const InputDecoration(
+                  labelText: 'من تاريخ (YYYY-MM-DD)',
+                ),
+              ),
+              TextField(
+                controller: to,
+                decoration: const InputDecoration(
+                  labelText: 'إلى تاريخ (YYYY-MM-DD)',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('متابعة التصدير'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !context.mounted) return;
+
+      final fromDate = from.text.trim().isEmpty ? null : from.text.trim();
+      final toDate = to.text.trim().isEmpty ? null : to.text.trim();
+      final csv = AccountStatementCsv.build(
+        account: account,
+        transactions: state.transactions,
+        accounts: state.accounts,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+      final safeId = account.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final rangeSuffix = fromDate == null && toDate == null
+          ? 'all'
+          : '${fromDate ?? 'start'}_${toDate ?? 'end'}';
+      final output = await FilePicker.platform.saveFile(
+        dialogTitle: 'حفظ كشف الحساب',
+        fileName: 'rakan_statement_${safeId}_$rangeSuffix.csv',
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(csv)),
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(output == null
+              ? 'أُلغيت عملية حفظ كشف الحساب.'
+              : 'تم حفظ كشف الحساب: $output'),
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('تعذر تصدير كشف الحساب: $e'),
+        ));
+      }
+    } finally {
+      from.dispose();
+      to.dispose();
+    }
   }
 
 }
