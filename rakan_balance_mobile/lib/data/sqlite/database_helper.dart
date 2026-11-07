@@ -31,7 +31,7 @@ class DatabaseHelper {
       version: _dbVersion,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      onUpgrade: migrateSchema,
     );
   }
 
@@ -54,7 +54,8 @@ class DatabaseHelper {
     await db.execute(TablesSchema.createSettings);
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  /// Used by production SQLite upgrades and migration regression tests.
+  static Future<void> migrateSchema(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute(TablesSchema.createNotes);
       await db.execute(TablesSchema.createDemoNotes);
