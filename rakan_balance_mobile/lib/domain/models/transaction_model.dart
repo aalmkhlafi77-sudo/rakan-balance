@@ -90,7 +90,6 @@ class TransactionModel {
       transferRole: map['transferRole'] != null
           ? TransferRole.values.firstWhere(
               (e) => e.name == map['transferRole'],
-              orElse: () => TransferRole.source,
             )
           : null,
       counterpartyAccountId: map['counterpartyAccountId'] as String?,
