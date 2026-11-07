@@ -128,11 +128,6 @@ class AnalyticsReportBuilder {
       return !txDate.isAfter(reportDate);
     }).toList();
 
-    final systemSummary = BalanceCalculator.calculateSystemSummary(
-      accounts: selectedAccounts,
-      transactions: relevantTransactions,
-    );
-
     final txByAccount = <String, List<TransactionModel>>{};
     for (final tx in relevantTransactions) {
       txByAccount.putIfAbsent(tx.accountId, () => []).add(tx);
@@ -163,6 +158,19 @@ class AnalyticsReportBuilder {
         ),
       );
     }
+    // Derive totals from the exact same selected accounts used by category
+    // and monthly views. The core summary deliberately skips archived accounts,
+    // so reusing it when includeArchived=true would create inconsistent totals.
+    var totalReceivable = 0;
+    var totalPayable = 0;
+    for (final row in accountRows) {
+      if (row.balanceMinor > 0) {
+        totalReceivable += row.balanceMinor;
+      } else if (row.balanceMinor < 0) {
+        totalPayable += -row.balanceMinor;
+      }
+    }
+
     accountRows.sort((a, b) {
       final byAbsolute = b.balanceMinor.abs().compareTo(a.balanceMinor.abs());
       if (byAbsolute != 0) return byAbsolute;
@@ -264,9 +272,9 @@ class AnalyticsReportBuilder {
     }
 
     return AnalyticsReport(
-      totalReceivableMinor: systemSummary.totalOwedByMinor,
-      totalPayableMinor: systemSummary.totalOwedToMinor,
-      netMinor: systemSummary.netBalanceMinor,
+      totalReceivableMinor: totalReceivable,
+      totalPayableMinor: totalPayable,
+      netMinor: totalReceivable - totalPayable,
       activeAccountCount: selectedAccounts.length,
       accounts: accountRows,
       categories: categoryRows,
