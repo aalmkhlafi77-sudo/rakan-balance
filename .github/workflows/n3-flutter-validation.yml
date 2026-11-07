@@ -78,25 +78,82 @@ jobs:
         run: flutter build ios --simulator --no-codesign
       - name: Confirm simulator Runner app exists
         run: test -d build/ios/iphonesimulator/Runner.app
-      - name: Boot an available iPhone simulator and run UI smoke test
+      - name: Select and boot an available iPhone simulator
+        shell: bash
         run: |
-          DEVICE_UDID="$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin); print(next(x['udid'] for group in d['devices'].values() for x in group if x.get('isAvailable') and x['name'].startswith('iPhone')))")"
-          test -n "$DEVICE_UDID"
-          xcrun simctl shutdown all || true
-          xcrun simctl boot "$DEVICE_UDID" || true
-          python3 - "$DEVICE_UDID" <<'PY'
-          import subprocess
-          import sys
-
-          udid = sys.argv[1]
-          subprocess.run(
-              ["xcrun", "simctl", "bootstatus", udid, "-b"],
-              check=True,
-              timeout=180,
-          )
-          subprocess.run(
-              ["flutter", "test", "integration_test/app_smoke_test.dart", "-d", udid],
-              check=True,
-              timeout=600,
-          )
+          set -euo pipefail
+          python3 -u - <<'PY'
+          import json, os, subprocess, sys, time
+          devices = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"],
+              timeout=30, text=True,
+          ))["devices"]
+          candidates = [d for group in devices.values() for d in group
+                        if d.get("isAvailable") and d["name"].startswith("iPhone")]
+          if not candidates:
+              raise SystemExit("No available iPhone simulator runtime or device")
+          d = candidates[0]
+          udid = d["udid"]
+          print(f"SIM_PHASE: selected {d['name']} ({udid}), state={d['state']}", flush=True)
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"DEVICE_UDID={udid}\n")
+          if d["state"] != "Booted":
+              print("SIM_PHASE: requesting boot", flush=True)
+              subprocess.run(["xcrun", "simctl", "boot", udid], check=True, timeout=60)
+          print("SIM_PHASE: waiting for bootstatus", flush=True)
+          subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"],
+                         check=True, timeout=240)
+          print("SIM_PHASE: simulator boot complete", flush=True)
           PY
+      - name: Install and launch built app independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u - <<'PY'
+          import os, subprocess
+          udid = os.environ["DEVICE_UDID"]
+          app = os.path.join(os.getcwd(), "build/ios/iphonesimulator/Runner.app")
+          bundle_id = subprocess.check_output(
+              ["/usr/libexec/PlistBuddy", "-c", "Print CFBundleIdentifier",
+               os.path.join(app, "Info.plist")], timeout=15, text=True).strip()
+          print(f"SIM_PHASE: installing {bundle_id}", flush=True)
+          subprocess.run(["xcrun", "simctl", "install", udid, app],
+                         check=True, timeout=120)
+          print("SIM_PHASE: install successful; launching app", flush=True)
+          subprocess.run(["xcrun", "simctl", "launch", udid, bundle_id],
+                         check=True, timeout=90)
+          print("SIM_PHASE: app launch command successful", flush=True)
+          PY
+      - name: Execute iPhone UI smoke test with live output
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u - <<'PY'
+          import os, subprocess, sys
+          args = ["flutter", "test", "integration_test/app_smoke_test.dart",
+                  "-d", os.environ["DEVICE_UDID"], "-r", "expanded"]
+          print("SIM_PHASE: start Flutter integration test", flush=True)
+          proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True, bufsize=1)
+          try:
+              output, _ = proc.communicate(timeout=420)
+          except subprocess.TimeoutExpired:
+              proc.kill()
+              output, _ = proc.communicate(timeout=30)
+              print(output, flush=True)
+              print("SIM_PHASE: Flutter integration test exceeded 420s; see live phase checkpoints", flush=True)
+              raise SystemExit(124)
+          print(output, flush=True)
+          print(f"SIM_PHASE: integration test exited {proc.returncode}", flush=True)
+          raise SystemExit(proc.returncode)
+          PY
+      - name: Capture simulator diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "SIM_PHASE: collecting failure diagnostics"
+          xcrun simctl list devices available || true
+          flutter doctor -v || true
+          if [ -n "${DEVICE_UDID:-}" ]; then
+            xcrun simctl spawn "$DEVICE_UDID" log show --last 2m --style compact --predicate 'process == "Runner"' 2>&1 | tail -n 100 || true
+          fi
