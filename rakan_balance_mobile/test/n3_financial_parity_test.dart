@@ -214,6 +214,111 @@ void main() {
         expect(rows.every((r) => r['amountMinor'] == 3000), true);
       } finally { await db.close(); }
     });
+
+    test('full transfer moves all positive debt without changing global net', () async {
+      final db = await dbWithAccounts();
+      try {
+        await SqliteStorageAdapter(db).saveTransferAtomic(
+          input: _transfer(10000), isDemo: false);
+        final txs = (await db.query(TablesSchema.transactions))
+            .map((row) => TransactionModel.fromMap(row)).toList();
+        expect(txs.length, 2);
+        expect(txs.fold<int>(0, (sum, tx) => sum + tx.signedAmountMinor), 0);
+        expect(txs.where((tx) => tx.accountId == 'source')
+            .single.signedAmountMinor, -10000);
+        expect(txs.where((tx) => tx.accountId == 'dest')
+            .single.signedAmountMinor, 10000);
+      } finally { await db.close(); }
+    });
+    test('valid transfer edit updates both entries in one transaction', () async {
+      final db = await dbWithAccounts();
+      try {
+        final adapter = SqliteStorageAdapter(db);
+        await adapter.saveTransferAtomic(input: _transfer(3000), isDemo: false);
+        final id = (await db.query(TablesSchema.transactions))
+            .first['transferId'] as String;
+        await adapter.updateTransferAtomic(
+          transferId: id, input: _transfer(7000), isDemo: false);
+        final txs = (await db.query(TablesSchema.transactions))
+            .map((row) => TransactionModel.fromMap(row)).toList();
+        expect(txs.length, 2);
+        expect(txs.every((tx) => tx.amountMinor == 7000), true);
+        expect(InterAccountTransferEngine.validateTransferPair(txs).isValid, true);
+      } finally { await db.close(); }
+    });
+    test('valid transfer deletion restores both original account balances', () async {
+      final db = await dbWithAccounts();
+      try {
+        final adapter = SqliteStorageAdapter(db);
+        await adapter.saveTransferAtomic(input: _transfer(4000), isDemo: false);
+        final id = (await db.query(TablesSchema.transactions))
+            .first['transferId'] as String;
+        await adapter.deleteTransferAtomic(transferId: id, isDemo: false);
+        expect(await db.query(TablesSchema.transactions), isEmpty);
+      } finally { await db.close(); }
+    });
+    test('editing and deleting a missing transfer never inserts a replacement', () async {
+      final db = await dbWithAccounts();
+      try {
+        final adapter = SqliteStorageAdapter(db);
+        await expectLater(adapter.updateTransferAtomic(
+          transferId: 'missing', input: _transfer(100), isDemo: false),
+          throwsException);
+        await expectLater(adapter.deleteTransferAtomic(
+          transferId: 'missing', isDemo: false), throwsException);
+        expect(await db.query(TablesSchema.transactions), isEmpty);
+      } finally { await db.close(); }
+    });
+    test('an orphaned transfer cannot be modified or removed as a valid pair', () async {
+      final db = await dbWithAccounts();
+      try {
+        final adapter = SqliteStorageAdapter(db);
+        await adapter.saveTransferAtomic(input: _transfer(4000), isDemo: false);
+        final rows = await db.query(TablesSchema.transactions);
+        final id = rows.first['transferId'] as String;
+        await db.delete(TablesSchema.transactions, where: 'id = ?',
+          whereArgs: [rows.last['id']]);
+        await expectLater(adapter.updateTransferAtomic(
+          transferId: id, input: _transfer(2000), isDemo: false), throwsException);
+        await expectLater(adapter.deleteTransferAtomic(
+          transferId: id, isDemo: false), throwsException);
+        expect((await db.query(TablesSchema.transactions)).length, 1);
+      } finally { await db.close(); }
+    });
+    test('demo transfers do not write into real account ledger', () async {
+      final db = await dbWithAccounts();
+      try {
+        await db.insert(TablesSchema.demoAccounts, _account('source', 10000).toMap());
+        await db.insert(TablesSchema.demoAccounts, _account('dest', 0).toMap());
+        await SqliteStorageAdapter(db).saveTransferAtomic(
+          input: _transfer(3000), isDemo: true);
+        expect(await db.query(TablesSchema.transactions), isEmpty);
+        expect((await db.query(TablesSchema.demoTransactions)).length, 2);
+      } finally { await db.close(); }
+    });
+    test('partial then full due payment creates two matching ledger allocations', () async {
+      final db = await dbWithAccounts();
+      try {
+        final adapter = SqliteStorageAdapter(db);
+        await db.insert(TablesSchema.dues, DueItemModel(
+          id: 'due', accountId: 'source', entryType: EntryType.owedByAccount,
+          dueDate: _date, originalAmountMinor: 5000, settledAmountMinor: 0,
+          status: 'pending', createdAt: '', updatedAt: '').toMap());
+        for (final amount in [2000, 3000]) {
+          final id = 'payment_$amount';
+          await adapter.recordDuePaymentAtomic(
+            dueId: 'due', payment: _tx(id, 'source', EntryType.owedToAccount, amount),
+            allocation: PaymentAllocationModel(id: 'alloc_$amount',
+              dueItemId: 'due', paymentTransactionId: id, amountMinor: amount),
+            isDemo: false);
+        }
+        final due = (await db.query(TablesSchema.dues)).single;
+        expect(due['settledAmountMinor'], 5000);
+        expect(due['status'], 'settled');
+        expect((await db.query(TablesSchema.transactions)).length, 2);
+        expect((await db.query(TablesSchema.paymentAllocations)).length, 2);
+      } finally { await db.close(); }
+    });
     test('reject invalid due payment without writing ledger or allocations', () async {
       final db = await dbWithAccounts();
       try {
