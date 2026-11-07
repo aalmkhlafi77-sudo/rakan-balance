@@ -140,7 +140,7 @@ class AccountStatementPdf {
     final regular = await PdfGoogleFonts.amiriRegular();
     final bold = await PdfGoogleFonts.amiriBold();
     final theme = pw.ThemeData.withFont(base: regular, bold: bold);
-    final document = pw.Document(theme: theme);
+    final document = pw.Document();
 
     pw.Widget rtl(pw.Widget child) =>
         pw.Directionality(textDirection: pw.TextDirection.rtl, child: child);
@@ -224,6 +224,7 @@ class AccountStatementPdf {
     document.addPage(
       pw.MultiPage(
         pageFormat: pageFormat,
+        theme: theme,
         margin: const pw.EdgeInsets.all(28),
         build: (context) => [
           rtl(
