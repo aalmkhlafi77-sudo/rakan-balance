@@ -5,6 +5,7 @@ class AccountModel {
   final String categoryId;
   final int openingBalanceMinor;
   final String status; // 'active' | 'archived'
+  final String? phone;
   final String? notes; // Private notes - strictly isolated from search/statements/CSVs/reports
   final String createdAt;
   final String updatedAt;
@@ -17,6 +18,7 @@ class AccountModel {
     required this.openingBalanceMinor,
     this.status = 'active',
     this.notes,
+    this.phone,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -30,6 +32,7 @@ class AccountModel {
       'openingBalanceMinor': openingBalanceMinor,
       'status': status,
       'notes': notes,
+      'phone': phone,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -44,6 +47,7 @@ class AccountModel {
       openingBalanceMinor: map['openingBalanceMinor'] as int,
       status: map['status'] as String? ?? 'active',
       notes: map['notes'] as String?,
+      phone: map['phone'] as String?,
       createdAt: map['createdAt'] as String,
       updatedAt: map['updatedAt'] as String,
     );
@@ -56,6 +60,7 @@ class AccountModel {
     int? openingBalanceMinor,
     String? status,
     String? notes,
+    String? phone,
     String? updatedAt,
   }) {
     return AccountModel(
@@ -66,6 +71,7 @@ class AccountModel {
       openingBalanceMinor: openingBalanceMinor ?? this.openingBalanceMinor,
       status: status ?? this.status,
       notes: notes ?? this.notes,
+      phone: phone ?? this.phone,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now().toIso8601String(),
     );

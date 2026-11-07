@@ -15,6 +15,7 @@ class TransactionModel {
   final int amountMinor;
   final String date;
   final String description;
+  final String? notes;
   final List<String> attachmentIds;
   final String? transferId;
   final TransferRole? transferRole;
@@ -29,6 +30,7 @@ class TransactionModel {
     required this.amountMinor,
     required this.date,
     required this.description,
+    this.notes,
     required this.attachmentIds,
     this.transferId,
     this.transferRole,
@@ -52,6 +54,7 @@ class TransactionModel {
       'amountMinor': amountMinor,
       'date': date,
       'description': description,
+      'notes': notes,
       'attachmentIds': attachmentIds.join(','),
       'transferId': transferId,
       'transferRole': transferRole?.name,
@@ -81,12 +84,12 @@ class TransactionModel {
       amountMinor: map['amountMinor'] as int,
       date: map['date'] as String,
       description: map['description'] as String? ?? '',
+      notes: map['notes'] as String?,
       attachmentIds: parseAttachments(map['attachmentIds']),
       transferId: map['transferId'] as String?,
       transferRole: map['transferRole'] != null
           ? TransferRole.values.firstWhere(
               (e) => e.name == map['transferRole'],
-              orElse: () => TransferRole.source,
             )
           : null,
       counterpartyAccountId: map['counterpartyAccountId'] as String?,

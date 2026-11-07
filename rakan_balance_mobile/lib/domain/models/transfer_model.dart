@@ -56,12 +56,18 @@ class AttachmentModel {
 
 class NoteModel {
   final String id;
+  final String title;
+  final String color;
+  final bool archived;
   final String content;
   final String createdAt;
   final String updatedAt;
 
   NoteModel({
     required this.id,
+    this.title = '',
+    this.color = 'slate',
+    this.archived = false,
     required this.content,
     required this.createdAt,
     required this.updatedAt,
@@ -71,6 +77,9 @@ class NoteModel {
     return {
       'id': id,
       'content': content,
+      'title': title,
+      'color': color,
+      'archived': archived ? 1 : 0,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -80,6 +89,9 @@ class NoteModel {
     return NoteModel(
       id: map['id'] as String,
       content: map['content'] as String,
+      title: map['title'] as String? ?? '',
+      color: map['color'] as String? ?? 'slate',
+      archived: map['archived'] == true || map['archived'] == 1,
       createdAt: map['createdAt'] as String,
       updatedAt: map['updatedAt'] as String,
     );
