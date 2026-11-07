@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rakan_balance_mobile/data/sqlite/database_helper.dart';
 import 'package:rakan_balance_mobile/data/sqlite/sqlite_storage_adapter.dart';
 import 'package:rakan_balance_mobile/data/sqlite/tables_schema.dart';
-import 'package:rakan_balance_mobile/domain/financial/money_utils.dart';
 import 'package:rakan_balance_mobile/domain/importing/ledger_import_service.dart';
 import 'package:rakan_balance_mobile/domain/models/account_model.dart';
 import 'package:rakan_balance_mobile/domain/models/transaction_model.dart';
@@ -18,7 +17,7 @@ void main() {
   });
 
   test('generated-style UTF-8 BOM CSV headers are recognized', () async {
-    final csv = '\uFEFFexternalRef,name,category,openingBalance,phone,notes\n'
+    const csv = '\uFEFFexternalRef,name,category,openingBalance,phone,notes\n'
         'A-001,أحمد,أفراد,0.00,0500000000,';
     final preview = await LedgerImportService.previewFile(
       bytes: Uint8List.fromList(utf8.encode(csv)),
@@ -91,7 +90,7 @@ void main() {
   });
 
   test('mixed CSV preserves the original source row in validation issues', () async {
-    final csv = 'recordType,externalRef,name,category,openingBalance,accountRef,entryType,amount,date,description\n'
+    const csv = 'recordType,externalRef,name,category,openingBalance,accountRef,entryType,amount,date,description\n'
         'account,A-1,عميل,عام,0.00,,,,,\n'
         'unknown,,,,,,,,,سجل غير معروف\n'
         'transaction,,,,,A-1,لك,5.00,2026-11-07,فاتورة';
@@ -213,7 +212,7 @@ void main() {
         },
       ],
       existingAccounts: [
-        const AccountModel(
+        AccountModel(
           id: 'acc1',
           name: 'عميل 1',
           categoryId: 'cat',
@@ -291,7 +290,7 @@ void main() {
     expect(previewNonUtf8.blockingIssues.first.message, contains('ترميز الملف غير صالح'));
 
     // Unmatched quotes corrupted CSV syntax
-    final unclosedQuoteCsv = 'name,category\n"أحمد,عام';
+    const unclosedQuoteCsv = 'name,category\n"أحمد,عام';
     final previewUnclosed = await LedgerImportService.previewFile(
       bytes: Uint8List.fromList(utf8.encode(unclosedQuoteCsv)),
       fileName: 'unclosed.csv',
