@@ -20,16 +20,28 @@ class AttachmentModel {
   final String mimeType;
   final int sizeBytes;
   final String base64Data;
+  final String? transactionId;
+  final String? originalName;
+  final int? size;
+  final String? dataUrl;
   final String createdAt;
 
-  AttachmentModel({
+  const AttachmentModel({
     required this.id,
     required this.filename,
     required this.mimeType,
     required this.sizeBytes,
     required this.base64Data,
+    this.transactionId,
+    this.originalName,
+    this.size,
+    this.dataUrl,
     required this.createdAt,
   });
+
+  String get displayName => originalName ?? filename;
+  int get effectiveSize => size ?? sizeBytes;
+  String get effectiveDataUrl => dataUrl ?? base64Data;
 
   Map<String, dynamic> toMap() {
     return {
@@ -38,18 +50,29 @@ class AttachmentModel {
       'mimeType': mimeType,
       'sizeBytes': sizeBytes,
       'base64Data': base64Data,
+      'transactionId': transactionId,
+      'originalName': originalName,
+      'size': size,
+      'dataUrl': dataUrl,
       'createdAt': createdAt,
     };
   }
 
   factory AttachmentModel.fromMap(Map<String, dynamic> map) {
+    final legacyName = map['filename'] as String? ?? 'attachment';
+    final legacySize = map['sizeBytes'] as int? ?? 0;
+    final legacyData = map['base64Data'] as String? ?? '';
     return AttachmentModel(
       id: map['id'] as String,
-      filename: map['filename'] as String,
-      mimeType: map['mimeType'] as String,
-      sizeBytes: map['sizeBytes'] as int,
-      base64Data: map['base64Data'] as String,
-      createdAt: map['createdAt'] as String,
+      filename: legacyName,
+      mimeType: map['mimeType'] as String? ?? 'application/octet-stream',
+      sizeBytes: legacySize,
+      base64Data: legacyData,
+      transactionId: map['transactionId'] as String?,
+      originalName: map['originalName'] as String?,
+      size: map['size'] as int?,
+      dataUrl: map['dataUrl'] as String?,
+      createdAt: map['createdAt'] as String? ?? '',
     );
   }
 }
