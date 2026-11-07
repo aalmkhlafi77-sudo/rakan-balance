@@ -112,8 +112,10 @@ class NotesScreen extends StatelessWidget {
     try {
       await state.deleteGeneralNote(noteId);
     } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر الحذف: $e')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر الحذف: $e')));
+      }
     }
   }
 }
