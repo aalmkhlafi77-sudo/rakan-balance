@@ -5,9 +5,9 @@
  * Fullscreen preview modal for images and PDF documents with zoom controls, multi-file carousel, and download actions.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AttachmentModel } from '../domain/types.ts';
-import { downloadAttachment, formatFileSize } from '../services/attachment_service.ts';
+import { downloadAttachment, formatFileSize, dataUrlToBlobUrl } from '../services/attachment_service.ts';
 import {
   X,
   Download,
@@ -37,12 +37,38 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
   const [currentIndex, setCurrentIndex] = useState<number>(initialIndex);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [iframeError, setIframeError] = useState<boolean>(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
-  if (!isOpen || !attachments || attachments.length === 0) return null;
+  useEffect(() => {
+    setCurrentIndex(initialIndex);
+  }, [initialIndex, isOpen]);
 
-  const currentAttachment = attachments[currentIndex] || attachments[0];
-  const isImage = currentAttachment.mimeType.startsWith('image/');
-  const isPdf = currentAttachment.mimeType.includes('pdf');
+  const currentAttachment = attachments && attachments.length > 0
+    ? (attachments[currentIndex] || attachments[0])
+    : null;
+
+  const isImage = currentAttachment ? currentAttachment.mimeType.startsWith('image/') : false;
+  const isPdf = currentAttachment
+    ? currentAttachment.mimeType.includes('pdf') || currentAttachment.originalName.toLowerCase().endsWith('.pdf')
+    : false;
+
+  useEffect(() => {
+    if (isOpen && currentAttachment && isPdf && currentAttachment.dataUrl) {
+      const blobUrl = dataUrlToBlobUrl(currentAttachment.dataUrl, 'application/pdf');
+      setPdfBlobUrl(blobUrl);
+      setIframeError(false);
+
+      return () => {
+        if (blobUrl && blobUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      };
+    } else {
+      setPdfBlobUrl(null);
+    }
+  }, [isOpen, currentIndex, currentAttachment, isPdf]);
+
+  if (!isOpen || !attachments || attachments.length === 0 || !currentAttachment) return null;
 
   const handleNext = () => {
     setCurrentIndex((prev) => (prev + 1) % attachments.length);
@@ -167,13 +193,19 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
               style={{ transform: `scale(${zoomLevel})` }}
               className="max-h-full max-w-full object-contain rounded-xl shadow-2xl transition-transform duration-200 ease-out"
             />
-          ) : isPdf && !iframeError ? (
-            <iframe
-              src={currentAttachment.dataUrl}
-              title={currentAttachment.originalName}
-              onError={() => setIframeError(true)}
+          ) : isPdf && pdfBlobUrl && !iframeError ? (
+            <object
+              data={pdfBlobUrl}
+              type="application/pdf"
               className="w-full h-full max-w-4xl rounded-xl border border-slate-800 bg-white"
-            />
+            >
+              <iframe
+                src={pdfBlobUrl}
+                title={currentAttachment.originalName}
+                onError={() => setIframeError(true)}
+                className="w-full h-full rounded-xl border-none"
+              />
+            </object>
           ) : (
             <div className="text-center p-8 bg-slate-900/90 border border-slate-800 rounded-2xl max-w-md space-y-4">
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">

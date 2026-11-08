@@ -142,7 +142,11 @@ const AppContent: React.FC = () => {
           )}
 
           {currentTab === 'statement' && (
-            <StatementView initialAccountId={statementAccountId} />
+            <StatementView
+              initialAccountId={statementAccountId}
+              onEditTransaction={handleEditTx}
+              onEditInterAccountTransfer={handleEditTransfer}
+            />
           )}
 
           {currentTab === 'reports' && (

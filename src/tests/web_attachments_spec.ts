@@ -7,7 +7,7 @@
  */
 
 import { AttachmentModel, AccountModel, TransactionModel, CategoryModel } from '../domain/types.ts';
-import { validateAttachmentFile, formatFileSize } from '../services/attachment_service.ts';
+import { validateAttachmentFile, formatFileSize, dataUrlToBlobUrl } from '../services/attachment_service.ts';
 import { calculateAccountBalance } from '../domain/balance_calculator.ts';
 
 export interface WebAttachmentsTestResult {
@@ -185,6 +185,23 @@ export async function runWebAttachmentsTestSuite(): Promise<WebAttachmentsTestRe
     );
   } catch (err: any) {
     recordResult('F5_TEST_05', 'ثبات الحسابات والمحرك المالي مع المرفقات', false, err.message);
+  }
+
+  // Test 6: PDF Data URL to Blob URL conversion helper
+  try {
+    const fakePdfDataUrl = 'data:application/pdf;base64,JVBERi0xLjQK';
+    const blobUrl = dataUrlToBlobUrl(fakePdfDataUrl, 'application/pdf');
+
+    const ok = Boolean(blobUrl) && (blobUrl?.startsWith('blob:') || blobUrl === fakePdfDataUrl);
+
+    recordResult(
+      'F5_TEST_06',
+      'تحويل Data URL لمستند PDF إلى Blob URL آمن للعرض المدمج داخل المتصفح',
+      ok,
+      `blobUrlGenerated: ${Boolean(blobUrl)}`
+    );
+  } catch (err: any) {
+    recordResult('F5_TEST_06', 'تحويل PDF Data URL إلى Blob URL', false, err.message);
   }
 
   return { passedCount, failedCount, results };

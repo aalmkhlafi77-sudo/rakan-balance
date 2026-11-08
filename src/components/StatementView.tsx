@@ -12,7 +12,7 @@ import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
-import { AttachmentModel } from '../domain/types.ts';
+import { AttachmentModel, TransactionModel } from '../domain/types.ts';
 import {
   FileSpreadsheet,
   Printer,
@@ -28,9 +28,15 @@ import {
 
 interface StatementViewProps {
   initialAccountId?: string;
+  onEditTransaction?: (tx: TransactionModel) => void;
+  onEditInterAccountTransfer?: (transferId: string) => void;
 }
 
-export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }) => {
+export const StatementView: React.FC<StatementViewProps> = ({
+  initialAccountId,
+  onEditTransaction,
+  onEditInterAccountTransfer,
+}) => {
   const { accounts, transactions, attachments, settings } = useApp();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
@@ -44,6 +50,18 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
   const [previewIndex, setPreviewIndex] = useState<number>(0);
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  const handleRowClick = (tx: TransactionModel) => {
+    if (tx.transferId) {
+      if (onEditInterAccountTransfer) {
+        onEditInterAccountTransfer(tx.transferId);
+      }
+    } else {
+      if (onEditTransaction) {
+        onEditTransaction(tx);
+      }
+    }
+  };
 
   // Quick period presets
   const applyPreset = (preset: 'all' | 'thisMonth' | 'last30Days') => {
@@ -374,7 +392,17 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
                   return (
                     <tr
                       key={row.transaction.id}
-                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30"
+                      onClick={() => handleRowClick(row.transaction)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleRowClick(row.transaction);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      title="انقر لعرض أو تعديل تفاصيل الحركة"
+                      className="hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors cursor-pointer focus:outline-hidden focus:bg-slate-100 dark:focus:bg-slate-800"
                     >
                       <td className="py-2.5 px-3 text-center font-mono text-slate-400">
                         {idx + 1}
@@ -424,7 +452,8 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
                                       <button
                                         key={att.id}
                                         type="button"
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           setPreviewAttachmentsList(rowAtts);
                                           setPreviewIndex(rowAtts.findIndex((a) => a.id === att.id));
                                         }}

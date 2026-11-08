@@ -168,8 +168,35 @@ export function downloadAttachment(attachment: AttachmentModel): void {
  * Formats size in bytes into human-readable Arabic string (e.g., 250 KB, 1.5 MB)
  */
 export function formatFileSize(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 بكت';
+  if (!bytes || bytes <= 0) return '0 بايت';
   if (bytes < 1024) return `${bytes} بايت`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ك.ب`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} م.ب`;
 }
+
+/**
+ * Converts a Base64 Data URL to a Blob URL for reliable in-browser PDF/media previewing
+ */
+export function dataUrlToBlobUrl(dataUrl: string, fallbackMime: string = 'application/pdf'): string | null {
+  if (!dataUrl) return null;
+  try {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return dataUrl;
+
+    const mimeString = parts[0].split(':')[1]?.split(';')[0] || fallbackMime;
+    const byteString = atob(parts[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+
+    const blob = new Blob([ab], { type: mimeString });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Failed to convert DataURL to BlobURL:', err);
+    return null;
+  }
+}
+
