@@ -1,91 +1,78 @@
-# Hostinger Business — RAKAN BALANCE Web staging
+# RAKAN BALANCE — Hostinger Business, isolated private owner + public local visitors
 
-## Approved deployment target
+**Status: PREDEPLOYMENT ONLY.** Approved host: `rakan.carpetbazar.org`.
+The previous static-only PHP/HTML deployment plan is now **obsolete** for this app because the owner area needs authenticated Express APIs and MySQL.
 
-- **Approved FQDN:** `rakan.carpetbazar.org`
-- **Account:** Hostinger Business hosting for the `carpetbazar.org` domain (verify inside hPanel before any hosting action).
-- **Deployment repository:** `aalmkhlafi77-sudo/rakan-balance`, approved branch `main` after review.
-- **Isolation:** a **new independent site** at the exact FQDN; never reuse the document root of `carpetbazar.org` or any other subdomain.
-- **Deployment status:** configuration prepared in GitHub; website creation, DNS, SSL and deployment remain unverified until hPanel is accessible.
+## Confirm before performing any hosting changes
 
-## Architecture and hard boundaries
+- Hostinger Business account manages `carpetbazar.org`. Create an **independent site/app** for `rakan.carpetbazar.org`; never reuse the root or database of any existing website.
+- Do not change DNS records except `rakan`, and do not guess a shared-server IP.
+- The frontend is public (free visitors save to their own browser IndexedDB); owner data is hosted privately, authenticated on every request and never downloaded to visitors.
+- The owner's real financial ledger **must not be used** until the deployment tests, backup restore and multi-device conflict tests succeed.
 
-- This is a Vite/React **client-only** application. It does **not** need Node.js to run after the build, a MySQL database, PHP code, or an application server.
-- Live financial records and attachments are stored in the **user's browser IndexedDB**, and preferences in browser localStorage. Data is not synced between devices or sent to Hostinger by this deployment.
-- The real and demo workspaces remain isolated by the application, not by the hosting account.
-- Do not add a server-side database, credentials, or API keys for this deployment.
-- This staging is **online-first**: a web manifest exists, but a production offline service worker has not yet been approved/tested (WEB-F6 is separate).
-- The existing local PIN protects the interface but is **not server-side authentication or encryption at rest**. Do not claim otherwise.
-- A change of browser, origin (including domain/subdomain), cleared site storage, or incognito window may result in an empty ledger on that device. Existing local data on the old origin is **not migrated automatically**.
+## Node.js deployment
 
-## Site isolation
+The deployed process must run `server/start.mjs` (Express + React static assets). Do NOT choose static-only hosting for the final application.
 
-1. In **Hostinger Business** create a **new, independent website** with a dedicated subdomain. Do not overwrite or point a directory at an existing production website.
-2. Use exactly the approved FQDN `rakan.carpetbazar.org`; confirm in hPanel that the intended Business account owns/manages `carpetbazar.org` before any deployment.
-3. Configure DNS/Hostinger domain assignment only for that subdomain. Enable and verify HTTPS/SSL; no mixed content.
-4. Do not reuse another site's `public_html`, database, SMTP, storage bucket, or site files.
+| Hostinger setting | Required value |
+| --- | --- |
+| Domain | `rakan.carpetbazar.org` |
+| Source | `aalmkhlafi77-sudo/rakan-balance` |
+| Branch | Approved release commit on `main` **only after all PRs approved and merged** |
+| Node.js | Node 22 or newer compatible LTS |
+| Install | `npm install` (needs build dependencies for Vite/esbuild) |
+| Build | `npm run build` (creates `dist/` **and** `server/generated/owner-validator.mjs`) |
+| Start/entry | `npm start` / `server/start.mjs` |
+| Port | Provided by Hostinger's `PORT` environment variable |
+| Web root | Served internally by Express from `dist/` |
+| Auto deploy | **Disabled** until explicitly authorized |
+| MySQL | A **new, dedicated** Hostinger MySQL database |
+| Visitor data | Browser-local IndexedDB; no visitor account needed |
 
-## Deployment option A — Hostinger Business Web App with GitHub (preferred)
+The app must have the full server code plus `dist/` and `server/generated/` at runtime. If the Hostinger builder publishes only `dist/` or refuses Node.js server entry, **stop**; do not silently switch back to static hosting.
 
-Hostinger's Business Web App flow supports GitHub deployment and managed builds for Vite/React projects. In hPanel open **Websites → Add website → Node.js Web App / Web App → Import from GitHub** (wording varies), create an **independent website** assigned to `rakan.carpetbazar.org`, then connect **only** `aalmkhlafi77-sudo/rakan-balance`. Although Hostinger labels this deployment type Node.js, this project is **frontend-only** and does not need an Express backend or database.
+## MySQL initialization
 
-- Branch: `main` **only after PR review and approved deployment**.
-- Framework: Vite / React (automatic detection).
-- Install command: `npm install` (or the package manager/lockfile Hostinger correctly detects).
-- Build command: `npm run build`.
-- Build output: `dist`.
-- No Node.js server entry file: do not configure `vite dev` or `vite preview` as a production web server.
-- No environment variables/secrets required for the current static application.
-- Ensure client-side routes, if introduced later, fall back to `index.html` (the current UI uses in-app tab state, not URL routes).
-- Avoid granting deployment access to all GitHub repositories if a single-repository grant is supported.
-- Initial deployment is **manual/approval-gated**. **Keep automatic deployment OFF** until explicitly approved: otherwise later pushes to `main` may publish immediately.
+1. Create a dedicated database and **dedicated restricted database account**. Confirm the Hostinger-provided hostname (not automatically `localhost`).
+2. Run these schema migrations sequentially **only in the new database**:
+   - `database/001_owner_auth.sql`
+   - `database/002_owner_ledger_snapshot.sql`
+3. One-time owner provisioning: `npm run provision:owner` using `RAKAN_OWNER_PASSWORD` in a protected, temporary environment (never paste passwords in chat or check them into GitHub). Unset the variable afterward.
+4. Do **not** place the owner password or database credentials in any `VITE_*` variable or source file.
 
-The exact host controls vary by Hostinger site type; review the generated configuration before clicking Deploy.
-
-## Deployment option B — static PHP/HTML website, upload built files only
-
-If the Hostinger Web App flow is not available, create a distinct **PHP/HTML (static)** website on the subdomain.
-
-Build from a clean checked-out approved commit:
-
-```sh
-npm install
-npm run lint
-npm run test
-npm run build
+Required **server-only** variables:
+```dotenv
+APP_ORIGIN=https://rakan.carpetbazar.org
+DB_HOST=<hostinger-host>
+DB_PORT=3306
+DB_NAME=<new-dedicated-database>
+DB_USER=<dedicated-db-user>
+DB_PASSWORD=<stored-in-Hostinger-secrets>
+RAKAN_CSRF_SECRET=<random-strong-secret-at-least-32-chars>
 ```
+`PORT` is hosting-managed.
 
-Upload **the contents of `dist/`** into that subdomain's assigned web root (usually `public_html/` for that independent site). The root must contain `index.html`, `assets/`, `manifest.webmanifest`, and `.htaccess` (enable viewing hidden files). Do **not** upload `src/`, `node_modules/`, `.git/`, `.env*`, `bun.lock`, test artifacts, or backups. The `public/.htaccess` file is copied to `dist/.htaccess` by Vite.
+## Security / operational constraints
 
-This Apache fallback requires mod_rewrite. On non-Apache managed hosting, configure the equivalent SPA fallback through Hostinger's deployment interface; the `.htaccess` file will have no effect.
+- HTTPS must work correctly before owner credentials are used. The `__Host-rakan_session` session cookie is `HttpOnly; Secure; SameSite=Strict`.
+- Origin and anti-CSRF checks apply to state changes. Passwords are salted slow hashes; sessions are revocable server-side.
+- Confirm database sessions, periodic expiry cleanup, sustained rate limits and server logs (without credentials or ledger records).
+- Owner ledger writes use **atomic MySQL row locking** and optimistic revisions. A 409 conflict must be visible to the owner and must not overwrite a device's newer financial data.
+- Owner ledger snapshot currently carries attachment data URLs. Total payload is bounded; **large files and numerous attachments require a private binary storage backend before unrestricted production use**.
+- Private owner mode does not support offline edits. Never show a false "saved" message when the server is unreachable.
+- Take **scheduled independent MySQL backups** and verify actual restore in the dedicated test database; local visitor JSON backups are separate and not handled by Hostinger MySQL backups.
+- Local browser PIN only applies to the visitor/local experience; it is not owner-server authentication.
 
-## Domain and HTTPS readiness
+## Final release acceptance tests (required)
 
-- If `carpetbazar.org` uses Hostinger nameservers, creating the independent site typically configures DNS automatically; **verify** the record in hPanel.
-- If the DNS zone is managed externally (such as Cloudflare), **do not guess an IP address or overwrite existing records**; use the exact record value shown by Hostinger for the newly created website. Modify only the `rakan` host.
-- Confirm SSL is issued for `rakan.carpetbazar.org` and that HTTPS loads with no browser warnings.
-- Do not assume GitHub `main` pushes are harmless after connecting Hostinger: check and disable auto-deployment until approved.
+1. Open the **exact** subdomain over HTTPS on desktop and phone and verify the approved logo, bottom bar, and day/night modes.
+2. **Guest**: can create data without registration, reload and see it only on the same origin/device. No guest financial records may be written to MySQL.
+3. **Owner**: wrong password fails; valid password logs in; unauthenticated GET/PUT to `/api/owner/ledger` receives 401; cross-origin and missing-CSRF writes are rejected.
+4. After owner login, the local visitor financial records must not appear in owner UI. After logout, owner records must not appear in guest UI or remain in visitor IndexedDB.
+5. With **two physical devices**, create/edit accounts, transfers, due payments, notes, reports and attachments, verify the server is authoritative and revision 409 conflicts prevent lost writes.
+6. Export and import/restore a private backup, reconcile counts/balances/transfer pairs, test failure and atomic rollback.
+7. Production bundles must have **zero preview labels or seeded fictional financial records** (CI `check-production-no-demo.mjs`).
+8. Verify browser refresh and direct page routes; verify static asset 404s remain 404.
+9. Verify SSL, uptime, backups, restore, session expiry, and restricted DB permissions; confirm other Hostinger sites remain unchanged.
 
-## Staging acceptance checklist (no real financial data)
-
-- HTTPS opens the correct subdomain; other hosted sites are unchanged.
-- Main UI, theme switcher, approved logo, menu and mobile bottom navigation work.
-- Asset URLs and browser icon are served with 200 responses.
-- Hard refresh works at the root, and unknown app paths route to `index.html` without replacing genuine asset 404s with HTML.
-- Use **demo scope only**, test a new entry, reload, close/open the browser and verify persistence.
-- Test export/import backup in demo scope, PDF download and WhatsApp text action.
-- Check in desktop and mobile browser. Keep real user financial data out of staging acceptance.
-- Confirm no real data was uploaded or copied to server; IndexedDB remains on the device.
-- Document the approved URL, deployment revision, rollback and whether automatic redeploy is enabled.
-
-## Rollback
-
-Static deployment: restore the previously approved `dist/` content in this subdomain's dedicated document root.
-Managed deployment: select/redeploy the last known-good Hostinger release or commit.
-Neither rollback changes existing client-side IndexedDB records; never clear browser storage as a deployment recovery step.
-
-## Operational notes
-
-- Manual JSON backups must be kept by the owner independently: browser-local data is not a Hostinger MySQL backup.
-- Reinstalling, changing subdomains or switching browsers creates a different origin/storage context.
-- WEB-F6 (offline install and service worker) should be implemented and verified separately; manifest alone does not enable offline mode.
+**No claim of deployment completion** without real hosting, real database and acceptance evidence.
