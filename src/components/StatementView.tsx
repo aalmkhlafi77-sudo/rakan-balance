@@ -399,8 +399,63 @@ export const StatementView: React.FC<StatementViewProps> = ({
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
+
+          <>
+            {/* Mobile statement uses full-width descriptions and separate totals. Desktop table/print remain unchanged. */}
+            <div className="md:hidden space-y-3" data-testid="mobile-statement-list">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3 flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">رصيد أول المدة</span>
+                <span className="text-xs font-mono tabular-nums font-bold" dir="ltr">{formatCurrency(statement.openingBalanceMinor, { showSign: true })}</span>
+              </div>
+              {statement.rows.map((row, idx) => {
+                const tx = row.transaction;
+                const isOwedBy = tx.entryType === 'owedByAccount';
+                const rowFiles = attachments.filter((att) => tx.attachmentIds?.includes(att.id));
+                const counterparty = tx.transferId && tx.counterpartyAccountId
+                  ? accounts.find((a) => a.id === tx.counterpartyAccountId) : null;
+                return (
+                  <article key={tx.id} data-testid="mobile-statement-card"
+                    className="rounded-xl border border-slate-200 dark:border-slate-700/70 bg-white dark:bg-slate-900/60 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] text-slate-400">حركة #{idx + 1}</span>
+                      <time dir="ltr" className="font-mono text-xs text-slate-500">{tx.date}</time>
+                    </div>
+                    <button type="button" onClick={() => handleRowClick(tx)}
+                      className="block w-full min-w-0 text-right text-sm font-semibold leading-7 text-slate-900 dark:text-slate-100 break-words whitespace-normal [overflow-wrap:anywhere]">
+                      {tx.description}
+                    </button>
+                    {counterparty && <p className="text-xs text-purple-700 dark:text-purple-300 break-words">
+                      حركة بينية — {counterparty.name}
+                    </p>}
+                    {tx.notes && <p className="text-xs leading-5 break-words text-slate-500">{tx.notes}</p>}
+                    <div className="flex flex-wrap items-end justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-2.5">
+                      <div>
+                        <span className="block text-[10px] text-slate-500 mb-1">{isOwedBy ? 'عليه (+ لك)' : 'له (- عليك)'}</span>
+                        <bdi dir="ltr" className={`font-mono tabular-nums text-sm font-bold ${isOwedBy ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {isOwedBy ? '+' : '-'}{formatMinorAmount(tx.amountMinor)}
+                        </bdi>
+                      </div>
+                      <div className="text-left">
+                        <span className="block text-[10px] text-slate-500 mb-1">الرصيد بعد الحركة</span>
+                        <bdi dir="ltr" className={`font-mono tabular-nums text-sm font-bold ${row.runningBalanceMinor > 0 ? 'text-emerald-600 dark:text-emerald-400' : row.runningBalanceMinor < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {formatCurrency(row.runningBalanceMinor, { showSign: true })}
+                        </bdi>
+                      </div>
+                    </div>
+                    {rowFiles.length > 0 && <div className="flex flex-wrap gap-2">
+                      {rowFiles.map((att) => <button key={att.id} type="button"
+                        aria-label={`معاينة: ${att.originalName}`}
+                        onClick={() => { setPreviewAttachmentsList(rowFiles); setPreviewIndex(rowFiles.findIndex((a) => a.id === att.id)); }}
+                        className="inline-flex items-center gap-1 text-[11px] px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        <Paperclip className="w-4 h-4" /> <span className="max-w-32 truncate">{att.originalName}</span>
+                      </button>)}
+                    </div>}
+                  </article>
+                );
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-right text-xs">
               <thead className="bg-slate-100/80 dark:bg-slate-800/80 border-y border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
                 <tr>
                   <th className="py-2.5 px-3 text-center w-12">#</th>
@@ -532,7 +587,8 @@ export const StatementView: React.FC<StatementViewProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
 
         {/* Printable Footer note */}
