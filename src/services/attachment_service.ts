@@ -18,6 +18,43 @@ export const ALLOWED_MIME_TYPES = [
   'application/pdf',
 ];
 
+
+export const PRIVATE_ATTACHMENT_PREFIX = 'rakan-private://attachment/';
+
+export function isPrivateAttachment(attachment: AttachmentModel): boolean {
+  return attachment.dataUrl === PRIVATE_ATTACHMENT_PREFIX + attachment.id;
+}
+
+export async function resolveAttachmentUrl(
+  attachment: AttachmentModel
+): Promise<{ url: string; revoke: boolean }> {
+  if (!isPrivateAttachment(attachment)) {
+    return { url: attachment.dataUrl, revoke: false };
+  }
+  let response: Response;
+  try {
+    response = await fetch('/api/owner/attachment-blobs/' + encodeURIComponent(attachment.id), {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('تعذر الاتصال بالخادم لتحميل المرفق الخاص.');
+  }
+  if (response.status === 401) {
+    window.dispatchEvent(new Event('rakan-owner-session-expired'));
+    throw new Error('انتهت جلسة المالك. أعد تسجيل الدخول لتحميل المرفق.');
+  }
+  if (!response.ok) {
+    throw new Error('تعذر تحميل المرفق الخاص أو فشل فحص سلامته.');
+  }
+  const blob = await response.blob();
+  const expected = attachment.mimeType === 'image/jpg' ? 'image/jpeg' : attachment.mimeType;
+  if (blob.size !== attachment.size || (blob.type && blob.type !== expected)) {
+    throw new Error('المرفق المستلم لا يطابق بياناته المحفوظة.');
+  }
+  return { url: URL.createObjectURL(blob), revoke: true };
+}
+
 // Maximum allowed file size: 5 MB (5 * 1024 * 1024 bytes)
 export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -116,51 +153,28 @@ export function fileToAttachmentModel(
 /**
  * Triggers clean browser download of the original file content from Base64 Data URL
  */
-export function downloadAttachment(attachment: AttachmentModel): void {
+export async function downloadAttachment(attachment: AttachmentModel): Promise<void> {
   if (!attachment || !attachment.dataUrl) {
     alert('بيانات المرفق مفقودة أو غير صالحة.');
     return;
   }
 
+  let resolved: { url: string; revoke: boolean } | null = null;
   try {
-    // Convert Base64 DataURL to Blob for reliable download across browsers
-    const parts = attachment.dataUrl.split(',');
-    if (parts.length < 2) {
-      // Fallback: direct href download
-      const a = document.createElement('a');
-      a.href = attachment.dataUrl;
-      a.download = attachment.originalName || 'document';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      return;
-    }
-
-    const mimeString = parts[0].split(':')[1]?.split(';')[0] || attachment.mimeType;
-    const byteString = atob(parts[1]);
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i);
-    }
-
-    const blob = new Blob([ab], { type: mimeString });
-    const blobUrl = URL.createObjectURL(blob);
-
+    resolved = await resolveAttachmentUrl(attachment);
     const a = document.createElement('a');
-    a.href = blobUrl;
+    a.href = resolved.url;
     a.download = attachment.originalName || 'document';
     document.body.appendChild(a);
     a.click();
-
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    }, 1000);
+    document.body.removeChild(a);
   } catch (err) {
     console.error('Failed to trigger attachment download:', err);
-    alert(`تعذر تنزيل الملف "${attachment.originalName}". البيانات قد تكون مشوهة.`);
+    alert(err instanceof Error ? err.message : `تعذر تنزيل الملف "${attachment.originalName}".`);
+  } finally {
+    if (resolved?.revoke) {
+      setTimeout(() => URL.revokeObjectURL(resolved!.url), 1000);
+    }
   }
 }
 
