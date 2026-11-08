@@ -209,12 +209,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {settings.theme === 'dark' ? (
                 <>
                   <Sun className="w-3.5 h-3.5 text-amber-400" />
-                  <span>فاتح</span>
+                  <span>النهاري</span>
                 </>
               ) : (
                 <>
-                  <Moon className="w-3.5 h-3.5 text-slate-600" />
-                  <span>داكن</span>
+                  <Moon className="w-3.5 h-3.5 text-[#B56CE8]" />
+                  <span>الوضع الزجاجي</span>
                 </>
               )}
             </button>
