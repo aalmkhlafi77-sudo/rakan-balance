@@ -176,7 +176,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Preview is strictly a development-only fixture, never part of a public production build.
         if (!import.meta.env.DEV) throw new Error('مساحة المعاينة غير متاحة في نسخة الإنتاج.');
         const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
-          await import('../storage/initial_data.ts');
+          await import('../../tests/fixtures/demo-seed.ts');
         let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_DEMO.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_DEMO.CATEGORIES),
@@ -743,7 +743,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loadDemoData = async () => {
     if (!import.meta.env.DEV) throw new Error('بيانات المعاينة غير متاحة في نسخة الإنتاج.');
     const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
-      await import('../storage/initial_data.ts');
+      await import('../../tests/fixtures/demo-seed.ts');
     await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
     if (activeScope === 'demo') {
       await loadWorkspaceData('demo');
