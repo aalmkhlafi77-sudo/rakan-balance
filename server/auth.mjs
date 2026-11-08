@@ -17,7 +17,7 @@ export function createOwnerAuth(pool, env = process.env) {
   }
   const router = Router();
   const loginAttempts = new Map();
-  const isSecure = appOrigin.startsWith('https:');
+  // __Host- cookies must always carry Secure, including local development.
 
   // Never accept cross-site state-changing requests; no CORS is enabled.
   function strictOrigin(req, res, next) {
@@ -36,7 +36,7 @@ export function createOwnerAuth(pool, env = process.env) {
       'Path=/',
       'HttpOnly',
       'SameSite=Strict',
-      ...(isSecure ? ['Secure'] : []),
+      'Secure',
       ...(expire ? ['Max-Age=0'] : ['Max-Age=' + Math.floor(SESSION_MS / 1000)]),
     ];
     res.setHeader('Set-Cookie', parts.join('; '));
