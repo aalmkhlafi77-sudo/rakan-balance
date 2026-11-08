@@ -10,6 +10,7 @@ on:
       - feature/owner-launch-integration-e
       - security/owner-db-login-limiter
       - feature/owner-encrypted-backup-gate
+      - feature/owner-private-attachments-foundation
     paths:
       - 'src/**'
       - 'scripts/**'
