@@ -4,6 +4,7 @@ import { Eye, EyeOff, LockKeyhole, LogOut, ShieldCheck, AlertCircle } from 'luci
 type AccessState = 'checking' | 'visitor' | 'owner' | 'unavailable';
 interface OwnerAccessContextValue {
   status: AccessState;
+  csrfToken: string;
   openLogin: () => void;
 }
 const Context = createContext<OwnerAccessContextValue | null>(null);
@@ -44,6 +45,11 @@ export const OwnerAccessGate: React.FC<Props> = ({ children }) => {
     }
   }, []);
   useEffect(() => { void checkSession(); }, [checkSession]);
+  useEffect(() => {
+    const expire = () => { setCsrf(''); setStatus('visitor'); setError(''); };
+    window.addEventListener('rakan-owner-session-expired', expire);
+    return () => window.removeEventListener('rakan-owner-session-expired', expire);
+  }, []);
 
   const openLogin = () => {
     if (status !== 'visitor') return;
@@ -102,28 +108,11 @@ export const OwnerAccessGate: React.FC<Props> = ({ children }) => {
     }
   };
   return (
-    <Context.Provider value={{ status, openLogin }}>
+    <Context.Provider value={{ status, csrfToken: csrf, openLogin }}>
       {status === 'checking' ? (
         <div dir="rtl" className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-950">
           <img src="/assets/rakan-icon-192.webp" width={64} height={64} alt="راكان بلانس" className="h-16 w-16 rounded-xl" />
           <p className="text-sm text-slate-600 dark:text-slate-300">جاري التحقق من حالة الاتصال...</p>
-        </div>
-      ) : status === 'owner' ? (
-        <div dir="rtl" className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex items-center justify-center px-4">
-          <section className="max-w-md w-full rounded-2xl bg-white dark:bg-slate-900 p-6 border border-slate-200 dark:border-slate-700 shadow-xl text-center space-y-4">
-            <img src="/assets/rakan-icon-192.webp" alt="راكان بلانس" className="w-20 h-20 object-contain mx-auto rounded-xl" />
-            <ShieldCheck aria-hidden="true" className="w-8 h-8 text-emerald-500 mx-auto" />
-            <h1 className="text-xl font-bold">مساحة المالك الخاصة</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-7">
-              تم التحقق من تسجيل دخولك. لا تزال واجهة البيانات المالية الخاصة في مرحلة الربط بالخادم،
-              ولذلك عُطّلت عملياتها مؤقتاً لحماية البيانات. لم يتم تحميل بيانات الزائر أو حفظ أي سجل خاص في متصفحه.
-            </p>
-            {error && <p role="alert" className="text-rose-600 text-xs">{error}</p>}
-            <button type="button" onClick={() => void logout()}
-              className="w-full min-h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 text-white font-bold text-sm">
-              <LogOut className="w-4 h-4" /> تسجيل الخروج
-            </button>
-          </section>
         </div>
       ) : children}
       {status === 'visitor' && loginOpen && (
