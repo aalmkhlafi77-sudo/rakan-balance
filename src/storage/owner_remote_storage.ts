@@ -105,6 +105,11 @@ export class OwnerRemoteStorage {
     return this.revision !== previous;
   }
 
+  public async getSafeSettings(): Promise<BackupBundle['data']['settings'] | null> {
+    await this.load();
+    return this.data.settings ? copy(this.data.settings) : null;
+  }
+
   public async getAll<T>(storeName: string): Promise<T[]> {
     await this.load();
     const name = TABLES[storeName];
