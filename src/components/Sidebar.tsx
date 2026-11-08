@@ -26,7 +26,7 @@ import {
   Layers,
 } from 'lucide-react';
 
-const DevPreviewSwitcher = import.meta.env.DEV
+const DevPreviewSwitcher = (import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true')
   ? React.lazy(() => import('./DevPreviewSwitcher.tsx').then((m) => ({ default: m.DevPreviewSwitcher })))
   : null;
 
