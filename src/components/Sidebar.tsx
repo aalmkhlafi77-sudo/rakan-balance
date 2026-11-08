@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { useOwnerAccess } from './OwnerAccessGate.tsx';
 import {
   LayoutDashboard,
   Users,
@@ -52,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen,
   onCloseMobile,
 }) => {
+  const ownerAccess = useOwnerAccess();
   const {
     settings,
     activeScope,
@@ -182,8 +184,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Footer Actions: Currency, Theme & Lock */}
+        {/* Footer Actions: Owner login (server auth), Currency, Theme & Lock */}
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+          {ownerAccess.status === 'visitor' && (
+            <button type="button" onClick={ownerAccess.openLogin} aria-label="دخول المالك الخاص"
+              className="w-full min-h-10 rounded-xl border border-emerald-600/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 text-xs font-bold">
+              دخول المالك الخاص
+            </button>
+          )}
           {/* Currency locked info */}
           <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/40">
             <span>العملة الموحدة</span>
