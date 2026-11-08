@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - main
+      - feature/owner-launch-integration-e
+      - security/owner-db-login-limiter
     paths:
       - 'src/**'
       - 'scripts/**'
