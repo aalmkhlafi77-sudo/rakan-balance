@@ -53,7 +53,7 @@ test('mobile emulation: native share receives a genuine PDF File', async ({ page
   });
   await openStatement(page);
   await page.getByRole('button', { name: 'مشاركة / تنزيل PDF' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__pdfShare)).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => (window as any).__pdfShare)).toBeTruthy();
   const infoFile = await page.evaluate(() => (window as any).__pdfShare);
   expect(infoFile.type).toBe('application/pdf');
   expect(infoFile.header).toBe('%PDF-1.4');
