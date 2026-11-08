@@ -49,6 +49,7 @@ test('owner ledger is private, validates data, rejects stale revisions atomicall
       if (sql.startsWith('DELETE FROM owner_sessions')) { sessions.delete(vals[0]); return [{ affectedRows: 1 }, []]; }
       if (sql.startsWith('SELECT revision, payload, payload_sha256')) return [[{ ...ledger }], []];
       if (sql.startsWith('SELECT revision FROM owner_ledger_snapshot')) return [[{ revision: ledger.revision }], []];
+      if (sql.startsWith('SELECT attachment_id, transaction_id, mime_type, byte_length, sha256 FROM owner_attachment_blobs')) return [[], []];
       if (sql.startsWith('UPDATE owner_ledger_snapshot')) {
         ledger.revision = vals[0]; ledger.payload = vals[1]; ledger.payload_sha256 = vals[2];
         return [{ affectedRows: 1 }, []];
