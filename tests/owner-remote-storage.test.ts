@@ -10,6 +10,7 @@ test('owner storage commits only to validated server, never to IndexedDB; stale 
   const initialWindow = globalThis.window;
   const initialDb = globalThis.indexedDB;
   let revision: number = 0;
+  function simulateOtherDeviceCommit(): void { revision = Number(revision) + 1; }
   let serverBundle: any = null;
   (globalThis as any).window = new EventTarget();
   (globalThis as any).indexedDB = {
@@ -55,7 +56,7 @@ test('owner storage commits only to validated server, never to IndexedDB; stale 
     assert.equal((await storage.getAll(STORES_REAL.TRANSACTIONS)).length, 1);
     assert.equal(serverBundle.data.transactions[0].amountMinor, 250);
 
-    revision += 1; // Another device has committed a newer revision.
+    simulateOtherDeviceCommit(); // Another device has committed a newer revision.
     await assert.rejects(() => storage.put(STORES_REAL.ACCOUNTS, { ...account, name: 'تعديل متأخر' }), /جهاز آخر/);
     assert.equal((await storage.getAll<typeof account>(STORES_REAL.ACCOUNTS))[0].name, 'حساب سري');
     assert.equal(revision, 4);
