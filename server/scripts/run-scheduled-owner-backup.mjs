@@ -2,14 +2,17 @@ import path from 'node:path';
 import { constants, copyFile, mkdir, unlink, chmod } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createDatabasePool } from '../db.mjs';
 import { pruneManagedBackups, scheduledBackupFilename } from '../backup-retention.mjs';
+
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const BACKUP_CLI = fileURLToPath(new URL('./owner-backup.mjs', import.meta.url));
 
 function protectedDirectory(value, label) {
   if (!value || !path.isAbsolute(value)) throw new Error(label + ' must be an absolute private directory');
   const resolved = path.resolve(value);
-  const project = path.resolve(process.cwd());
-  if (resolved === project || resolved.startsWith(project + path.sep)) {
+  if (resolved === PROJECT_ROOT || resolved.startsWith(PROJECT_ROOT + path.sep)) {
     throw new Error(label + ' must be outside the application directory');
   }
   return resolved;
@@ -27,7 +30,7 @@ function runBackupCli(action, filePath) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      [path.resolve('server/scripts/owner-backup.mjs'), action, filePath],
+      [BACKUP_CLI, action, filePath],
       { env: process.env, stdio: ['ignore', 'ignore', 'ignore'] },
     );
     child.once('error', () => reject(new Error('Backup subprocess failed to start')));
@@ -52,6 +55,8 @@ async function main() {
   const pool = createDatabasePool();
   let locked = false;
   let target = null;
+  let mirrorTarget = null;
+  let primaryVerified = false;
   try {
     const [rows] = await pool.query(
       "SELECT GET_LOCK('rakan_balance_owner_backup_scheduler', 0) AS acquired",
@@ -66,9 +71,10 @@ async function main() {
     await runBackupCli('export', target);
     await runBackupCli('verify', target);
     await chmod(target, 0o600);
+    primaryVerified = true;
 
     if (mirror) {
-      const mirrorTarget = path.join(mirror, name);
+      mirrorTarget = path.join(mirror, name);
       await copyFile(target, mirrorTarget, constants.COPYFILE_EXCL);
       await chmod(mirrorTarget, 0o600);
       await runBackupCli('verify', mirrorTarget);
@@ -77,7 +83,10 @@ async function main() {
     await pruneManagedBackups(directory, keep);
     process.stdout.write('Scheduled encrypted owner backup completed and verified.\n');
   } catch (error) {
-    if (target) {
+    if (mirrorTarget) {
+      try { await unlink(mirrorTarget); } catch { /* keep original failure */ }
+    }
+    if (target && !primaryVerified) {
       try { await unlink(target); } catch { /* keep original failure */ }
     }
     throw error;
