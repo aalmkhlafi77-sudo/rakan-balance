@@ -34,8 +34,9 @@ export function sanitizePhoneNumber(phoneStr?: string | null): PhoneValidationRe
     digits = digits.slice(2);
   }
 
-  // Basic E.164 length check (between 8 and 15 digits)
-  if (digits.length < 8 || digits.length > 15) {
+  // E.164 international numbers cannot start with 0. Local numbers require an
+  // explicit country code; never silently assume the user's country.
+  if (!/^[1-9]\d{7,14}$/.test(digits)) {
     return {
       isValid: false,
       cleanPhone: digits,
@@ -150,8 +151,8 @@ export function buildStatementShareMessage(
  */
 export function getWhatsAppUrl(text: string, phoneNumDigits?: string): string {
   const encodedText = encodeURIComponent(text);
-  if (phoneNumDigits && phoneNumDigits.length >= 8) {
-    return `https://wa.me/${phoneNumDigits}?text=${encodedText}`;
+  if (phoneNumDigits && sanitizePhoneNumber(phoneNumDigits).isValid) {
+    return `https://wa.me/${sanitizePhoneNumber(phoneNumDigits).cleanPhone}?text=${encodedText}`;
   }
   return `https://wa.me/?text=${encodedText}`;
 }
