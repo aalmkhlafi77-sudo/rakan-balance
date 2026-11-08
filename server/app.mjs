@@ -33,7 +33,7 @@ export function createApp({ pool, env = process.env, staticRoot = dist }) {
   });
   // Guarded operational status. No browser visitor can access owner data.
   app.get('/api/owner/status', auth.requireOwner, (_req, res) => {
-    res.json({ authenticated: true, storageReady: true });
+    res.json({ authenticated: true, storageReady: false });
   });
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
