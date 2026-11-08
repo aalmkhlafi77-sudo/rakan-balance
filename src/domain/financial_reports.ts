@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Financial Reports & Analytics Domain Engine
  * Follows Document v2 Sections 3, 4, 16 & WEB-F3 Specifications:
- * - Accounts Balance Report (Direct balances, no double counting)
+ * - Accounts Balance Report (Direct historical balances up to specified toDate, no double counting)
  * - Category Aggregation Report (Grouping accounts by category)
  * - Period Summary & Historical Statement Report (Historical opening & closing balances)
  * - Debtors / Creditors Analysis (لك vs عليك separation & concentration)
  */
 
 import { AccountModel, CategoryModel, TransactionModel } from './types.ts';
-import { calculateAccountBalance, getSignedTransactionMinor } from './balance_calculator.ts';
+import { compareTransactions, getSignedTransactionMinor } from './balance_calculator.ts';
 
 /**
  * Filter options for financial reports
@@ -30,10 +30,10 @@ export interface AccountBalanceReportRow {
   account: AccountModel;
   categoryName: string;
   openingBalanceMinor: number;
-  totalOwedByMinor: number; // إجمالي عليه خلال الفترة/الكل
-  totalOwedToMinor: number; // إجمالي له خلال الفترة/الكل
+  totalOwedByMinor: number; // إجمالي عليه خلال الفترة
+  totalOwedToMinor: number; // إجمالي له خلال الفترة
   netMovementMinor: number;
-  currentBalanceMinor: number; // الرصيد النهائي الحركي
+  currentBalanceMinor: number; // الرصيد الختامي التاريخي حتى نهاية الفترة المحددة
   balanceType: 'receivable' | 'payable' | 'balanced'; // لك (موجب) | عليك (سالب) | متزن (صفر)
 }
 
@@ -123,9 +123,31 @@ export interface DebtorsCreditorsReport {
 }
 
 /**
+ * Calculates historical balance for an account up to a specific toDate.
+ * Rejects any transactions dated > toDate.
+ */
+export function calculateHistoricalBalanceAt(
+  account: AccountModel,
+  transactions: TransactionModel[],
+  toDate?: string
+): number {
+  const accountTxs = transactions.filter((t) => {
+    if (t.accountId !== account.id) return false;
+    if (toDate && t.date > toDate) return false;
+    return true;
+  });
+
+  const movementsTotal = accountTxs.reduce((acc, t) => {
+    return acc + getSignedTransactionMinor(t.entryType, t.amountMinor);
+  }, 0);
+
+  return account.openingBalanceMinor + movementsTotal;
+}
+
+/**
  * Generates Accounts Balance Report
- * Calculates direct balances for all filtered accounts.
- * Note: Each account contributes its own direct balance to guarantee no parent-child double counting.
+ * Calculates direct historical balances up to options.toDate for all filtered accounts.
+ * Strictly excludes any transactions after options.toDate.
  */
 export function generateAccountsBalanceReport(
   accounts: AccountModel[],
@@ -164,7 +186,7 @@ export function generateAccountsBalanceReport(
     if (account.status === 'active') activeAccountsCount++;
     else archivedAccountsCount++;
 
-    // Account transactions (filtered by date if specified)
+    // Account transactions (filtered by date range)
     const accountTxs = transactions.filter((t) => t.accountId === account.id);
     
     let totalOwedByMinor = 0;
@@ -182,7 +204,8 @@ export function generateAccountsBalanceReport(
     }
 
     const netMovementMinor = totalOwedByMinor - totalOwedToMinor;
-    const currentBalanceMinor = calculateAccountBalance(account, transactions);
+    // Calculate historical balance strictly up to options.toDate
+    const currentBalanceMinor = calculateHistoricalBalanceAt(account, transactions, options.toDate);
 
     let balanceType: 'receivable' | 'payable' | 'balanced' = 'balanced';
     if (currentBalanceMinor > 0) {
@@ -222,19 +245,20 @@ export function generateAccountsBalanceReport(
 
 /**
  * Generates Category Summary Report
- * Groups direct balances of active accounts by category.
+ * Groups direct historical balances of active accounts by category up to optional toDate.
  * Prevents double-counting parent/child because each account belongs to one category.
  */
 export function generateCategorySummaryReport(
   accounts: AccountModel[],
   transactions: TransactionModel[],
-  categories: CategoryModel[]
+  categories: CategoryModel[],
+  toDate?: string
 ): CategorySummaryReport {
   const activeAccounts = accounts.filter((a) => a.status === 'active');
   const accountBalances = new Map<string, number>();
 
   for (const acc of activeAccounts) {
-    accountBalances.set(acc.id, calculateAccountBalance(acc, transactions));
+    accountBalances.set(acc.id, calculateHistoricalBalanceAt(acc, transactions, toDate));
   }
 
   let grandTotalReceivableMinor = 0;
@@ -340,7 +364,7 @@ export function generatePeriodSummaryReport(
       if (toDate && t.date > toDate) return false;
       return true;
     })
-    .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    .sort(compareTransactions); // Stable sorting by date ASC, createdAt ASC, id ASC
 
   for (const t of periodTxs) {
     const acc = accountMap.get(t.accountId)!;
@@ -382,7 +406,8 @@ export function generatePeriodSummaryReport(
 export function generateDebtorsCreditorsReport(
   accounts: AccountModel[],
   transactions: TransactionModel[],
-  categories: CategoryModel[]
+  categories: CategoryModel[],
+  toDate?: string
 ): DebtorsCreditorsReport {
   const activeAccounts = accounts.filter((a) => a.status === 'active');
   const categoryMap = new Map<string, string>(categories.map((c) => [c.id, c.name]));
@@ -394,7 +419,7 @@ export function generateDebtorsCreditorsReport(
   let totalCreditorsMinor = 0;
 
   for (const acc of activeAccounts) {
-    const bal = calculateAccountBalance(acc, transactions);
+    const bal = calculateHistoricalBalanceAt(acc, transactions, toDate);
     const catName = categoryMap.get(acc.categoryId) || 'غير مصنف';
 
     if (bal > 0) {

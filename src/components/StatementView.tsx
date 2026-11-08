@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { calculateAccountStatement } from '../domain/balance_calculator.ts';
 import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
+import { generatePdfReport } from '../services/pdf_export.ts';
 import {
   FileSpreadsheet,
   Printer,
@@ -85,7 +86,52 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
   };
 
   const handlePrint = () => {
-    window.print();
+    if (!selectedAccount) return;
+
+    generatePdfReport({
+      reportTitle: `كشف حساب: ${selectedAccount.name}`,
+      subtitle: `الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`,
+      ownerName: settings.ownerName,
+      currencySymbol: settings.currencySymbol,
+      metrics: [
+        {
+          title: 'رصيد أول المدة',
+          value: formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+          colorClass: 'slate',
+        },
+        {
+          title: 'إجمالي عليه (خلال الفترة)',
+          value: `+${formatMinorAmount(statement.totalOwedByMinor)} ${settings.currencySymbol}`,
+          colorClass: 'emerald',
+        },
+        {
+          title: 'إجمالي له (خلال الفترة)',
+          value: `-${formatMinorAmount(statement.totalOwedToMinor)} ${settings.currencySymbol}`,
+          colorClass: 'rose',
+        },
+        {
+          title: 'رصيد آخر المدة (الختامي)',
+          value: formatCurrency(statement.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+          colorClass: 'blue',
+        },
+      ],
+      columns: [
+        { header: '#', align: 'center' },
+        { header: 'التاريخ', align: 'center' },
+        { header: 'البيان والوصف', align: 'right' },
+        { header: 'عليه (+ لك)', align: 'right' },
+        { header: 'له (- عليك)', align: 'right' },
+        { header: 'الرصيد المتتابع', align: 'right' },
+      ],
+      rows: statement.rows.map((r, idx) => [
+        idx + 1,
+        r.transaction.date,
+        r.transaction.description + (r.transaction.notes ? ` (${r.transaction.notes})` : ''),
+        r.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+        r.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+        formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      ]),
+    });
   };
 
   return (
@@ -393,8 +439,7 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
 
         {/* Printable Footer note */}
         <div className="mt-8 pt-4 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>تم استخراج هذا الكشف من تطبيق راكان بلانس (RAKAN BALANCE)</span>
-          <span>صفحة 1 من 1</span>
+          <span>تم استخراج هذا الكشف من منصة راكان بلانس (RAKAN BALANCE)</span>
         </div>
       </div>
     </div>
