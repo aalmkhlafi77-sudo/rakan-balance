@@ -15,7 +15,8 @@
     "test:server": "npm run build:validator && node --test server/tests/*.test.mjs",
     "provision:owner": "node server/scripts/provision-owner.mjs",
     "build:validator": "esbuild server/validator-entry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/generated/owner-validator.mjs",
-    "test:owner-adapter": "tsx --test tests/owner-remote-storage.test.ts"
+    "test:owner-adapter": "tsx --test tests/owner-remote-storage.test.ts",
+    "backup:scheduled": "node server/scripts/run-scheduled-owner-backup.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
