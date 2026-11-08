@@ -34,17 +34,27 @@ test('inter-account transfer can be created, edited and deleted in isolated demo
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   }
   await page.getByRole('navigation').getByRole('button', { name: 'دفتر الحركات', exact: true }).click();
-  const transferRows = page.locator('tr').filter({ hasText: 'اختبار متصفح لنقل المديونية' });
+  const transferRows = isMobile
+    ? page.getByTestId('mobile-transaction-card').filter({ hasText: 'اختبار متصفح لنقل المديونية' })
+    : page.locator('tr').filter({ hasText: 'اختبار متصفح لنقل المديونية' });
   await expect(transferRows).toHaveCount(2);
 
-  await transferRows.first().locator('button[title="تعديل الحركة البينية لكلا الطرفين"]').click();
+  if (isMobile) {
+    await transferRows.first().getByRole('button', { name: 'تعديل الحركة' }).click();
+  } else {
+    await transferRows.first().locator('button[title="تعديل الحركة البينية لكلا الطرفين"]').click();
+  }
   const editForm = page.locator('form').filter({ hasText: 'المبلغ المراد نقله' });
   await editForm.getByPlaceholder('مثال: 500.00').fill('80.00');
   await editForm.getByRole('button', { name: 'تحديث الحركة البينية' }).click();
   await expect(editForm).toBeHidden();
   await expect(transferRows).toHaveCount(2);
 
-  await transferRows.first().locator('button[title="حذف الحركة البينية لكلا الطرفين"]').click();
+  if (isMobile) {
+    await transferRows.first().getByRole('button', { name: 'حذف الحركة' }).click();
+  } else {
+    await transferRows.first().locator('button[title="حذف الحركة البينية لكلا الطرفين"]').click();
+  }
   await page.getByRole('button', { name: 'حذف طرفي الحركة معاً' }).click();
   await expect(transferRows).toHaveCount(0);
 });
