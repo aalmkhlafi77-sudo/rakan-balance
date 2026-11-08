@@ -14,7 +14,11 @@ await walk(dir);
 let found = [];
 for (const filename of files) {
   const text = await readFile(filename, 'utf8');
-  for (const needle of forbidden) if (text.includes(needle)) found.push({ file: path.relative(dir, filename), marker: needle });
+  for (const needle of forbidden) {
+    const index = text.indexOf(needle);
+    if (index !== -1) found.push({ file: path.relative(dir, filename), marker: needle,
+      context: text.slice(Math.max(0, index - 95), Math.min(text.length, index + needle.length + 95)) });
+  }
 }
 if (found.length) {
   console.error('Production build contains preview labels or sample financial records:', found);
