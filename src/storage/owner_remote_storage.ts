@@ -182,6 +182,13 @@ export class OwnerRemoteStorage {
         throw new Error('لم يمكن تأكيد إصدار عملية الحفظ. يُرجى تحديث البيانات قبل الاستمرار.');
       }
       this.revision = receipt.revision;
+      // Match the authoritative server representation immediately so later
+      // financial writes never resend large Base64 files inside the ledger JSON.
+      for (const attachment of draft.attachments) {
+        if (attachment.dataUrl.startsWith('data:')) {
+          attachment.dataUrl = 'rakan-private://attachment/' + attachment.id;
+        }
+      }
       this.data = draft;
     });
     this.chain = action.catch(() => {});
