@@ -394,9 +394,9 @@ export class OwnerRemoteStorage {
     return result;
   }
   public async saveDemoWorkspace(): Promise<never> {
-    throw new Error('بيانات المعاينة لا تستخدم في مساحة المالك.');
+    throw new Error('وضع الاختبار غير متاح في مساحة المالك.');
   }
   public async purgeDemoWorkspace(): Promise<never> {
-    throw new Error('بيانات المعاينة لا تستخدم في مساحة المالك.');
+    throw new Error('وضع الاختبار غير متاح في مساحة المالك.');
   }
 }
