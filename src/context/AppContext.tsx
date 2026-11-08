@@ -741,7 +741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loadDemoData = async () => {
-    if (!import.meta.env.DEV) throw new Error('بيانات المعاينة غير متاحة في نسخة الإنتاج.');
+    if (!import.meta.env.DEV) throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
     const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
       await import('../../tests/fixtures/demo-seed.ts');
     await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
