@@ -27,7 +27,9 @@ import {
   calculateDashboardSummary,
   checkTreeCycle,
 } from '../domain/balance_calculator.ts';
-import { dbStorage, STORES_DEMO, STORES_REAL } from '../storage/indexed_db.ts';
+import { dbStorage as visitorDbStorage, STORES_DEMO, STORES_REAL } from '../storage/indexed_db.ts';
+import { OwnerRemoteStorage } from '../storage/owner_remote_storage.ts';
+import { useOwnerAccess } from '../components/OwnerAccessGate.tsx';
 import {
   getActiveScopePref,
   getCurrencyPref,
@@ -139,8 +141,11 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const ownerAccess = useOwnerAccess();
+  const ownerDbStorage = useMemo(() => new OwnerRemoteStorage(() => ownerAccess.csrfToken), [ownerAccess.csrfToken]);
+  const dbStorage = ownerAccess.status === 'owner' ? ownerDbStorage as unknown as typeof visitorDbStorage : visitorDbStorage;
   const [isLoading, setIsLoading] = useState(true);
-  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(getActiveScopePref());
+  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(ownerAccess.status === 'owner' ? 'real' : getActiveScopePref());
 
   // In-memory active stores
   const [accounts, setAccounts] = useState<AccountModel[]>([]);
@@ -162,7 +167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currencyName, setCurrencyName] = useState<string>(initialCurrency.name);
   const [isFirstSetupDone, setIsFirstSetupDone] = useState<boolean>(getFirstSetupDonePref());
   const pinAuth = getPinAuthPref();
-  const [isLocked, setIsLocked] = useState<boolean>(Boolean(pinAuth.hash));
+  const [isLocked, setIsLocked] = useState<boolean>(ownerAccess.status !== 'owner' && Boolean(pinAuth.hash));
 
   // Initialize theme on DOM and active currency symbol globally
   useEffect(() => {
@@ -241,11 +246,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [dbStorage]);
 
   useEffect(() => {
     loadWorkspaceData(activeScope);
   }, [activeScope, loadWorkspaceData]);
+
+  // Owner data is refreshed without ever persisting it in visitor IndexedDB.
+  useEffect(() => {
+    if (ownerAccess.status !== 'owner') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const changed = await ownerDbStorage.refreshIfChanged();
+        if (!cancelled && changed) await loadWorkspaceData('real');
+      } catch { /* preserve current in-memory view; writes fail closed */ }
+    };
+    const timer = window.setInterval(() => { void refresh(); }, 30000);
+    const onConflict = () => { void refresh(); };
+    window.addEventListener('rakan-owner-ledger-conflict', onConflict);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('rakan-owner-ledger-conflict', onConflict);
+    };
+  }, [ownerAccess.status, ownerDbStorage, loadWorkspaceData]);
 
   // Derived Dashboard Totals
   const dashboardSummary = useMemo(() => {
@@ -736,6 +761,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
 
   const switchScope = (scope: 'real' | 'demo') => {
+    if (ownerAccess.status === 'owner' && scope !== 'real') return;
     setActiveScope(scope);
     setActiveScopePref(scope);
   };
@@ -995,7 +1021,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rollbackLastRestore,
         importLedger,
         isLocked,
-        hasPinSet: Boolean(pinAuth.hash),
+        hasPinSet: ownerAccess.status !== 'owner' && Boolean(pinAuth.hash),
         unlockWithPin,
         lockApp,
         setupPin,
