@@ -11,6 +11,7 @@ import { calculateAccountStatement } from '../domain/balance_calculator.ts';
 import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
+import { createStatementPdf } from '../services/statement_pdf_file.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
 import { buildStatementShareMessage } from '../services/whatsapp_share_service.ts';
@@ -114,6 +115,27 @@ export const StatementView: React.FC<StatementViewProps> = ({
     link.download = `statement_${selectedAccount.name}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const createPdfForShare = () => {
+    if (!selectedAccount) throw new Error('يرجى تحديد الحساب أولاً.');
+    return createStatementPdf({
+      accountName: selectedAccount.name,
+      ownerName: settings.ownerName,
+      periodLabel: `الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`,
+      currencySymbol: settings.currencySymbol,
+      openingBalance: formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      totalOwedBy: `+${formatMinorAmount(statement.totalOwedByMinor)} ${settings.currencySymbol}`,
+      totalOwedTo: `-${formatMinorAmount(statement.totalOwedToMinor)} ${settings.currencySymbol}`,
+      closingBalance: formatCurrency(statement.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      rows: statement.rows.map(row => ({
+        date: row.transaction.date,
+        description: row.transaction.description,
+        owedBy: row.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(row.transaction.amountMinor)}` : '—',
+        owedTo: row.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(row.transaction.amountMinor)}` : '—',
+        runningBalance: formatCurrency(row.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      })),
+    });
   };
 
   const handlePrint = () => {
@@ -542,7 +564,7 @@ export const StatementView: React.FC<StatementViewProps> = ({
             settings.currencySymbol
           )}
           title={`مشاركة كشف حساب: ${selectedAccount.name}`}
-          onSharePdf={handlePrint}
+          onCreatePdf={createPdfForShare}
         />
       )}
     </div>
