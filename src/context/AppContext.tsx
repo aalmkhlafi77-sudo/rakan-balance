@@ -134,6 +134,7 @@ interface AppContextType {
   toggleTheme: () => void;
   toggleSidebar: () => void;
   updateOwnerName: (name: string) => void;
+  updateOwnerProfile: (name: string, currencyCode: string) => Promise<void>;
   updateCurrency: (code: string, symbol: string, name?: string) => Promise<void>;
   completeFirstSetup: (ownerName: string, currencyCode: string, currencySymbol: string, currencyName: string, initialPin?: string) => Promise<void>;
 }
@@ -941,6 +942,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const updateOwnerProfile = async (name: string, currencyCode: string): Promise<void> => {
+    if (ownerAccess.status !== 'owner') throw new Error('هذه الوظيفة خاصة بحساب المالك.');
+    const currency = SUPPORTED_CURRENCIES.find(x => x.code === currencyCode);
+    if (!currency) throw new Error('العملة غير مدعومة.');
+    await ownerDbStorage.updateOwnerPreferences(name, currency);
+    setOwnerName(name.trim());
+    setCurrencyCode(currency.code);
+    setCurrencySymbol(currency.symbol);
+    setCurrencyName(currency.name);
+    setActiveCurrencySymbol(currency.symbol);
+  };
+
   const updateOwnerName = (name: string) => {
     setOwnerName(name);
     setOwnerNamePref(name);
@@ -1060,6 +1073,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleTheme,
         toggleSidebar,
         updateOwnerName,
+        updateOwnerProfile,
         updateCurrency,
         completeFirstSetup,
       }}
