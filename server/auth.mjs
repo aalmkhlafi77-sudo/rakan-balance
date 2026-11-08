@@ -7,7 +7,6 @@ import {
 
 const COOKIE_NAME = '__Host-rakan_session';
 const SESSION_MS = 12 * 60 * 60 * 1000;
-const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 8;
 
 export function createOwnerAuth(pool, env = process.env) {
@@ -16,7 +15,7 @@ export function createOwnerAuth(pool, env = process.env) {
     throw new Error('RAKAN_CSRF_SECRET must be at least 32 characters');
   }
   const router = Router();
-  const loginAttempts = new Map();
+  // Login limits are atomic and persisted in the dedicated MySQL database.
   // __Host- cookies must always carry Secure, including local development.
 
   // Never accept cross-site state-changing requests; no CORS is enabled.
@@ -86,20 +85,36 @@ export function createOwnerAuth(pool, env = process.env) {
 
   router.post('/login', strictOrigin, async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const now = Date.now();
+    // Hash the network identifier; never persist raw client IP addresses.
+    // A failed database query fails closed rather than disabling the limiter.
     const address = req.ip || 'unknown';
-    // Bounded process-local limiter for phase A; production should additionally
-    // use Hostinger edge rate controls before public rollout.
-    for (const [ip, info] of loginAttempts) {
-      if (info.until <= now) loginAttempts.delete(ip);
+    const addressHash = createHmac('sha256', env.RAKAN_CSRF_SECRET)
+      .update('owner-login-ip:' + address, 'utf8').digest('hex');
+    try {
+      // The unique primary key serializes increments across server processes.
+      await pool.execute(
+        `INSERT INTO owner_login_limits (address_hash, attempts, window_ends_at)
+         VALUES (?, 1, UTC_TIMESTAMP(3) + INTERVAL 15 MINUTE)
+         ON DUPLICATE KEY UPDATE
+           attempts = IF(window_ends_at <= UTC_TIMESTAMP(3), 1, attempts + 1),
+           window_ends_at = IF(window_ends_at <= UTC_TIMESTAMP(3),
+                              UTC_TIMESTAMP(3) + INTERVAL 15 MINUTE, window_ends_at)`,
+        [addressHash],
+      );
+      const [limits] = await pool.execute(
+        `SELECT attempts,
+                GREATEST(1, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(3), window_ends_at)) AS retry_seconds
+         FROM owner_login_limits WHERE address_hash = ? LIMIT 1`,
+        [addressHash],
+      );
+      if (limits.length !== 1) throw new Error('Missing rate-limit row');
+      if (Number(limits[0].attempts) > MAX_ATTEMPTS) {
+        res.set('Retry-After', String(Math.max(1, Number(limits[0].retry_seconds) || 1)));
+        return res.status(429).json({ error: 'too_many_attempts' });
+      }
+    } catch {
+      return res.status(503).json({ error: 'service_unavailable' });
     }
-    const info = loginAttempts.get(address) || { count: 0, until: now + RATE_WINDOW_MS };
-    if (info.count >= MAX_ATTEMPTS && info.until > now) {
-      res.set('Retry-After', String(Math.ceil((info.until - now) / 1000)));
-      return res.status(429).json({ error: 'too_many_attempts' });
-    }
-    info.count += 1;
-    loginAttempts.set(address, info);
     if (typeof req.body?.password !== 'string' || req.body.password.length > 128 ||
         req.body.password.length === 0) {
       return res.status(401).json({ error: 'invalid_credentials' });
@@ -112,9 +127,9 @@ export function createOwnerAuth(pool, env = process.env) {
       const csrf = csrfForToken(token);
       await pool.execute(
         'INSERT INTO owner_sessions (token_hash, csrf_hash, expires_at) VALUES (?, ?, ?)',
-        [secretDigest(token), secretDigest(csrf), new Date(now + SESSION_MS)],
+        [secretDigest(token), secretDigest(csrf), new Date(Date.now() + SESSION_MS)],
       );
-      loginAttempts.delete(address);
+      await pool.execute('DELETE FROM owner_login_limits WHERE address_hash = ?', [addressHash]);
       sendCookie(res, token);
       return res.json({ authenticated: true, csrfToken: csrf });
     } catch {

@@ -7,8 +7,21 @@ test('server refuses unauthenticated owner data, checks origin and CSRF, revokes
   const password = 'strong owner password 2026 test';
   const hash = await hashPassword(password);
   const sessionByDigest = new Map();
+  const limits = new Map();
   const pool = {
     async execute(sql, params = []) {
+      if (sql.includes('INSERT INTO owner_login_limits')) {
+        const prev = limits.get(params[0]) || 0;
+        limits.set(params[0], prev + 1);
+        return [{ affectedRows: 1 }, []];
+      }
+      if (sql.includes('SELECT attempts,') && sql.includes('owner_login_limits')) {
+        return [[{ attempts: limits.get(params[0]) || 0, retry_seconds: 900 }], []];
+      }
+      if (sql.startsWith('DELETE FROM owner_login_limits')) {
+        limits.delete(params[0]);
+        return [{ affectedRows: 1 }, []];
+      }
       if (sql.startsWith('SELECT password_hash')) return [[{ password_hash: hash }], []];
       if (sql.startsWith('SELECT token_hash')) {
         const row = sessionByDigest.get(params[0]);

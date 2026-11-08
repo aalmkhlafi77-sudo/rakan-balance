@@ -24,9 +24,22 @@ test('owner ledger is private, validates data, rejects stale revisions atomicall
   const password = 'long secure password for testing 2026';
   const pwHash = await hashPassword(password);
   const sessions = new Map();
+  const limits = new Map();
   const ledger = { revision: 0, payload: null, payload_sha256: null };
   const db = {
     async execute(sql, vals = []) {
+      if (sql.includes('INSERT INTO owner_login_limits')) {
+        const prev = limits.get(vals[0]) || 0;
+        limits.set(vals[0], prev + 1);
+        return [{ affectedRows: 1 }, []];
+      }
+      if (sql.includes('SELECT attempts,') && sql.includes('owner_login_limits')) {
+        return [[{ attempts: limits.get(vals[0]) || 0, retry_seconds: 900 }], []];
+      }
+      if (sql.startsWith('DELETE FROM owner_login_limits')) {
+        limits.delete(vals[0]);
+        return [{ affectedRows: 1 }, []];
+      }
       if (sql.startsWith('SELECT password_hash')) return [[{ password_hash: pwHash }], []];
       if (sql.startsWith('SELECT token_hash')) return [sessions.has(vals[0]) ? [sessions.get(vals[0])] : [], []];
       if (sql.startsWith('INSERT INTO owner_sessions')) {
