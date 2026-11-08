@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { OwnerRemoteStorage } from '../src/storage/owner_remote_storage.ts';
 import { validateBackupFile } from '../src/storage/backup_service.ts';
 import { STORES_REAL } from '../src/storage/indexed_db.ts';
+import { LedgerImportPreview } from '../src/domain/web_ledger_import.ts';
 
 test('owner storage commits only to validated server, never to IndexedDB; stale writes fail without local mutation', async () => {
   const initialFetch = globalThis.fetch;
@@ -58,6 +59,32 @@ test('owner storage commits only to validated server, never to IndexedDB; stale 
     await assert.rejects(() => storage.put(STORES_REAL.ACCOUNTS, { ...account, name: 'تعديل متأخر' }), /جهاز آخر/);
     assert.equal((await storage.getAll<typeof account>(STORES_REAL.ACCOUNTS))[0].name, 'حساب سري');
     assert.equal(revision, 4);
+    const secondDevice = new OwnerRemoteStorage(() => 'secret-csrf-in-memory');
+    await secondDevice.load();
+    const imported = await secondDevice.importLedgerAtomic(new LedgerImportPreview({
+      sourceName: 'accounts.xlsx',
+      accounts: [{
+        sourceRow: 2, name: 'حساب مستورد', categoryName: 'المالك',
+        openingBalanceMinor: 0, duplicate: false,
+      }],
+      transactions: [], issues: [],
+    }), 'real');
+    assert.equal(imported.importedAccounts, 1);
+    assert.equal(revision, 5);
+    await secondDevice.updateOwnerPreferences('مالك الحساب', {
+      code: 'SAR', symbol: 'ر.س', name: 'ريال سعودي',
+    });
+    assert.equal(revision, 6);
+    await assert.rejects(() => secondDevice.updateOwnerPreferences('مالك الحساب', {
+      code: 'USD', symbol: '
+    globalThis.fetch = initialFetch;
+    (globalThis as any).window = initialWindow;
+    (globalThis as any).indexedDB = initialDb;
+  }
+});
+, name: 'دولار أمريكي',
+    }), /العملة/);
+    assert.equal(revision, 6);
   } finally {
     globalThis.fetch = initialFetch;
     (globalThis as any).window = initialWindow;
