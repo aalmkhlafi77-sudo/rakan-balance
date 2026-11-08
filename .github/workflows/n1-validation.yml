@@ -9,6 +9,7 @@ on:
       - main
       - feature/owner-launch-integration-e
       - security/owner-db-login-limiter
+      - feature/owner-encrypted-backup-gate
     paths:
       - 'src/**'
       - 'scripts/**'
