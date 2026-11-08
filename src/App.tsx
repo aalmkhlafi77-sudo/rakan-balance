@@ -19,6 +19,7 @@ import { ImportView } from './components/ImportView.tsx';
 import { NotesView } from './components/NotesView.tsx';
 import { DuesView } from './components/DuesView.tsx';
 import { BackupRestoreView } from './components/BackupRestoreView.tsx';
+import { OwnerBackupRestoreView } from './components/OwnerBackupRestoreView.tsx';
 import { VerificationModal } from './components/VerificationModal.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { LockScreen } from './components/LockScreen.tsx';
@@ -162,7 +163,7 @@ const AppContent: React.FC = () => {
           {currentTab === 'notes' && <NotesView />}
           {currentTab === 'dues' && <DuesView />}
 
-          {currentTab === 'backup' && ownerAccess.status !== 'owner' && <BackupRestoreView />}
+          {currentTab === 'backup' && (ownerAccess.status === 'owner' ? <OwnerBackupRestoreView /> : <BackupRestoreView />)}
 
           {currentTab === 'tests' && ownerAccess.status !== 'owner' && <VerificationModal />}
 
