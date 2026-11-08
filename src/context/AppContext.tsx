@@ -46,12 +46,7 @@ import {
   setSidebarCollapsedPref,
   setThemePref,
 } from '../storage/local_storage.ts';
-import {
-  DEMO_ACCOUNTS,
-  DEMO_NOTES,
-  DEMO_TRANSACTIONS,
-  INITIAL_CATEGORIES,
-} from '../storage/initial_data.ts';
+import { INITIAL_CATEGORIES } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
 import { dueRemaining, validateDueRecord, validDate } from '../domain/dues.ts';
@@ -147,7 +142,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const dbStorage = ownerAccess.status === 'owner' ? ownerDbStorage as unknown as typeof visitorDbStorage : visitorDbStorage;
   const [isLoading, setIsLoading] = useState(true);
   const [ownerLoadError, setOwnerLoadError] = useState<string | null>(null);
-  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(ownerAccess.status === 'owner' ? 'real' : getActiveScopePref());
+  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(
+    (import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true' && ownerAccess.status !== 'owner')
+      ? getActiveScopePref() : 'real'
+  );
 
   // In-memory active stores
   const [accounts, setAccounts] = useState<AccountModel[]>([]);
@@ -186,6 +184,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (ownerAccess.status === 'owner') setOwnerLoadError(null);
     try {
       if (scope === 'demo') {
+        // Fictional data exists only in tests, never a shipped production asset.
+        if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner') {
+          throw new Error('مساحة المعاينة غير متاحة في نسخة الإنتاج.');
+        }
+        const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
+          await import('../../tests/fixtures/demo-seed.ts');
         let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_DEMO.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_DEMO.CATEGORIES),
@@ -780,12 +784,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
 
   const switchScope = (scope: 'real' | 'demo') => {
-    if (ownerAccess.status === 'owner' && scope !== 'real') return;
+    if (scope === 'demo' && (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner')) return;
     setActiveScope(scope);
     setActiveScopePref(scope);
   };
 
   const loadDemoData = async () => {
+    if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner') throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
+    const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
+      await import('../../tests/fixtures/demo-seed.ts');
     await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
     if (activeScope === 'demo') {
       await loadWorkspaceData('demo');
@@ -793,6 +800,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const purgeDemoData = async () => {
+    if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner') throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
     await dbStorage.purgeDemoWorkspace();
     if (activeScope === 'demo') {
       setAccounts([]);
