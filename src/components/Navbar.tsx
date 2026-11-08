@@ -62,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       <div className="h-16 px-4 lg:px-8 flex items-center justify-between">
         {/* Left: Mobile Toggle & Breadcrumb Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={onOpenMobileSidebar}
@@ -72,8 +72,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div>
-            <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">
+          <img src="/assets/rakan-icon-192.webp" alt="" aria-hidden="true"
+            className="lg:hidden w-8 h-8 shrink-0 rounded-lg object-contain"
+            width={32} height={32} decoding="async" />
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-bold leading-snug text-slate-900 dark:text-slate-100">
               {tabTitles[currentTab]}
             </h1>
             <p className="text-[11px] text-slate-500 hidden sm:block">
