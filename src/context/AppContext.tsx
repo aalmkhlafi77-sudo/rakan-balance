@@ -135,7 +135,7 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(import.meta.env.DEV ? getActiveScopePref() : 'real');
+  const [activeScope, setActiveScope] = useState<'real' | 'demo'>((import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') ? getActiveScopePref() : 'real');
 
   // In-memory active stores
   const [accounts, setAccounts] = useState<AccountModel[]>([]);
@@ -174,7 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       if (scope === 'demo') {
         // Preview is strictly a development-only fixture, never part of a public production build.
-        if (!import.meta.env.DEV) throw new Error('مساحة المعاينة غير متاحة في نسخة الإنتاج.');
+        if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true')) throw new Error('مساحة المعاينة غير متاحة في نسخة الإنتاج.');
         const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
           await import('../../tests/fixtures/demo-seed.ts');
         let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
@@ -741,7 +741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loadDemoData = async () => {
-    if (!import.meta.env.DEV) throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
+    if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true')) throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
     const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
       await import('../../tests/fixtures/demo-seed.ts');
     await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
