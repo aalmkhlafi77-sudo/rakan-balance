@@ -13,6 +13,7 @@ import {
   getWhatsAppUrl,
   PhoneValidationResult,
 } from '../services/whatsapp_share_service.ts';
+import { downloadPdfFile } from '../services/statement_pdf_file.ts';
 import {
   X,
   Send,
@@ -35,7 +36,7 @@ interface ShareWhatsAppModalProps {
   accountPhone?: string;
   messageText: string;
   title: string;
-  onSharePdf?: () => void;
+  onCreatePdf?: () => File;
 }
 
 export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
@@ -45,19 +46,22 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
   accountPhone,
   messageText,
   title,
-  onSharePdf,
+  onCreatePdf,
 }) => {
   const [targetMode, setTargetMode] = useState<'registered' | 'manual' | 'general'>('registered');
   const [manualPhone, setManualPhone] = useState<string>('');
   const [validation, setValidation] = useState<PhoneValidationResult>({ isValid: false, cleanPhone: '', rawPhone: '' });
   const [copiedSuccess, setCopiedSuccess] = useState<boolean>(false);
   const [pickerError, setPickerError] = useState<string>('');
+  const [pdfMessage, setPdfMessage] = useState<string>('');
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   // Evaluate account phone on open
   useEffect(() => {
     if (!isOpen) return;
 
     setPickerError('');
+    setPdfMessage('');
     setCopiedSuccess(false);
 
     const initialSanitized = sanitizePhoneNumber(accountPhone);
@@ -66,9 +70,9 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
       setValidation(initialSanitized);
       setManualPhone(initialSanitized.cleanPhone);
     } else {
-      setTargetMode('general');
-      setValidation({ isValid: false, cleanPhone: '', rawPhone: accountPhone || '' });
-      setManualPhone('');
+      setTargetMode('manual');
+      setValidation(initialSanitized);
+      setManualPhone(accountPhone || '');
     }
   }, [isOpen, accountPhone]);
 
@@ -89,6 +93,32 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
       setValidation(res);
     } else {
       setPickerError(res.error || 'فشل اختيار جهة الاتصال.');
+    }
+  };
+
+  const handlePdf = async () => {
+    if (!onCreatePdf || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfMessage('');
+    try {
+      // Build a real PDF while responding to the user's click (required for native sharing).
+      const file = onCreatePdf();
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: `كشف حساب: ${accountName}` });
+          setPdfMessage('تم تسليم الملف إلى نافذة المشاركة. اختر واتساب والمستلم من الجهاز.');
+        } catch (err) {
+          if ((err as DOMException).name !== 'AbortError') throw err;
+          setPdfMessage('تم إلغاء مشاركة الملف، ويمكن تنزيله من الزر نفسه.');
+        }
+      } else {
+        downloadPdfFile(file);
+        setPdfMessage('تم تنزيل كشف PDF. يمكنك إرفاق الملف في محادثة واتساب يدويًا.');
+      }
+    } catch (err) {
+      setPdfMessage(err instanceof Error ? err.message : 'تعذر إنشاء ملف PDF.');
+    } finally {
+      setPdfBusy(false);
     }
   };
 
@@ -163,6 +193,12 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
                 تحديد رقم المستلم في واتساب:
               </label>
 
+              {!accountPhone?.trim() && (
+                <p className="text-[11px] text-slate-500">لا يوجد رقم محفوظ لهذا الطرف. أدخل رقمًا دوليًا، أو اختر جهة اتصال من الجوال إذا كان جهازك يدعم ذلك.</p>
+              )}
+              {!!accountPhone?.trim() && !sanitizePhoneNumber(accountPhone).isValid && (
+                <p className="text-[11px] text-amber-600">الرقم المسجل غير مكتمل دوليًا. أدخل الرقم مع رمز الدولة لتوجيه واتساب بدقة.</p>
+              )}
               {/* Web Contact Picker API Button (Priority 2) */}
               {isContactPickerSupported() && (
                 <button
@@ -244,25 +280,27 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
             </div>
           </div>
 
-          {/* Print-to-PDF fallback: this action does not share a file automatically. */}
-          {onSharePdf && (
+          {/* A genuine PDF file is shared natively or downloaded when unsupported. */}
+          {onCreatePdf && (
             <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 flex items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
                 <span className="text-purple-900 dark:text-purple-200 font-medium">
-                  احفظ الكشف بصيغة PDF، ثم أرفقه يدويًا في محادثة واتساب
+                  مشاركة ملف كشف الحساب PDF (يختار المستلم داخل واتساب)
                 </span>
               </div>
               <button
                 type="button"
-                onClick={onSharePdf}
+                onClick={() => { void handlePdf(); }}
+                disabled={pdfBusy}
                 className="py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-2xs"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>طباعة / حفظ PDF</span>
+                <span>{pdfBusy ? 'جارٍ إعداد PDF...' : 'مشاركة / تنزيل PDF'}</span>
               </button>
             </div>
           )}
+          {pdfMessage && <p role="status" className="text-xs text-slate-600 dark:text-slate-300">{pdfMessage}</p>}
 
           {/* Primary Action Button: Launch WhatsApp */}
           <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-200 dark:border-slate-800">
@@ -277,8 +315,15 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
             <a
               href={whatsappUrl}
               target="_blank"
+              aria-disabled={targetMode === 'manual' && !validation.isValid}
+              tabIndex={targetMode === 'manual' && !validation.isValid ? -1 : undefined}
               rel="noopener noreferrer"
-              onClick={() => {
+              onClick={(event) => {
+                if (targetMode === 'manual' && !validation.isValid) {
+                  event.preventDefault();
+                  setPickerError('أدخل رقمًا دوليًا صحيحًا، أو اختر المشاركة العامة صراحةً.');
+                  return;
+                }
                 setTimeout(() => onClose(), 600);
               }}
               className="py-2.5 px-5 rounded-xl bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-sm shadow-green-600/30 cursor-pointer"
@@ -287,7 +332,7 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
               <span>
                 {targetPhone
                   ? `فتح محادثة واتساب (${targetPhone})`
-                  : 'فتح واتساب للمشاركة العامة'}
+                  : targetMode === 'manual' ? 'أدخل رقم مستلم صحيحًا' : 'فتح واتساب للمشاركة العامة'}
               </span>
               <ExternalLink className="w-3.5 h-3.5 opacity-70" />
             </a>
