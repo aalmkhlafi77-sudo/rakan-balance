@@ -44,12 +44,7 @@ import {
   setSidebarCollapsedPref,
   setThemePref,
 } from '../storage/local_storage.ts';
-import {
-  DEMO_ACCOUNTS,
-  DEMO_NOTES,
-  DEMO_TRANSACTIONS,
-  INITIAL_CATEGORIES,
-} from '../storage/initial_data.ts';
+import { INITIAL_CATEGORIES } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
 import { dueRemaining, validateDueRecord, validDate } from '../domain/dues.ts';
@@ -140,7 +135,7 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(getActiveScopePref());
+  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(import.meta.env.DEV ? getActiveScopePref() : 'real');
 
   // In-memory active stores
   const [accounts, setAccounts] = useState<AccountModel[]>([]);
@@ -178,6 +173,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoading(true);
     try {
       if (scope === 'demo') {
+        // Preview is strictly a development-only fixture, never part of a public production build.
+        if (!import.meta.env.DEV) throw new Error('مساحة المعاينة غير متاحة في نسخة الإنتاج.');
+        const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
+          await import('../storage/initial_data.ts');
         let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_DEMO.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_DEMO.CATEGORIES),
@@ -736,11 +735,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
 
   const switchScope = (scope: 'real' | 'demo') => {
+    if (!import.meta.env.DEV && scope === 'demo') return;
     setActiveScope(scope);
     setActiveScopePref(scope);
   };
 
   const loadDemoData = async () => {
+    if (!import.meta.env.DEV) throw new Error('بيانات المعاينة غير متاحة في نسخة الإنتاج.');
+    const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
+      await import('../storage/initial_data.ts');
     await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
     if (activeScope === 'demo') {
       await loadWorkspaceData('demo');
