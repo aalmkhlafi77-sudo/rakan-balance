@@ -19,6 +19,7 @@ interface Props {
 }
 export const OwnerAccessGate: React.FC<Props> = ({ children }) => {
   const [status, setStatus] = useState<AccessState>('checking');
+  const [allowOfflineGuest, setAllowOfflineGuest] = useState(false);
   const [csrf, setCsrf] = useState('');
   const [loginOpen, setLoginOpen] = useState(false);
   const [password, setPassword] = useState('');
@@ -115,6 +116,21 @@ export const OwnerAccessGate: React.FC<Props> = ({ children }) => {
           <img src="/assets/rakan-icon-192.webp" width={64} height={64} alt="راكان بلانس" className="h-16 w-16 rounded-xl" />
           <p className="text-sm text-slate-600 dark:text-slate-300">جاري التحقق من حالة الاتصال...</p>
         </div>
+      ) : status === 'unavailable' && import.meta.env.PROD && !allowOfflineGuest ? (
+        <main dir="rtl" className="min-h-screen flex items-center justify-center p-5 bg-slate-950 text-white">
+          <section className="w-full max-w-md text-center rounded-2xl border border-amber-500/40 p-6 space-y-4">
+            <AlertCircle className="h-8 w-8 text-amber-400 mx-auto" />
+            <h1 className="font-bold text-lg">تعذر التحقق من خادم المالك</h1>
+            <p className="text-sm leading-7 text-slate-300">
+              الخدمة المركزية غير متاحة. لن تُعرض بيانات المالك ولا تُحوَّل عمليات الحفظ إلى المتصفح بصمت.
+              يمكنك الدخول صراحةً كزائر محلي، حيث تُحفظ البيانات على هذا الجهاز فقط.
+            </p>
+            <button type="button" onClick={() => setAllowOfflineGuest(true)}
+              className="w-full min-h-11 rounded-xl bg-emerald-700 text-white font-semibold text-sm">
+              متابعة بصفتي زائرًا محليًا
+            </button>
+          </section>
+        </main>
       ) : status === 'owner' ? (
         <React.Fragment key="private-owner">{children}</React.Fragment>
       ) : (
