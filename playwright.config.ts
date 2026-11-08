@@ -13,6 +13,8 @@ export default defineConfig({
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
+    // Test fixtures are never enabled in normal dev sessions or production.
+    env: { VITE_E2E_DEMO_MODE: 'true' },
     command: 'npm run dev -- --host 127.0.0.1',
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
