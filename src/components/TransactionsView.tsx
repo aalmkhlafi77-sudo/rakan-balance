@@ -7,9 +7,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { TransactionModel, AttachmentModel } from '../domain/types.ts';
+import { TransactionModel, AttachmentModel, AccountModel } from '../domain/types.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
+import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
+import { buildTransactionShareMessage } from '../services/whatsapp_share_service.ts';
 import {
   ReceiptText,
   Search,
@@ -25,6 +27,7 @@ import {
   X,
   FileSpreadsheet,
   ArrowLeftRight,
+  Send,
 } from 'lucide-react';
 
 interface TransactionsViewProps {
@@ -64,6 +67,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   // Attachment Preview Modal
   const [previewAttachmentsList, setPreviewAttachmentsList] = useState<AttachmentModel[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number>(0);
+
+  // WhatsApp Share State
+  const [shareModalTx, setShareModalTx] = useState<{ tx: TransactionModel; account?: AccountModel } | null>(null);
 
   // Filtered & stably sorted transactions
   const filteredTransactions = useMemo(() => {
@@ -413,6 +419,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                             <>
                               <button
                                 type="button"
+                                onClick={() => setShareModalTx({ tx, account: acc })}
+                                className="p-1 rounded-lg text-green-600 hover:text-green-800 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/40 cursor-pointer"
+                                title="إرسال تفاصيل الحركة عبر واتساب"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => onEditTransaction(tx)}
                                 className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                                 title="تعديل الحركة"
@@ -517,6 +531,22 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         isOpen={previewAttachmentsList.length > 0}
         onClose={() => setPreviewAttachmentsList([])}
       />
+
+      {/* WhatsApp Transaction Share Modal */}
+      {shareModalTx && (
+        <ShareWhatsAppModal
+          isOpen={Boolean(shareModalTx)}
+          onClose={() => setShareModalTx(null)}
+          accountName={shareModalTx.account?.name || 'الطرف'}
+          accountPhone={shareModalTx.account?.phone}
+          messageText={buildTransactionShareMessage(
+            shareModalTx.tx,
+            shareModalTx.account?.name || 'الطرف',
+            settings.currencySymbol
+          )}
+          title="مشاركة تفاصيل الحركة عبر واتساب"
+        />
+      )}
     </div>
   );
 };

@@ -12,6 +12,8 @@ import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
+import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
+import { buildStatementShareMessage, sharePdfFile } from '../services/whatsapp_share_service.ts';
 import { AttachmentModel, TransactionModel } from '../domain/types.ts';
 import {
   FileSpreadsheet,
@@ -24,6 +26,7 @@ import {
   Filter,
   ArrowLeftRight,
   Paperclip,
+  Send,
 } from 'lucide-react';
 
 interface StatementViewProps {
@@ -48,6 +51,9 @@ export const StatementView: React.FC<StatementViewProps> = ({
   // Attachment Preview Modal
   const [previewAttachmentsList, setPreviewAttachmentsList] = useState<AttachmentModel[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number>(0);
+
+  // WhatsApp Share State
+  const [statementShareOpen, setStatementShareOpen] = useState<boolean>(false);
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
@@ -173,6 +179,16 @@ export const StatementView: React.FC<StatementViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setStatementShareOpen(true)}
+            disabled={!selectedAccount}
+            className="py-2 px-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-xs shadow-green-600/30 cursor-pointer disabled:opacity-50"
+            title="إرسال ملخص كشف الحساب عبر واتساب"
+          >
+            <Send className="w-4 h-4" />
+            <span>مشاركة واتساب</span>
+          </button>
           <button
             type="button"
             onClick={exportCSV}
@@ -510,6 +526,27 @@ export const StatementView: React.FC<StatementViewProps> = ({
         isOpen={previewAttachmentsList.length > 0}
         onClose={() => setPreviewAttachmentsList([])}
       />
+
+      {/* WhatsApp Statement Share Modal */}
+      {selectedAccount && (
+        <ShareWhatsAppModal
+          isOpen={statementShareOpen}
+          onClose={() => setStatementShareOpen(false)}
+          accountName={selectedAccount.name}
+          accountPhone={selectedAccount.phone}
+          messageText={buildStatementShareMessage(
+            selectedAccount.name,
+            fromDate,
+            toDate,
+            statement,
+            settings.currencySymbol
+          )}
+          title={`مشاركة كشف حساب: ${selectedAccount.name}`}
+          onSharePdf={() => {
+            handlePrint();
+          }}
+        />
+      )}
     </div>
   );
 };
