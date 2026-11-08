@@ -89,7 +89,7 @@ export interface AttachmentModel {
   originalName: string;
   mimeType: string;
   size: number; // bytes
-  dataUrl: string; // Base64 data URL
+  dataUrl: string; // Visitor: Base64 data URL; owner server: rakan-private://attachment/<id>
   createdAt: string;
 }
 
