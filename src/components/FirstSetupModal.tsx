@@ -83,6 +83,9 @@ export const FirstSetupModal: React.FC = () => {
       <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-6">
         {/* Modal Banner Header */}
         <div className="p-6 bg-gradient-to-l from-emerald-600 to-teal-700 text-white relative">
+          <img src="/assets/rakan-icon-192.webp" alt=""
+            aria-hidden="true" width={48} height={48}
+            className="w-12 h-12 object-contain rounded-xl float-left mr-2 mb-1" />
           <div className="flex items-center gap-2 text-emerald-200 text-xs font-mono font-bold mb-1">
             <Sparkles className="w-4 h-4 text-amber-300" />
             <span>مرحباً بك في راكان بلانس (RAKAN BALANCE)</span>
