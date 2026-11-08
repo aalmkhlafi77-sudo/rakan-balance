@@ -5,15 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && npm run build:validator",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "tsx src/tests/run_all_tests.ts",
     "test:e2e": "playwright test",
     "start": "node server/start.mjs",
-    "test:server": "node --test server/tests/*.test.mjs",
-    "provision:owner": "node server/scripts/provision-owner.mjs"
+    "test:server": "npm run build:validator && node --test server/tests/*.test.mjs",
+    "provision:owner": "node server/scripts/provision-owner.mjs",
+    "build:validator": "esbuild server/validator-entry.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/generated/owner-validator.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
