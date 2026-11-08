@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'src/**'
+      - 'scripts/**'
       - 'server/**'
       - 'database/**'
       - 'tests/**'
@@ -53,6 +54,8 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Verify public release contains no demo records or preview UI
+        run: node scripts/check-production-no-demo.mjs
       - name: Install Chromium for browser checks
         run: npx playwright install --with-deps chromium
       - name: Browser UI regression tests
