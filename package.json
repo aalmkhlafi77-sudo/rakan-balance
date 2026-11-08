@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "rakan-balance",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,10 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "tsx src/tests/run_all_tests.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "start": "node server/start.mjs",
+    "test:server": "node --test server/tests/*.test.mjs",
+    "provision:owner": "node server/scripts/provision-owner.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -27,7 +30,8 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "mysql2": "^3.15.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
