@@ -242,6 +242,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setDues(realDues || []);
         setAllocations(realAllocations || []);
         setReminders(realReminders || []);
+        if (ownerAccess.status === 'owner') {
+          const saved = await ownerDbStorage.getSafeSettings();
+          setOwnerName(saved?.ownerName?.trim() || 'المالك');
+          const currency = SUPPORTED_CURRENCIES.find((x) => x.code === saved?.currencyCode)
+            || SUPPORTED_CURRENCIES[0];
+          setCurrencyCode(currency.code);
+          setCurrencySymbol(currency.symbol);
+          setCurrencyName(currency.name);
+          setIsFirstSetupDone(true);
+        }
       }
     } catch (err) {
       if (ownerAccess.status === 'owner') {
@@ -252,7 +262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoading(false);
     }
-  }, [dbStorage, ownerAccess.status]);
+  }, [dbStorage, ownerDbStorage, ownerAccess.status]);
 
   useEffect(() => {
     loadWorkspaceData(activeScope);
