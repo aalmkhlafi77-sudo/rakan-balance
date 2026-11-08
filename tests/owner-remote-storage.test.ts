@@ -9,7 +9,7 @@ test('owner storage commits only to validated server, never to IndexedDB; stale 
   const initialFetch = globalThis.fetch;
   const initialWindow = globalThis.window;
   const initialDb = globalThis.indexedDB;
-  let revision = 0;
+  let revision: number = 0;
   let serverBundle: any = null;
   (globalThis as any).window = new EventTarget();
   (globalThis as any).indexedDB = {
