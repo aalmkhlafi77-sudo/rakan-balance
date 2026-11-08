@@ -3,6 +3,11 @@ import { expect, test } from '@playwright/test';
 test('inter-account transfer can be created, edited and deleted in isolated demo workspace', async ({ page }) => {
   page.setDefaultTimeout(7000);
   await page.goto('/');
+  const setupButton = page.getByRole('button', { name: 'بدء استخدام راكان بلانس' });
+  if (await setupButton.isVisible()) {
+    await setupButton.click();
+    await expect(setupButton).toBeHidden();
+  }
   const isMobile = page.viewportSize()!.width < 1024;
   if (isMobile) {
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
@@ -46,6 +51,11 @@ test('inter-account transfer can be created, edited and deleted in isolated demo
 
 test('account-private notes only appear in account details, not account search', async ({ page }) => {
   await page.goto('/');
+  const setupButton = page.getByRole('button', { name: 'بدء استخدام راكان بلانس' });
+  if (await setupButton.isVisible()) {
+    await setupButton.click();
+    await expect(setupButton).toBeHidden();
+  }
   if (page.viewportSize()!.width < 1024) {
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   }

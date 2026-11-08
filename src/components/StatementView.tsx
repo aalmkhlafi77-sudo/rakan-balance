@@ -10,10 +10,10 @@ import { useApp } from '../context/AppContext.tsx';
 import { calculateAccountStatement } from '../domain/balance_calculator.ts';
 import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
-import { generatePdfReport, getPdfReportHtml } from '../services/pdf_export.ts';
+import { generatePdfReport } from '../services/pdf_export.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
-import { buildStatementShareMessage, sharePdfFile } from '../services/whatsapp_share_service.ts';
+import { buildStatementShareMessage } from '../services/whatsapp_share_service.ts';
 import { AttachmentModel, TransactionModel } from '../domain/types.ts';
 import {
   FileSpreadsheet,
@@ -163,10 +163,6 @@ export const StatementView: React.FC<StatementViewProps> = ({
         formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
       ]),
     });
-  };
-
-  const handleSharePdf = () => {
-    handlePrint();
   };
 
   return (
@@ -546,9 +542,7 @@ export const StatementView: React.FC<StatementViewProps> = ({
             settings.currencySymbol
           )}
           title={`مشاركة كشف حساب: ${selectedAccount.name}`}
-          onSharePdf={() => {
-            handleSharePdf();
-          }}
+          onSharePdf={handlePrint}
         />
       )}
     </div>
