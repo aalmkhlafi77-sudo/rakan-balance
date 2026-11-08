@@ -167,7 +167,7 @@ const AppContent: React.FC = () => {
         </main>
         {/* Designer attribution: profile link opens separately, never affects the ledger. */}
         <footer className="no-print max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-6 text-center text-[11px] text-slate-500 dark:text-slate-400">
-          <a href="https://github.com/aalmkhlafi77-sudo" target="_blank" rel="noopener noreferrer"
+          <a href="https://almkhlafi.carpetbazar.org/" target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1 hover:text-emerald-600 dark:hover:text-amber-200 underline-offset-4 hover:underline"
             aria-label="الصفحة الشخصية للمصمم عبدالله المخلافي">
             <span>تصميم عبدالله المخلافي © 2026</span>
