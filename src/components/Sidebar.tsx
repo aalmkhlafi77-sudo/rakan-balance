@@ -91,24 +91,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
         dir="rtl"
       >
-        {/* Brand Header */}
-        <div className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm shadow-emerald-600/30 font-bold text-lg">
-              ر
-            </div>
-            <div>
-              <div className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <span>راكان بلانس</span>
-                <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold px-1 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
-                  N0
-                </span>
-              </div>
-              <div className="text-[10px] font-mono text-slate-600 dark:text-slate-300 font-medium tracking-wider">
-                RAKAN BALANCE
-              </div>
-            </div>
-          </div>
+        {/* Approved logo: full artwork, transparent, no frame or decorative padding. */}
+        <div className="min-h-[88px] px-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
+          <img
+            src="/assets/rakan-logo.webp"
+            alt="راكان بلانس — RAKAN BALANCE"
+            className="block w-full max-w-[222px] h-[76px] object-contain object-center"
+            width={920}
+            height={320}
+            loading="eager"
+            decoding="async"
+          />
         </div>
 
         {/* Workspace Scope Switcher (Real vs Isolated Demo) */}
