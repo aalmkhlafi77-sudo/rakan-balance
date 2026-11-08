@@ -104,8 +104,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
 
-        {/* Workspace Scope Switcher (Real vs Isolated Demo) */}
-        <div className="p-3 mx-3 my-2.5 rounded-xl border transition-colors bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/60">
+        {/* Development-only preview switcher; production never exposes demo scope. */}
+        {import.meta.env.DEV && <div className="p-3 mx-3 my-2.5 rounded-xl border transition-colors bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/60">
           <div className="flex items-center justify-between text-xs mb-2">
             <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-slate-500" />
@@ -148,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>بيانات المعاينة</span>
             </button>
           </div>
-        </div>
+        </div>}
 
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-1 space-y-1 overflow-y-auto">
