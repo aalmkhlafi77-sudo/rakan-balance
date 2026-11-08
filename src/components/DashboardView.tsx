@@ -43,7 +43,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activeAccounts = accounts.filter((a) => a.status === 'active');
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="luxury-dashboard space-y-6" dir="rtl">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -78,7 +78,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* 3 Primary Financial Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: لك (Total Receivable) */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs relative overflow-hidden">
+        <div className="luxury-summary-card p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-emerald-500" />
@@ -101,7 +101,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Card 2: عليك (Total Payable) */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs relative overflow-hidden">
+        <div className="luxury-summary-card p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
               <TrendingDown className="w-4 h-4 text-rose-500" />
@@ -124,7 +124,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Card 3: صافي المركز المالي (Net Balance = لك - عليك) */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs relative overflow-hidden">
+        <div className="luxury-summary-card p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <Scale className="w-4 h-4 text-slate-500" />
@@ -163,7 +163,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Main Grid: Recent Transactions & Active Accounts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Transactions (2 cols on large screen) */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
+        <div className="luxury-panel lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <ReceiptText className="w-4 h-4 text-slate-500" />
@@ -247,7 +247,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Active Accounts Overview (1 col) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col">
+        <div className="luxury-panel bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-slate-500" />
@@ -271,7 +271,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               return (
                 <div
                   key={acc.id}
-                  className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100/60 dark:hover:bg-slate-800 transition-colors flex items-center justify-between cursor-pointer"
+                  className="luxury-account-entry p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100/60 dark:hover:bg-slate-800 transition-colors flex items-center justify-between cursor-pointer"
                   onClick={() => {
                     if (onSelectAccountForStatement) {
                       onSelectAccountForStatement(acc.id);
