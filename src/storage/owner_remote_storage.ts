@@ -299,6 +299,27 @@ export class OwnerRemoteStorage {
       reminder.isCompleted = true;
     });
   }
+  public async updateOwnerPreferences(name: string, currency: {
+    code: string; symbol: string; name: string;
+  }): Promise<void> {
+    const cleanName = name.trim();
+    if (!cleanName || cleanName.length > 100) throw new Error('اسم المالك يجب أن يكون بين 1 و100 حرف.');
+    await this.change((d) => {
+      const oldCurrency = d.settings?.currencyCode || 'SAR';
+      if (oldCurrency !== currency.code &&
+          (d.transactions.length > 0 || d.accounts.some(a => a.openingBalanceMinor !== 0))) {
+        throw new Error('لا يمكن تغيير العملة بعد وجود أرصدة أو حركات مالية.');
+      }
+      d.settings = {
+        ownerName: cleanName,
+        currencyCode: currency.code,
+        currencySymbol: currency.symbol,
+        currencyName: currency.name,
+        currencyDecimals: 2,
+        isFirstSetupDone: true,
+      };
+    });
+  }
   public async atomicRestore(data: BackupBundle['data']) {
     await this.change(d => {
       const copyData = copy(data);
