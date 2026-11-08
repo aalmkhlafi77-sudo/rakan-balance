@@ -2,6 +2,33 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  --color-bg-primary: #f8fafc;
+  --color-bg-secondary: #ffffff;
+  --color-gold-primary: #d97706;
+  --color-gold-light: #fef3c7;
+  --color-purple-accent: #9333ea;
+  --color-text-main: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border-card: #e2e8f0;
+}
+
+.dark {
+  --color-bg-primary: #041311;
+  --color-bg-secondary: #0A221F;
+  --color-glass-surface: rgba(255, 255, 255, 0.1);
+  --color-glass-card: rgba(14, 38, 35, 0.78);
+  --color-glass-border: rgba(216, 180, 106, 0.35);
+  --color-gold-primary: #D8B46A;
+  --color-gold-light: #E8D7A8;
+  --color-purple-accent: #B56CE8;
+  --color-text-main: #F8F4E8;
+  --color-text-muted: #D7D0C2;
+  color-scheme: dark;
+  background-color: #041311;
+  color: #F8F4E8;
+}
+
 @layer base {
   html {
     font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -13,51 +40,72 @@
   }
 }
 
-/* Luxury Glass Theme (الوضع الزجاجي الفاخر) overrides for .dark */
-.dark {
-  color-scheme: dark;
-  background-color: #081B19;
-  color: #F8F4E8;
-}
+/* ==========================================================================
+   الوضع الزجاجي الفاخر — Luxury Glass Theme (Beso Studio UI Inspired)
+   Scoped strictly under .dark to preserve Light Mode 100% untouched.
+   ========================================================================== */
 
+/* 1. Deep Emerald Marble Backdrop & Ambient Lighting */
 .dark body {
-  background-color: #081B19;
+  background-color: #041311;
   background-image: 
-    radial-gradient(circle at 12% 15%, rgba(216, 180, 106, 0.06) 0%, transparent 40%),
-    radial-gradient(circle at 88% 85%, rgba(181, 108, 232, 0.08) 0%, transparent 45%),
-    radial-gradient(circle at 50% 50%, rgba(16, 42, 39, 0.85) 0%, transparent 80%),
-    linear-gradient(135deg, #081B19 0%, #102A27 100%);
+    /* Primary top-center warm gold spotlight */
+    radial-gradient(circle 900px at 50% -50px, rgba(216, 180, 106, 0.18) 0%, transparent 65%),
+    /* Secondary bottom-left purple neon aura */
+    radial-gradient(circle 700px at 15% 90%, rgba(181, 108, 232, 0.16) 0%, transparent 60%),
+    /* Top-right emerald mineral illumination */
+    radial-gradient(circle 600px at 85% 15%, rgba(20, 60, 54, 0.7) 0%, transparent 70%),
+    /* Realistic Marble Veins texture via embedded SVG noise & turbulence */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 1000 1000' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='marble-noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.015' numOctaves='6' seed='77' result='noise'/%3E%3CfeColorMatrix type='matrix' values='0.08 0 0 0 0.02   0.25 0.15 0 0 0.12   0.20 0 0.15 0 0.10   0 0 0 0.28 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23marble-noise)'/%3E%3C/svg%3E"),
+    /* Rich Emerald base gradient background */
+    linear-gradient(155deg, #041311 0%, #081B19 35%, #0d2925 70%, #061816 100%);
   background-attachment: fixed;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 800px 800px, 100% 100%;
   color: #F8F4E8;
+  min-height: 100vh;
 }
 
-/* Luxury Glass Surface & Border mappings for dark mode utility classes */
-.dark .dark\:bg-slate-950,
-.dark .dark\:bg-slate-900 {
-  background-color: rgba(16, 42, 39, 0.78) !important;
-  backdrop-filter: blur(16px);
-  border-color: rgba(255, 255, 255, 0.12) !important;
+/* 2. Multi-Layered Luxury Glass Cards & Panels */
+.dark .dark\:bg-slate-900,
+.dark .dark\:bg-slate-950 {
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.12) 0%, rgba(16, 46, 42, 0.75) 30%, rgba(8, 27, 25, 0.90) 100%) !important;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(216, 180, 106, 0.35) !important;
+  box-shadow: 
+    0 16px 40px -6px rgba(0, 0, 0, 0.65),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.40),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.5),
+    0 0 18px rgba(216, 180, 106, 0.10) !important;
+  border-radius: 1rem;
+  transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .dark .dark\:bg-slate-800,
 .dark .dark\:bg-slate-800\/40,
 .dark .dark\:bg-slate-800\/60,
 .dark .dark\:bg-slate-800\/80 {
-  background-color: rgba(255, 255, 255, 0.07) !important;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.08) 0%, rgba(14, 38, 35, 0.6) 100%) !important;
   backdrop-filter: blur(12px);
-  border-color: rgba(216, 180, 106, 0.25) !important;
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(216, 180, 106, 0.25) !important;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.25) !important;
 }
 
-.dark .dark\:border-slate-800,
-.dark .dark\:border-slate-700,
-.dark .dark\:border-slate-700\/40,
-.dark .dark\:border-slate-800\/60 {
-  border-color: rgba(216, 180, 106, 0.2) !important;
+/* Glass Card Interactive Hover Effect */
+.dark .dark\:bg-slate-900:hover {
+  border-color: rgba(216, 180, 106, 0.55) !important;
+  box-shadow: 
+    0 20px 48px -6px rgba(0, 0, 0, 0.75),
+    inset 0 2px 0 0 rgba(255, 255, 255, 0.55),
+    0 0 28px rgba(181, 108, 232, 0.28) !important;
 }
 
+/* 3. High-Contrast Luxury Typography */
 .dark .dark\:text-slate-100,
 .dark .dark\:text-slate-200 {
   color: #F8F4E8 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .dark .dark\:text-slate-300,
@@ -66,17 +114,211 @@
   color: #D7D0C2 !important;
 }
 
-/* Gold & Purple Luxury Accents */
-.dark .gold-border {
-  border-color: rgba(216, 180, 106, 0.45) !important;
+/* 4. Luxury Glass Navigation Sidebar & Header */
+.dark aside[dir="rtl"] {
+  background: linear-gradient(180deg, rgba(10, 31, 28, 0.94) 0%, rgba(4, 16, 14, 0.97) 100%) !important;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border-left: 1.5px solid rgba(216, 180, 106, 0.35) !important;
+  box-shadow: -8px 0 35px rgba(0, 0, 0, 0.6), inset -1px 0 0 rgba(255, 255, 255, 0.1);
 }
 
-.dark .purple-glow {
-  box-shadow: 0 0 20px rgba(181, 108, 232, 0.25) !important;
+.dark header[dir="rtl"] {
+  background: linear-gradient(180deg, rgba(10, 31, 28, 0.88) 0%, rgba(6, 20, 18, 0.92) 100%) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(216, 180, 106, 0.25) !important;
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
 
+/* Active Nav Item: Metallic Gold Border + Purple Neon Glow */
+.dark aside nav button.bg-emerald-50,
+.dark aside nav button[class*="dark:bg-emerald"] {
+  background: linear-gradient(90deg, rgba(181, 108, 232, 0.35) 0%, rgba(20, 55, 50, 0.85) 100%) !important;
+  border: 1.5px solid #D8B46A !important;
+  box-shadow: 
+    0 0 20px rgba(181, 108, 232, 0.4),
+    0 0 10px rgba(216, 180, 106, 0.3),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.4) !important;
+  color: #F8F4E8 !important;
+  font-weight: 700 !important;
+}
+
+.dark aside nav button.bg-emerald-50 svg,
+.dark aside nav button[class*="dark:bg-emerald"] svg {
+  color: #E8D7A8 !important;
+  filter: drop-shadow(0 0 6px rgba(216, 180, 106, 0.6));
+}
+
+/* 5. Beso Glass Primary Buttons (Convex Glass 3D Button) */
+.dark button.bg-emerald-600:not(.keep-green),
+.dark .btn-beso-glass {
+  background: linear-gradient(180deg, 
+    rgba(215, 145, 255, 0.70) 0%, 
+    rgba(181, 108, 232, 0.55) 25%, 
+    rgba(115, 32, 140, 0.90) 65%, 
+    rgba(50, 10, 65, 0.98) 100%) !important;
+  border: 1.5px solid #D8B46A !important;
+  border-radius: 9999px;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 22px rgba(181, 108, 232, 0.55),
+    0 0 12px rgba(216, 180, 106, 0.4),
+    inset 0 2.5px 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2.5px 5px 0 rgba(0, 0, 0, 0.6) !important;
+  color: #F8F4E8 !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.dark button.bg-emerald-600:not(.keep-green):hover,
+.dark .btn-beso-glass:hover {
+  background: linear-gradient(180deg, 
+    rgba(235, 165, 255, 0.82) 0%, 
+    rgba(195, 120, 245, 0.65) 25%, 
+    rgba(135, 42, 160, 0.95) 65%, 
+    rgba(65, 12, 80, 1) 100%) !important;
+  border-color: #E8D7A8 !important;
+  box-shadow: 
+    0 12px 32px rgba(0, 0, 0, 0.6),
+    0 0 34px rgba(181, 108, 232, 0.75),
+    0 0 18px rgba(232, 215, 168, 0.6),
+    inset 0 3px 1.5px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -2.5px 5px 0 rgba(0, 0, 0, 0.6) !important;
+  transform: translateY(-2px) scale(1.015);
+}
+
+.dark button.bg-emerald-600:not(.keep-green):active,
+.dark .btn-beso-glass:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.6),
+    0 0 15px rgba(181, 108, 232, 0.4),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+/* 6. Secondary Glass Buttons */
+.dark button.border-slate-200,
+.dark button.border-slate-800 {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%) !important;
+  border: 1px solid rgba(216, 180, 106, 0.35) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  color: #D7D0C2 !important;
+  transition: all 0.2s ease;
+}
+
+.dark button.border-slate-200:hover,
+.dark button.border-slate-800:hover {
+  border-color: rgba(216, 180, 106, 0.65) !important;
+  color: #F8F4E8 !important;
+  background: linear-gradient(180deg, rgba(216, 180, 106, 0.2) 0%, rgba(216, 180, 106, 0.08) 100%) !important;
+  box-shadow: 0 0 18px rgba(181, 108, 232, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Preserve Distinct Danger / Delete Buttons in Red */
+.dark button.bg-rose-600,
+.dark button.bg-rose-700,
+.dark button.bg-red-600,
+.dark .keep-danger {
+  background: linear-gradient(180deg, #f43f5e 0%, #be123c 100%) !important;
+  border: 1px solid #fda4af !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 18px rgba(244, 63, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+}
+
+/* 7. High-Readability Glass Tables */
+.dark table {
+  color: #F8F4E8;
+}
+
+.dark table thead tr {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-bottom: 1.5px solid rgba(216, 180, 106, 0.35) !important;
+}
+
+.dark table thead th {
+  color: #E8D7A8 !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.dark table tbody tr {
+  background-color: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  transition: background-color 0.15s ease;
+}
+
+.dark table tbody tr:hover {
+  background: rgba(216, 180, 106, 0.10) !important;
+}
+
+/* 8. Crisp Form Inputs & Select Controls */
+.dark input[type="text"],
+.dark input[type="number"],
+.dark input[type="date"],
+.dark input[type="password"],
+.dark select,
+.dark textarea {
+  background-color: rgba(4, 18, 16, 0.88) !important;
+  border: 1px solid rgba(216, 180, 106, 0.35) !important;
+  color: #F8F4E8 !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #D8B46A !important;
+  box-shadow: 0 0 0 2px rgba(216, 180, 106, 0.35), 0 0 20px rgba(181, 108, 232, 0.38) !important;
+  outline: none !important;
+}
+
+/* 9. Luxury Glass Modals & Dialog Windows */
+.dark .fixed .max-w-lg,
+.dark .fixed .max-w-xl,
+.dark .fixed .max-w-2xl,
+.dark .fixed .max-w-3xl,
+.dark .fixed .max-w-md {
+  background: linear-gradient(160deg, rgba(14, 42, 38, 0.96) 0%, rgba(6, 22, 20, 0.98) 100%) !important;
+  backdrop-filter: blur(28px) !important;
+  -webkit-backdrop-filter: blur(28px) !important;
+  border: 1.5px solid rgba(216, 180, 106, 0.45) !important;
+  box-shadow: 
+    0 35px 80px rgba(0, 0, 0, 0.9),
+    0 0 45px rgba(181, 108, 232, 0.3),
+    inset 0 2px 0 rgba(255, 255, 255, 0.4) !important;
+  border-radius: 1.25rem;
+}
+
+/* 10. Financial Indicator Colors */
+.dark .text-emerald-600,
+.dark .text-emerald-400 {
+  color: #34d399 !important;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+}
+
+.dark .text-rose-600,
+.dark .text-rose-400 {
+  color: #f87171 !important;
+  text-shadow: 0 0 10px rgba(248, 113, 113, 0.3);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
+}
+
+/* Print optimization for account statements */
 @media print {
-  /* Print optimization for account statements */
   body {
     background: white !important;
     color: black !important;

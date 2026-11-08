@@ -75,7 +75,7 @@ const AppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-center" dir="rtl">
+      <div className="min-h-screen bg-slate-50 dark:bg-transparent flex flex-col items-center justify-center p-4 text-center" dir="rtl">
         <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-emerald-600/30 animate-pulse mb-3">
           ر
         </div>
@@ -88,7 +88,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex text-slate-900 dark:text-slate-100 selection:bg-emerald-500/20" dir="rtl">
+    <div className="min-h-screen bg-slate-50 dark:bg-transparent flex text-slate-900 dark:text-slate-100 selection:bg-[#B56CE8]/30" dir="rtl">
       {/* Local Lock Screen Overlay */}
       {isLocked && <LockScreen />}
 
