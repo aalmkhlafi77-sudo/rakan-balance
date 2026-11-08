@@ -6,6 +6,7 @@ interface OwnerAccessContextValue {
   status: AccessState;
   csrfToken: string;
   openLogin: () => void;
+  logout: () => Promise<void>;
 }
 const Context = createContext<OwnerAccessContextValue | null>(null);
 export function useOwnerAccess(): OwnerAccessContextValue {
@@ -108,7 +109,7 @@ export const OwnerAccessGate: React.FC<Props> = ({ children }) => {
     }
   };
   return (
-    <Context.Provider value={{ status, csrfToken: csrf, openLogin }}>
+    <Context.Provider value={{ status, csrfToken: csrf, openLogin, logout }}>
       {status === 'checking' ? (
         <div dir="rtl" className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-950">
           <img src="/assets/rakan-icon-192.webp" width={64} height={64} alt="راكان بلانس" className="h-16 w-16 rounded-xl" />
