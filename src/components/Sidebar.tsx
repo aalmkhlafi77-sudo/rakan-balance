@@ -11,6 +11,7 @@ import {
   Users,
   ReceiptText,
   FileSpreadsheet,
+  BarChart3,
   FileUp,
   StickyNote,
   CalendarClock,
@@ -30,6 +31,7 @@ export type TabView =
   | 'accounts'
   | 'transactions'
   | 'statement'
+  | 'reports'
   | 'import'
   | 'notes'
   | 'dues'
@@ -63,7 +65,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard' as TabView, label: 'لوحة التحكم', icon: LayoutDashboard },
     { id: 'accounts' as TabView, label: 'دليل الحسابات', icon: Users },
     { id: 'transactions' as TabView, label: 'دفتر الحركات', icon: ReceiptText },
-    { id: 'statement' as TabView, label: 'كشف الحساب والتقارير', icon: FileSpreadsheet },
+    { id: 'statement' as TabView, label: 'كشف الحساب التفصيلي', icon: FileSpreadsheet },
+    { id: 'reports' as TabView, label: 'التقارير التحليلية والتصدير', icon: BarChart3 },
     { id: 'import' as TabView, label: 'استيراد (CSV / Excel)', icon: FileUp },
     { id: 'notes' as TabView, label: 'الملاحظات', icon: StickyNote },
     { id: 'dues' as TabView, label: 'الاستحقاقات والتذكيرات', icon: CalendarClock },

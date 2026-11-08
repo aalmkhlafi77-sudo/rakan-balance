@@ -12,6 +12,7 @@ import { DashboardView } from './components/DashboardView.tsx';
 import { AccountsView } from './components/AccountsView.tsx';
 import { TransactionsView } from './components/TransactionsView.tsx';
 import { StatementView } from './components/StatementView.tsx';
+import { FinancialReportsView } from './components/FinancialReportsView.tsx';
 import { ImportView } from './components/ImportView.tsx';
 import { NotesView } from './components/NotesView.tsx';
 import { DuesView } from './components/DuesView.tsx';
@@ -142,6 +143,10 @@ const AppContent: React.FC = () => {
 
           {currentTab === 'statement' && (
             <StatementView initialAccountId={statementAccountId} />
+          )}
+
+          {currentTab === 'reports' && (
+            <FinancialReportsView onSelectAccountForStatement={handleOpenStatementForAccount} />
           )}
 
           {currentTab === 'import' && <ImportView />}
