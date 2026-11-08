@@ -45,6 +45,8 @@ jobs:
         run: npm test
       - name: Owner authentication security tests
         run: npm run test:server
+      - name: Verify owner server-only storage and conflict guards
+        run: npm run test:owner-adapter
       - name: TypeScript validation
         run: npm run lint
       - name: Production build
