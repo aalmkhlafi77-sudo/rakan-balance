@@ -9,7 +9,7 @@ import { AppProvider, useApp } from './context/AppContext.tsx';
 import { Sidebar, TabView } from './components/Sidebar.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { MobileBottomNav } from './components/MobileBottomNav.tsx';
-import { OwnerAccessGate } from './components/OwnerAccessGate.tsx';
+import { OwnerAccessGate, useOwnerAccess } from './components/OwnerAccessGate.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
 import { AccountsView } from './components/AccountsView.tsx';
 import { TransactionsView } from './components/TransactionsView.tsx';
@@ -29,6 +29,7 @@ import { TransactionModel } from './domain/types.ts';
 
 const AppContent: React.FC = () => {
   const { isLoading, isLocked } = useApp();
+  const ownerAccess = useOwnerAccess();
 
   const [currentTab, setCurrentTab] = useState<TabView>('dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -93,10 +94,10 @@ const AppContent: React.FC = () => {
   return (
     <div className="luxury-shell min-h-screen bg-slate-50 dark:bg-transparent flex text-slate-900 dark:text-slate-100 selection:bg-[#B56CE8]/30" dir="rtl">
       {/* Local Lock Screen Overlay */}
-      {isLocked && <LockScreen />}
+      {ownerAccess.status !== 'owner' && isLocked && <LockScreen />}
 
       {/* First-time Onboarding & Setup Wizard */}
-      <FirstSetupModal />
+      {ownerAccess.status !== 'owner' && <FirstSetupModal />}
 
       {/* Main Navigation Sidebar */}
       <Sidebar
@@ -156,16 +157,16 @@ const AppContent: React.FC = () => {
             <FinancialReportsView onSelectAccountForStatement={handleOpenStatementForAccount} />
           )}
 
-          {currentTab === 'import' && <ImportView />}
+          {currentTab === 'import' && ownerAccess.status !== 'owner' && <ImportView />}
 
           {currentTab === 'notes' && <NotesView />}
           {currentTab === 'dues' && <DuesView />}
 
-          {currentTab === 'backup' && <BackupRestoreView />}
+          {currentTab === 'backup' && ownerAccess.status !== 'owner' && <BackupRestoreView />}
 
-          {currentTab === 'tests' && <VerificationModal />}
+          {currentTab === 'tests' && ownerAccess.status !== 'owner' && <VerificationModal />}
 
-          {currentTab === 'settings' && <SettingsView />}
+          {currentTab === 'settings' && ownerAccess.status !== 'owner' && <SettingsView />}
         </main>
         {/* Designer attribution: profile link opens separately, never affects the ledger. */}
         <footer className="no-print max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-6 text-center text-[11px] text-slate-500 dark:text-slate-400">
