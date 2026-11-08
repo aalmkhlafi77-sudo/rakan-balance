@@ -975,8 +975,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currencyName,
     currencyDecimals: 2,
     isFirstSetupDone,
-    pinCodeHash: pinAuth.hash,
-    pinSalt: pinAuth.salt,
+    pinCodeHash: ownerAccess.status === 'owner' ? null : pinAuth.hash,
+    pinSalt: ownerAccess.status === 'owner' ? null : pinAuth.salt,
     isLocked,
     theme,
     sidebarCollapsed,
@@ -988,7 +988,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       <section dir="rtl" role="alert" className="min-h-screen flex flex-col items-center justify-center p-6 text-center gap-4 bg-slate-950 text-white">
         <h1 className="font-bold text-lg">تعذر الوصول إلى بيانات المالك</h1>
         <p className="max-w-md text-sm leading-7">{ownerLoadError}</p>
-        <button type="button" onClick={() => { void loadWorkspaceData('real'); }} className="px-5 py-3 rounded-xl bg-emerald-700 font-semibold">إعادة المحاولة</button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button type="button" onClick={() => { void loadWorkspaceData('real'); }} className="px-5 py-3 rounded-xl bg-emerald-700 font-semibold">إعادة المحاولة</button>
+          <button type="button" onClick={() => { void ownerAccess.logout(); }} className="px-5 py-3 rounded-xl border border-slate-400 font-semibold">تسجيل الخروج</button>
+        </div>
       </section>
     );
   }
