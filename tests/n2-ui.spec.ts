@@ -57,7 +57,7 @@ for (const device of ['desktop', 'mobile'] as const) {
     await row.getByRole('button', { name: 'تسجيل سداد جزئي / كامل' }).click();
     await row.locator('input[inputmode="decimal"]').fill('200.00');
     await row.getByRole('button', { name: 'تأكيد السداد والربط بالحركة' }).click();
-    await expect(page.getByRole('alert')).toContainText('تتجاوز المتبقي');
+    await expect(page.getByRole('alert')).toContainText('لا يمكن أن يتجاوز المبلغ المتبقي');
     const afterRejectedPayment = await snapshotDemo(page);
     expect(afterRejectedPayment.transactions).toHaveLength(before.transactions.length);
     expect(afterRejectedPayment.allocations).toHaveLength(before.allocations.length);
