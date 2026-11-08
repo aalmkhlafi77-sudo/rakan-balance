@@ -343,8 +343,8 @@ export const BackupRestoreView: React.FC = () => {
           </button>
         </div>
 
-        {/* Isolated Demo Workspace Manager */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+        {/* Developer-only preview manager: absent from release UI. */}
+        {import.meta.env.DEV && <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
           <div className="flex items-center gap-2.5 mb-2">
             <FlaskConical className="w-4 h-4 text-amber-500" />
             <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -386,7 +386,7 @@ export const BackupRestoreView: React.FC = () => {
               تم تصفير مخزن البيانات التجريبية المعزول بنجاح.
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
