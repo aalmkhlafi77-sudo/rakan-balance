@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createOwnerAuth } from './auth.mjs';
 import { registerOwnerLedgerRoutes } from './ledger.mjs';
+import { registerPrivateAttachmentRoutes } from './attachments.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -23,6 +24,7 @@ export function createApp({ pool, env = process.env, staticRoot = dist }) {
   const auth = createOwnerAuth(pool, env);
   app.use('/api/auth', express.json({ limit: '16kb', type: 'application/json' }), auth.router);
   registerOwnerLedgerRoutes(app, pool, auth);
+  registerPrivateAttachmentRoutes(app, pool, auth);
   app.get('/api/health', async (_req, res) => {
     try {
       await pool.query('SELECT 1');

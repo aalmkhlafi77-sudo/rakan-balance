@@ -16,9 +16,25 @@ async function main() {
   const pool = action === 'verify' ? null : createDatabasePool();
   try {
     if (action === 'export') {
-      const [rows] = await pool.execute(
-        'SELECT revision, payload, payload_sha256 FROM owner_ledger_snapshot WHERE id = 1 LIMIT 1',
-      );
+      // Read the ledger and its binary objects from a single InnoDB consistent snapshot.
+      const readConnection = await pool.getConnection();
+      let rows, blobRows;
+      try {
+        await readConnection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        await readConnection.beginTransaction();
+        [rows] = await readConnection.execute(
+          'SELECT revision, payload, payload_sha256 FROM owner_ledger_snapshot WHERE id = 1 LIMIT 1',
+        );
+        [blobRows] = await readConnection.execute(
+          'SELECT attachment_id, transaction_id, mime_type, byte_length, sha256, content FROM owner_attachment_blobs',
+        );
+        await readConnection.commit();
+      } catch (error) {
+        await readConnection.rollback();
+        throw error;
+      } finally {
+        readConnection.release();
+      }
       if (rows.length !== 1 || rows[0].payload === null) {
         throw new Error('Owner ledger is not initialized or is empty');
       }
@@ -29,7 +45,18 @@ async function main() {
       if (checksum !== rows[0].payload_sha256) throw new Error('Owner ledger checksum mismatch');
       const validation = await validateBackupFile(raw.toString('utf8'));
       if (!validation.isValid) throw new Error('Owner ledger validation failed');
-      const encrypted = await encryptOwnerBackup({ revision, payload: raw.toString('utf8') }, passphrase);
+      const attachments = blobRows.map(row => {
+        const bytes = Buffer.isBuffer(row.content) ? row.content : Buffer.from(row.content);
+        if (bytes.length !== Number(row.byte_length) ||
+            createHash('sha256').update(bytes).digest('hex') !== row.sha256) {
+          throw new Error('Private attachment integrity mismatch');
+        }
+        return {
+          attachmentId: row.attachment_id, transactionId: row.transaction_id,
+          mimeType: row.mime_type, sha256: row.sha256, base64: bytes.toString('base64'),
+        };
+      });
+      const encrypted = await encryptOwnerBackup({ revision, payload: raw.toString('utf8'), attachments }, passphrase);
       // wx never overwrites existing backups; owner should secure the destination.
       await writeFile(filePath, encrypted, { flag: 'wx', mode: 0o600 });
       process.stdout.write('Encrypted owner backup exported.\n');
@@ -60,12 +87,23 @@ async function main() {
       if (rows.length !== 1 || Number(rows[0].revision) !== 0 || rows[0].payload !== null) {
         throw new Error('Test restore requires an empty revision-0 target');
       }
+      const [existingBlobs] = await connection.execute(
+        'SELECT attachment_id FROM owner_attachment_blobs LIMIT 1 FOR UPDATE',
+      );
+      if (existingBlobs.length) throw new Error('Test restore requires an empty attachment table');
       const payload = Buffer.from(snapshot.payload, 'utf8');
       const sha = createHash('sha256').update(payload).digest('hex');
       await connection.execute(
         'UPDATE owner_ledger_snapshot SET revision = ?, payload = ?, payload_sha256 = ? WHERE id = 1',
         [snapshot.revision, payload, sha],
       );
+      for (const item of snapshot.attachments || []) {
+        const bytes = Buffer.from(item.base64, 'base64');
+        await connection.execute(
+          'INSERT INTO owner_attachment_blobs (attachment_id, transaction_id, mime_type, byte_length, sha256, content) VALUES (?, ?, ?, ?, ?, ?)',
+          [item.attachmentId, item.transactionId, item.mimeType, bytes.length, item.sha256, bytes],
+        );
+      }
       await connection.commit();
       process.stdout.write('Verified owner backup restored to an empty test database.\n');
     } catch (error) {

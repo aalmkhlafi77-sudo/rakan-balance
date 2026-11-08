@@ -37,6 +37,8 @@ The app must have the full server code plus `dist/` and `server/generated/` at r
 2. Run these schema migrations sequentially **only in the new database**:
    - `database/001_owner_auth.sql`
    - `database/002_owner_ledger_snapshot.sql`
+   - `database/003_owner_login_limits.sql`
+   - `database/004_owner_private_attachments.sql`
 3. One-time owner provisioning: `npm run provision:owner` using `RAKAN_OWNER_PASSWORD` in a protected, temporary environment (never paste passwords in chat or check them into GitHub). Unset the variable afterward.
 4. Do **not** place the owner password or database credentials in any `VITE_*` variable or source file.
 
@@ -56,11 +58,11 @@ RAKAN_CSRF_SECRET=<random-strong-secret-at-least-32-chars>
 
 - HTTPS must work correctly before owner credentials are used. The `__Host-rakan_session` session cookie is `HttpOnly; Secure; SameSite=Strict`.
 - Origin and anti-CSRF checks apply to state changes. Passwords are salted slow hashes; sessions are revocable server-side.
-- Confirm database sessions, periodic expiry cleanup, sustained rate limits and server logs (without credentials or ledger records).
+- Confirm database sessions, periodic expiry cleanup, persistent login rate limits across workers, trusted reverse-proxy client IP behavior and server logs (without credentials or ledger records).
 - Owner ledger writes use **atomic MySQL row locking** and optimistic revisions. A 409 conflict must be visible to the owner and must not overwrite a device's newer financial data.
-- Owner ledger snapshot currently carries attachment data URLs. Total payload is bounded; **large files and numerous attachments require a private binary storage backend before unrestricted production use**.
+- Owner ledger snapshot stores only private attachment references after save. Binary bytes live in `owner_attachment_blobs` and are committed/deleted atomically with ledger revisions. The current MySQL binary store is capped at 5 MiB per file; aggregate archive limits still require operational monitoring and an off-host retention strategy.
 - Private owner mode does not support offline edits. Never show a false "saved" message when the server is unreachable.
-- Take **scheduled independent MySQL backups** and verify actual restore in the dedicated test database; local visitor JSON backups are separate and not handled by Hostinger MySQL backups.
+- Configure **scheduled encrypted backups** using the protected server backup tool, retain an encrypted copy off-host, and verify actual restore into a dedicated empty test database including binary attachments. Local visitor JSON backups are separate and not handled by Hostinger MySQL backups.
 - Local browser PIN only applies to the visitor/local experience; it is not owner-server authentication.
 
 ## Final release acceptance tests (required)
@@ -70,7 +72,7 @@ RAKAN_CSRF_SECRET=<random-strong-secret-at-least-32-chars>
 3. **Owner**: wrong password fails; valid password logs in; unauthenticated GET/PUT to `/api/owner/ledger` receives 401; cross-origin and missing-CSRF writes are rejected.
 4. After owner login, the local visitor financial records must not appear in owner UI. After logout, owner records must not appear in guest UI or remain in visitor IndexedDB.
 5. With **two physical devices**, create/edit accounts, transfers, due payments, notes, reports and attachments, verify the server is authoritative and revision 409 conflicts prevent lost writes.
-6. Export and import/restore a private backup, reconcile counts/balances/transfer pairs, test failure and atomic rollback.
+6. Export/import the portable owner JSON with attachments, then export the encrypted operator archive and restore it into an empty isolated test database. Reconcile counts, balances, transfer pairs, attachment IDs/SHA-256 and test failure/atomic rollback.
 7. Production bundles must have **zero preview labels or seeded fictional financial records** (CI `check-production-no-demo.mjs`).
 8. Verify browser refresh and direct page routes; verify static asset 404s remain 404.
 9. Verify SSL, uptime, backups, restore, session expiry, and restricted DB permissions; confirm other Hostinger sites remain unchanged.

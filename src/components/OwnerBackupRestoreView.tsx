@@ -1,11 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Upload, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { validateBackupFile } from '../storage/backup_service.ts';
+import { computeSHA256, validateBackupFile } from '../storage/backup_service.ts';
+import { fetchPrivateAttachmentBlob, isPrivateAttachment } from '../services/attachment_service.ts';
 import { useOwnerAccess } from './OwnerAccessGate.tsx';
 import type { BackupBundle } from '../domain/types.ts';
 
 type CurrentLedger = { revision: number; bundle: BackupBundle | null };
 const MAX_FILE_SIZE = 16 * 1024 * 1024;
+
+async function blobToDataUrl(blob: Blob, fallbackMime: string): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  const chunk = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunk, bytes.length)));
+  }
+  return 'data:' + (blob.type || fallbackMime) + ';base64,' + btoa(binary);
+}
 
 export const OwnerBackupRestoreView: React.FC = () => {
   const access = useOwnerAccess();
@@ -38,7 +49,21 @@ export const OwnerBackupRestoreView: React.FC = () => {
     try {
       const data = await readCurrent();
       if (!data.bundle) { setNotice('لا توجد نسخة مالية محفوظة للمالك حتى الآن.'); return; }
-      const blob = new Blob([JSON.stringify(data.bundle, null, 2)], { type: 'application/json' });
+      const portable = structuredClone(data.bundle);
+      for (const attachment of portable.data.attachments || []) {
+        if (isPrivateAttachment(attachment)) {
+          const privateBlob = await fetchPrivateAttachmentBlob(attachment);
+          attachment.dataUrl = await blobToDataUrl(privateBlob, attachment.mimeType);
+        }
+      }
+      portable.manifest.checksum = await computeSHA256(JSON.stringify(portable.data));
+      const json = JSON.stringify(portable, null, 2);
+      if (new TextEncoder().encode(json).byteLength > MAX_FILE_SIZE) {
+        throw new Error('النسخة الكاملة مع المرفقات تتجاوز 16 ميجابايت. استخدم النسخة المشفرة على الخادم بعد تفعيل الاستضافة.');
+      }
+      const verified = await validateBackupFile(json);
+      if (!verified.isValid) throw new Error('فشل التحقق من النسخة المحمولة قبل التنزيل.');
+      const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       try {
         const link = document.createElement('a');
@@ -95,8 +120,7 @@ export const OwnerBackupRestoreView: React.FC = () => {
           <ShieldCheck className="w-5 h-5" /> <h2 className="text-lg font-bold">النسخ الاحتياطي الخاص بالمالك</h2>
         </div>
         <p className="mt-2 text-xs leading-7 text-slate-600 dark:text-slate-300">
-          النسخ المستخرجة من هذا القسم تأتي حصراً من الخادم الخاص بعد تسجيل الدخول.
-          لا تُقرأ بيانات الزوار المحلية ولا تُرفع تلقائيًا. للاحتفاظ ببيانات متصفح قديمة، صدّرها أولاً من وضع الزائر ثم اختر ملفها هنا صراحةً.
+          النسخ المستخرجة من هذا القسم تأتي حصراً من الخادم الخاص بعد تسجيل الدخول، وتُعاد المرفقات الخاصة إلى ملف JSON المحمول وقت التصدير فقط. لا تُقرأ بيانات الزوار المحلية ولا تُرفع تلقائيًا. للاحتفاظ ببيانات متصفح قديمة، صدّرها أولاً من وضع الزائر ثم اختر ملفها هنا صراحةً.
         </p>
       </div>
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 space-y-3">

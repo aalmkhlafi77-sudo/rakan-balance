@@ -26,3 +26,25 @@ test('encrypted backup rejects corrupted bytes and incorrect passphrases', async
   await assert.rejects(() => decryptOwnerBackup(JSON.stringify(bad), key));
   await assert.rejects(() => encryptOwnerBackup(value, 'weak'));
 });
+
+
+test('encrypted backup preserves verified linked private attachment binary', async () => {
+  const binary = Buffer.from('%PDF-1.7\\nprivate-attachment');
+  const sha256 = createHash('sha256').update(binary).digest('hex');
+  const payload = JSON.stringify({data:{
+    transactions:[{id:'tx_1',attachmentIds:['att_1']}],
+    attachments:[{id:'att_1',transactionId:'tx_1'}],
+  }});
+  const record = {
+    attachmentId:'att_1', transactionId:'tx_1',mimeType:'application/pdf',
+    sha256,base64:binary.toString('base64'),
+  };
+  const encrypted = await encryptOwnerBackup({revision:2,payload,attachments:[record]},key);
+  const restored = await decryptOwnerBackup(encrypted,key);
+  assert.deepEqual(restored.attachments,[record]);
+  const wrong = {...record,sha256:'0'.repeat(64)};
+  await assert.rejects(()=>encryptOwnerBackup({revision:2,payload,attachments:[wrong]},key));
+  await assert.rejects(()=>encryptOwnerBackup({
+    revision:2,payload,attachments:[{...record,transactionId:'missing'}],
+  },key));
+});

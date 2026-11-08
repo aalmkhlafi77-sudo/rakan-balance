@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import express from 'express';
 import { validateBackupFile } from './generated/owner-validator.mjs';
+import { preparePrivateAttachmentState, syncPrivateAttachmentRows } from './attachments.mjs';
 
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
 function responseError(res, status, reason) {
@@ -8,7 +9,6 @@ function responseError(res, status, reason) {
 }
 
 export function registerOwnerLedgerRoutes(app, pool, auth) {
-  // Every endpoint is protected by the same server-verified owner session.
   app.get('/api/owner/ledger', auth.requireOwner, async (_req, res) => {
     try {
       const [rows] = await pool.execute(
@@ -32,30 +32,41 @@ export function registerOwnerLedgerRoutes(app, pool, auth) {
   app.put('/api/owner/ledger', auth.requireOwner, auth.strictOrigin,
     express.json({ limit: '18mb', type: 'application/json' }), auth.requireCsrf, async (req, res) => {
     const { expectedRevision, bundle } = req.body || {};
-    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || !bundle || typeof bundle !== 'object' ||
-        Array.isArray(bundle)) return responseError(res, 400, 'invalid_request');
-    let raw;
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || !bundle ||
+        typeof bundle !== 'object' || Array.isArray(bundle)) {
+      return responseError(res, 400, 'invalid_request');
+    }
+    let incomingRaw;
     try {
-      raw = Buffer.from(JSON.stringify(bundle), 'utf8');
+      incomingRaw = Buffer.from(JSON.stringify(bundle), 'utf8');
     } catch {
       return responseError(res, 400, 'invalid_request');
     }
-    if (raw.length > MAX_JSON_BYTES) return responseError(res, 413, 'ledger_payload_too_large');
-    // Credentials and local PIN secrets are never permitted in remote ledger payloads.
+    if (incomingRaw.length > MAX_JSON_BYTES) return responseError(res, 413, 'ledger_payload_too_large');
+
     const savedSettings = bundle.data?.settings;
     if (savedSettings && typeof savedSettings === 'object' &&
         ['pinCodeHash', 'pinSalt', 'isLocked', 'password', 'passwordHash', 'csrfToken'].some(
-          (field) => Object.prototype.hasOwnProperty.call(savedSettings, field))) {
+          field => Object.prototype.hasOwnProperty.call(savedSettings, field))) {
       return responseError(res, 422, 'sensitive_settings_not_allowed');
     }
-    // Hash supplied by client is not a password. Full source-of-truth N0/N1/N2
-    // validation is run on the server, not trusted to the caller.
-    const check = await validateBackupFile(raw.toString('utf8'));
+
+    const check = await validateBackupFile(incomingRaw.toString('utf8'));
     if (!check.isValid) return responseError(res, 422, 'invalid_financial_ledger');
-    // Prevent unsafe dynamic shape/prototype keys not covered by older backup spec.
-    if (Object.keys(bundle).some((k) => !['manifest', 'data'].includes(k))) {
+    if (Object.keys(bundle).some(k => !['manifest', 'data'].includes(k))) {
       return responseError(res, 422, 'unexpected_fields');
     }
+
+    let prepared;
+    let storedBundle;
+    let storedRaw;
+    try {
+      ({ prepared, storedBundle } = preparePrivateAttachmentState(bundle));
+      storedRaw = Buffer.from(JSON.stringify(storedBundle), 'utf8');
+    } catch {
+      return responseError(res, 422, 'invalid_private_attachment');
+    }
+    if (storedRaw.length > MAX_JSON_BYTES) return responseError(res, 413, 'ledger_payload_too_large');
 
     let connection;
     try {
@@ -81,10 +92,13 @@ export function registerOwnerLedgerRoutes(app, pool, auth) {
         await connection.rollback();
         return responseError(res, 409, 'revision_limit_exceeded');
       }
-      const checksum = createHash('sha256').update(raw).digest('hex');
+
+      // Blob inserts/deletes and ledger metadata become visible together.
+      await syncPrivateAttachmentRows(connection, prepared);
+      const checksum = createHash('sha256').update(storedRaw).digest('hex');
       await connection.execute(
         'UPDATE owner_ledger_snapshot SET revision = ?, payload = ?, payload_sha256 = ? WHERE id = 1',
-        [currentRevision + 1, raw, checksum],
+        [currentRevision + 1, storedRaw, checksum],
       );
       await connection.commit();
       return res.json({ ok: true, revision: currentRevision + 1 });
