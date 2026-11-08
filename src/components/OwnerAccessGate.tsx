@@ -114,7 +114,11 @@ export const OwnerAccessGate: React.FC<Props> = ({ children }) => {
           <img src="/assets/rakan-icon-192.webp" width={64} height={64} alt="راكان بلانس" className="h-16 w-16 rounded-xl" />
           <p className="text-sm text-slate-600 dark:text-slate-300">جاري التحقق من حالة الاتصال...</p>
         </div>
-      ) : children}
+      ) : status === 'owner' ? (
+        <React.Fragment key="private-owner">{children}</React.Fragment>
+      ) : (
+        <React.Fragment key="local-visitor">{children}</React.Fragment>
+      )}
       {status === 'visitor' && loginOpen && (
         <div dir="rtl" role="dialog" aria-modal="true" aria-label="تسجيل دخول المالك"
           className="fixed inset-0 z-[100] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
