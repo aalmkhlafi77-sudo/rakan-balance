@@ -10,7 +10,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { calculateAccountStatement } from '../domain/balance_calculator.ts';
 import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
-import { generatePdfReport } from '../services/pdf_export.ts';
+import { generatePdfReport, getPdfReportHtml } from '../services/pdf_export.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
 import { buildStatementShareMessage, sharePdfFile } from '../services/whatsapp_share_service.ts';
@@ -163,6 +163,70 @@ export const StatementView: React.FC<StatementViewProps> = ({
         formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
       ]),
     });
+  };
+
+  const handleSharePdf = async () => {
+    if (!selectedAccount) return;
+
+    const htmlContent = getPdfReportHtml({
+      reportTitle: `كشف حساب: ${selectedAccount.name}`,
+      subtitle: `الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`,
+      ownerName: settings.ownerName,
+      currencySymbol: settings.currencySymbol,
+      metrics: [
+        {
+          title: 'رصيد أول المدة',
+          value: formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+          colorClass: 'slate',
+        },
+        {
+          title: 'إجمالي عليه (خلال الفترة)',
+          value: `+${formatMinorAmount(statement.totalOwedByMinor)} ${settings.currencySymbol}`,
+          colorClass: 'emerald',
+        },
+        {
+          title: 'إجمالي له (خلال الفترة)',
+          value: `-${formatMinorAmount(statement.totalOwedToMinor)} ${settings.currencySymbol}`,
+          colorClass: 'rose',
+        },
+        {
+          title: 'رصيد آخر المدة (الختامي)',
+          value: formatCurrency(statement.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+          colorClass: 'blue',
+        },
+      ],
+      columns: [
+        { header: '#', align: 'center' },
+        { header: 'التاريخ', align: 'center' },
+        { header: 'البيان والوصف', align: 'right' },
+        { header: 'عليه (+ لك)', align: 'right' },
+        { header: 'له (- عليك)', align: 'right' },
+        { header: 'الرصيد المتتابع', align: 'right' },
+      ],
+      rows: statement.rows.map((r, idx) => [
+        idx + 1,
+        r.transaction.date,
+        r.transaction.description + (r.transaction.notes ? ` (${r.transaction.notes})` : ''),
+        r.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+        r.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+        formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      ]),
+    });
+
+    const blob = new Blob([htmlContent], { type: 'application/pdf' });
+    const fileName = `statement_${selectedAccount.name}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const pdfFile = new File([blob], fileName, { type: 'application/pdf' });
+
+    const shareResult = await sharePdfFile(
+      pdfFile,
+      `كشف حساب: ${selectedAccount.name}`,
+      `كشف حساب مالي صادر من منصة راكان بلانس للطرف ${selectedAccount.name}`
+    );
+
+    if (!shareResult.success) {
+      // Fallback: Open print/save PDF dialog and guide user
+      handlePrint();
+    }
   };
 
   return (
@@ -543,7 +607,7 @@ export const StatementView: React.FC<StatementViewProps> = ({
           )}
           title={`مشاركة كشف حساب: ${selectedAccount.name}`}
           onSharePdf={() => {
-            handlePrint();
+            handleSharePdf();
           }}
         />
       )}

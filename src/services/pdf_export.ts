@@ -43,11 +43,7 @@ export function escapeHtml(str: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Reliable PDF / Native Print Trigger
- * Attempts window popup print first, falls back to iframe if popups are restricted.
- */
-export function generatePdfReport(config: PrintableReportConfig): void {
+export function getPdfReportHtml(config: PrintableReportConfig): string {
   const generatedAt = new Date().toLocaleString('ar-SA', {
     year: 'numeric',
     month: 'long',
@@ -108,7 +104,7 @@ export function generatePdfReport(config: PrintableReportConfig): void {
     })
     .join('');
 
-  const htmlDocument = `
+  return `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
     <head>
@@ -206,7 +202,6 @@ export function generatePdfReport(config: PrintableReportConfig): void {
       </style>
     </head>
     <body>
-      <!-- Brand Header -->
       <div class="header">
         <div class="brand">
           <div class="brand-logo">ر</div>
@@ -222,17 +217,14 @@ export function generatePdfReport(config: PrintableReportConfig): void {
         </div>
       </div>
 
-      <!-- Report Header -->
       <div class="report-title-section">
         <h1 class="report-title">${safeTitle}</h1>
         ${safeSubtitle ? `<p class="report-sub">${safeSubtitle}</p>` : ''}
         ${safeFilter ? `<div style="font-size: 10px; color: #047857; margin-top: 4px; font-weight: 600;">تصفية: ${safeFilter}</div>` : ''}
       </div>
 
-      <!-- Summary Metrics Cards -->
       ${metricsHtml}
 
-      <!-- Data Table -->
       <table>
         <thead>
           <tr>${tableHeadersHtml}</tr>
@@ -242,13 +234,20 @@ export function generatePdfReport(config: PrintableReportConfig): void {
         </tbody>
       </table>
 
-      <!-- Document Footer -->
       <div class="footer">
         <div>${safeFooter}</div>
       </div>
     </body>
     </html>
   `;
+}
+
+/**
+ * Reliable PDF / Native Print Trigger
+ * Attempts window popup print first, falls back to iframe if popups are restricted.
+ */
+export function generatePdfReport(config: PrintableReportConfig): void {
+  const htmlDocument = getPdfReportHtml(config);
 
   // Attempt 1: Open popup window (most reliable across browsers for print dialog)
   let printWin: Window | null = null;
