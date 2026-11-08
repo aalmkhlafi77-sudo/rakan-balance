@@ -23,6 +23,7 @@ import {
   PaymentAllocationContract,
   ReminderContract,
   UserSettings,
+  SUPPORTED_CURRENCIES,
 } from '../domain/types.ts';
 import { checkTreeCycle } from '../domain/balance_calculator.ts';
 import { dbStorage, STORES_REAL } from './indexed_db.ts';
@@ -63,13 +64,13 @@ export async function exportBackupBundle(): Promise<{ jsonString: string; filena
     dbStorage.getAll<ReminderContract>(STORES_REAL.REMINDERS),
   ]);
 
-  const currency = typeof window !== 'undefined' ? getCurrencyPref() : { code: 'SAR', symbol: 'ر.س', name: 'ريال سعودي' };
+  const currency = getCurrencyPref();
 
   // Safe non-sensitive owner settings (PIN hashes/salts are explicitly excluded)
   const safeSettings: Partial<UserSettings> = {
-    ownerName: typeof window !== 'undefined' ? getOwnerNamePref() : 'راكان',
-    theme: typeof window !== 'undefined' ? getThemePref() : 'dark',
-    sidebarCollapsed: typeof window !== 'undefined' ? getSidebarCollapsedPref() : false,
+    ownerName: getOwnerNamePref(),
+    theme: getThemePref(),
+    sidebarCollapsed: getSidebarCollapsedPref(),
     currencyCode: currency.code,
     currencySymbol: currency.symbol,
     currencyName: currency.name,
@@ -430,11 +431,34 @@ export async function validateBackupFile(fileContent: string): Promise<{
       if (typeof data.settings !== 'object' || data.settings === null) {
         return { isValid: false, error: 'كائن إعدادات المالك في النسخة غير صالح.' };
       }
-      if (data.settings.currencyCode && data.settings.currencyCode !== 'SAR') {
-        return { isValid: false, error: `عملة النسخة غير متوافقة (${data.settings.currencyCode}). التطبيق يعتمد SAR فقط.` };
+
+      // Currency code validation against SUPPORTED_CURRENCIES catalog
+      if (data.settings.currencyCode) {
+        const currencyCodeUpper = data.settings.currencyCode.trim().toUpperCase();
+        const matchedCurrency = SUPPORTED_CURRENCIES.find((c) => c.code === currencyCodeUpper);
+        if (!matchedCurrency) {
+          return {
+            isValid: false,
+            error: `عملة النسخة غير مدعومة (${data.settings.currencyCode}). يجب أن تكون العملة إحدى العملات المعتمدة في النظام.`,
+          };
+        }
+
+        // Integrity check: if symbol is provided, it must match the canonical symbol for this currency
+        if (data.settings.currencySymbol && data.settings.currencySymbol.trim() !== matchedCurrency.symbol) {
+          return {
+            isValid: false,
+            error: `رمز العملة في النسخة (${data.settings.currencySymbol}) لا يتطابق مع الرمز المعتمد للعملة ${matchedCurrency.code} (${matchedCurrency.symbol}).`,
+          };
+        }
+
+        // Canonicalize verified values in payload to protect against arbitrary non-canonical injections
+        data.settings.currencyCode = matchedCurrency.code;
+        data.settings.currencySymbol = matchedCurrency.symbol;
+        data.settings.currencyName = matchedCurrency.name;
       }
+
       if (data.settings.currencyDecimals && data.settings.currencyDecimals !== 2) {
-        return { isValid: false, error: 'دقة العملة يجب أن تكون 2 (100 هللة).' };
+        return { isValid: false, error: 'دقة العملة يجب أن تكون 2 (100 هللة/فلس/سنت).' };
       }
       // Security boundary check: ensure sensitive PIN secrets are sanitized
       if (data.settings.pinCodeHash || data.settings.pinSalt) {

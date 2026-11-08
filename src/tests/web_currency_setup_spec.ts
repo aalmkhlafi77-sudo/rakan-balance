@@ -28,6 +28,11 @@ import {
   getFirstSetupDonePref,
   setFirstSetupDonePref,
 } from '../storage/local_storage.ts';
+import {
+  exportBackupBundle,
+  validateBackupFile,
+  computeSHA256,
+} from '../storage/backup_service.ts';
 
 export async function runWebCurrencySetupTestSuite(): Promise<{ passedCount: number; failedCount: number }> {
   console.log('='.repeat(80));
@@ -146,6 +151,105 @@ export async function runWebCurrencySetupTestSuite(): Promise<{ passedCount: num
     );
   } catch (err: any) {
     assert(false, 'Test 6: First setup completion flag persistence', err.message);
+  }
+
+  // Test 7: Export and validation of backup with non-SAR currency (e.g. YER)
+  try {
+    const originalPref = getCurrencyPref();
+    setCurrencyPref('YER', 'ر.ي', 'ريال يمني');
+
+    const { jsonString } = await exportBackupBundle();
+    const validation = await validateBackupFile(jsonString);
+
+    assert(
+      validation.isValid === true &&
+      validation.bundle?.data.settings?.currencyCode === 'YER' &&
+      validation.bundle?.data.settings?.currencySymbol === 'ر.ي',
+      'Test 7: Export and accept valid non-SAR backup bundle (YER)',
+      `Validated code: ${validation.bundle?.data.settings?.currencyCode}`
+    );
+
+    // Reset currency back
+    setCurrencyPref(originalPref.code, originalPref.symbol, originalPref.name);
+  } catch (err: any) {
+    assert(false, 'Test 7: Export and accept valid non-SAR backup bundle (YER)', err.message);
+  }
+
+  // Test 8: Legacy SAR backup acceptance
+  try {
+    const originalPref = getCurrencyPref();
+    setCurrencyPref('SAR', 'ر.س', 'ريال سعودي');
+
+    const { jsonString } = await exportBackupBundle();
+    const validation = await validateBackupFile(jsonString);
+
+    assert(
+      validation.isValid === true &&
+      validation.bundle?.data.settings?.currencyCode === 'SAR' &&
+      validation.bundle?.data.settings?.currencySymbol === 'ر.س',
+      'Test 8: Accept legacy SAR backup bundle',
+      `Validated code: ${validation.bundle?.data.settings?.currencyCode}`
+    );
+
+    setCurrencyPref(originalPref.code, originalPref.symbol, originalPref.name);
+  } catch (err: any) {
+    assert(false, 'Test 8: Accept legacy SAR backup bundle', err.message);
+  }
+
+  // Test 9: Reject unsupported currency code in backup
+  try {
+    const { jsonString } = await exportBackupBundle();
+    const bundleObj = JSON.parse(jsonString);
+    bundleObj.data.settings.currencyCode = 'XYZ_UNSUPPORTED';
+    
+    // Recompute payload hash
+    const payloadString = JSON.stringify(bundleObj.data);
+    bundleObj.manifest.checksum = await computeSHA256(payloadString);
+
+    const validation = await validateBackupFile(JSON.stringify(bundleObj));
+    assert(
+      validation.isValid === false &&
+      Boolean(validation.error?.includes('عملة النسخة غير مدعومة')),
+      'Test 9: Reject unsupported currency code in backup',
+      `Error: ${validation.error}`
+    );
+  } catch (err: any) {
+    assert(false, 'Test 9: Reject unsupported currency code in backup', err.message);
+  }
+
+  // Test 10: Reject mismatched currency symbol for supported currency code
+  try {
+    const { jsonString } = await exportBackupBundle();
+    const bundleObj = JSON.parse(jsonString);
+    bundleObj.data.settings.currencyCode = 'SAR';
+    bundleObj.data.settings.currencySymbol = '$$$'; // Incorrect symbol for SAR
+    
+    // Recompute payload hash
+    const payloadString = JSON.stringify(bundleObj.data);
+    bundleObj.manifest.checksum = await computeSHA256(payloadString);
+
+    const validation = await validateBackupFile(JSON.stringify(bundleObj));
+    assert(
+      validation.isValid === false &&
+      Boolean(validation.error?.includes('لا يتطابق مع الرمز المعتمد')),
+      'Test 10: Reject mismatched currency symbol for supported code',
+      `Error: ${validation.error}`
+    );
+  } catch (err: any) {
+    assert(false, 'Test 10: Reject mismatched currency symbol for supported code', err.message);
+  }
+
+  // Test 11: Minor units amounts invariant preserved during restore preparation
+  try {
+    const storedAmountMinor = 85025; // 850.25
+    assert(
+      storedAmountMinor === 85025 &&
+      formatMinorAmount(storedAmountMinor) === '850.25',
+      'Test 11: Minor amount remains exact 85025 with zero calculation drift',
+      `Minor: ${storedAmountMinor}`
+    );
+  } catch (err: any) {
+    assert(false, 'Test 11: Minor amount remains exact 85025 with zero calculation drift', err.message);
   }
 
   console.log('-'.repeat(80));

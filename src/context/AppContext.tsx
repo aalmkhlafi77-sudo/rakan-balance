@@ -19,6 +19,7 @@ import {
   StickyNoteModel,
   TransactionModel,
   UserSettings,
+  SUPPORTED_CURRENCIES,
 } from '../domain/types.ts';
 import { LedgerImportPreview, LedgerImportCommitResult } from '../domain/web_ledger_import.ts';
 import {
@@ -115,7 +116,7 @@ interface AppContextType {
   switchScope: (scope: 'real' | 'demo') => void;
   loadDemoData: () => Promise<void>;
   purgeDemoData: () => Promise<void>;
-  atomicRestoreData: (bundleData: BackupBundle['data']) => Promise<void>;
+  atomicRestoreData: (bundleData: BackupBundle['data']) => Promise<{ success: boolean; preferenceError?: string }>;
   rollbackLastRestore: () => Promise<boolean>;
   importLedger: (preview: LedgerImportPreview) => Promise<LedgerImportCommitResult>;
 
@@ -758,11 +759,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const atomicRestoreData = async (bundleData: BackupBundle['data']) => {
-    // 1. Strictly operates on Real IndexedDB stores atomically in a single transaction
+  const atomicRestoreData = async (
+    bundleData: BackupBundle['data']
+  ): Promise<{ success: boolean; preferenceError?: string }> => {
+    // 1. Pre-validation of currency if present in settings
+    let matchedCurrency = null;
+    if (bundleData.settings?.currencyCode) {
+      const codeUpper = bundleData.settings.currencyCode.trim().toUpperCase();
+      matchedCurrency = SUPPORTED_CURRENCIES.find((c) => c.code === codeUpper);
+      if (!matchedCurrency) {
+        throw new Error(
+          `عملة النسخة غير مدعومة (${bundleData.settings.currencyCode}). تم إلغاء الاستعادة قبل إجراء أي تعديل.`
+        );
+      }
+    }
+
+    // 2. Strictly operates on Real IndexedDB stores atomically in a single transaction
     await dbStorage.atomicRestore(bundleData);
 
-    // 2. Post-DB transaction: Apply non-sensitive preferences to UI/LocalStorage with explicit error boundary
+    // 3. Post-DB transaction: Apply non-sensitive preferences to UI/LocalStorage with explicit error boundary
+    let prefErrorMsg: string | undefined = undefined;
     try {
       if (bundleData.settings) {
         if (bundleData.settings.ownerName) {
@@ -772,7 +788,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setTheme(bundleData.settings.theme);
           setThemePref(bundleData.settings.theme);
         }
-        if (bundleData.settings.currencyCode && bundleData.settings.currencySymbol) {
+        if (matchedCurrency) {
+          await updateCurrency(
+            matchedCurrency.code,
+            matchedCurrency.symbol,
+            matchedCurrency.name
+          );
+        } else if (bundleData.settings.currencyCode && bundleData.settings.currencySymbol) {
           await updateCurrency(
             bundleData.settings.currencyCode,
             bundleData.settings.currencySymbol,
@@ -785,12 +807,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
     } catch (prefError: any) {
-      console.warn('تنبيه: تمت استعادة البيانات المالية في قاعدة البيانات بنجاح، لكن تعذر تطبيق تفضيلات المظهر/الاسم:', prefError);
+      prefErrorMsg = prefError?.message || String(prefError);
+      console.warn(
+        'تنبيه: تمت استعادة البيانات المالية في قاعدة البيانات بنجاح، لكن تعذر تطبيق تفضيلات المظهر/العملة:',
+        prefError
+      );
     }
 
     if (activeScope === 'real') {
       await loadWorkspaceData('real');
     }
+
+    return {
+      success: true,
+      preferenceError: prefErrorMsg,
+    };
   };
 
   const rollbackLastRestore = async (): Promise<boolean> => {

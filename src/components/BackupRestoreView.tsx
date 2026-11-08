@@ -103,7 +103,12 @@ export const BackupRestoreView: React.FC = () => {
 
     try {
       // Executes inside a single transaction with automatic snapshot
-      await atomicRestoreData(stagedBundle.data);
+      const restoreResult = await atomicRestoreData(stagedBundle.data);
+      if (restoreResult.preferenceError) {
+        setValidationError(
+          `تم استرجاع السجلات المالية بنجاح في قاعدة البيانات، ولكن تعذر تطبيق بعض تفضيلات العرض: ${restoreResult.preferenceError}`
+        );
+      }
       setRestoreSuccess(true);
       setStagedBundle(null);
       setStagedCounts(null);
@@ -136,7 +141,7 @@ export const BackupRestoreView: React.FC = () => {
           النسخ الاحتياطي والاستعادة الآمنة
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          حماية بياناتك المحلية مع التحقق التشفيري (SHA-256) واستعادة ذرية كاملة (All-or-Nothing)
+          نسخة احتياطية مع فحص سلامة البيانات باستخدام SHA-256 واستعادة ذرية كاملة (All-or-Nothing)
         </p>
       </div>
 
@@ -154,7 +159,7 @@ export const BackupRestoreView: React.FC = () => {
                   تصدير نسخة احتياطية كاملة
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  توليد ملف مشفر وموقع بتجزئة SHA-256
+                  توليد ملف بيانات محمي بتجزئة التحقق من السلامة SHA-256
                 </p>
               </div>
             </div>
