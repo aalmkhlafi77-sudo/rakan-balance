@@ -343,50 +343,6 @@ export const BackupRestoreView: React.FC = () => {
           </button>
         </div>
 
-        {/* Developer-only preview manager: absent from release UI. */}
-        {import.meta.env.DEV && <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <div className="flex items-center gap-2.5 mb-2">
-            <FlaskConical className="w-4 h-4 text-amber-500" />
-            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              إدارة مساحة بيانات المعاينة (Demo Workspace)
-            </h4>
-          </div>
-          <p className="text-xs text-slate-500 leading-relaxed mb-3">
-            البيانات التجريبية محفوظة في مخزن مستقل تماماً (معزول في IndexedDB). تصفيرها لا يمس ولا يصل إلى بياناتك الحقيقية إطلاقاً.
-          </p>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={async () => {
-                await purgeDemoData();
-                setDemoPurged(true);
-                setTimeout(() => setDemoPurged(false), 3000);
-              }}
-              className="py-2 px-3.5 rounded-xl border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>تصفير بيانات المعاينة</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                await loadDemoData();
-              }}
-              className="py-2 px-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>إعادة شحن البيانات النموذجية</span>
-            </button>
-          </div>
-
-          {demoPurged && (
-            <div className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-              تم تصفير مخزن البيانات التجريبية المعزول بنجاح.
-            </div>
-          )}
-        </div>}
       </div>
     </div>
   );
