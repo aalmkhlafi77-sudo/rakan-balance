@@ -31,10 +31,10 @@ test('private owner account from MySQL response cannot appear in visitor local I
   await page.getByRole('dialog', { name: 'تسجيل دخول المالك' })
     .getByRole('button', { name: 'تسجيل الدخول' }).click();
 
-  await expect(page.getByText('مساحة المالك الخاصة')).toBeVisible();
   if (page.viewportSize()!.width < 1024) {
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   }
+  await expect(page.getByText('مساحة المالك الخاصة')).toBeVisible();
   await page.getByRole('navigation').getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
   await expect(page.getByText(secret)).toBeVisible();
 
