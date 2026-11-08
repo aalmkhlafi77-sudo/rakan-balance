@@ -69,7 +69,7 @@ test('server refuses unauthenticated owner data, checks origin and CSRF, revokes
 
     response = await request('/api/owner/status', { headers: { Cookie: cookie } });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { authenticated: true, storageReady: false });
+    assert.deepEqual(await response.json(), { authenticated: true, storageReady: true });
     response = await request('/api/auth/status', { headers: { Cookie: cookie } });
     assert.equal((await response.json()).authenticated, true);
 
