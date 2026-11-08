@@ -14,6 +14,32 @@ function digest(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function validateAttachmentRecords(records, payload) {
+  if (!Array.isArray(records) || records.length > 1000) throw new Error('Invalid encrypted attachments');
+  const ledger = payload === null ? null : JSON.parse(payload);
+  const links = ledger?.data;
+  const seen = new Set();
+  for (const record of records) {
+    if (!record || typeof record !== 'object' ||
+        Object.keys(record).sort().join(',') !== ['attachmentId','base64','mimeType','sha256','transactionId'].sort().join(',') ||
+        !/^[a-zA-Z0-9_-]{1,128}$/.test(record.attachmentId) ||
+        !/^[a-zA-Z0-9_-]{1,128}$/.test(record.transactionId) ||
+        seen.has(record.attachmentId)) throw new Error('Invalid encrypted attachment metadata');
+    seen.add(record.attachmentId);
+    if (!['image/png','image/jpeg','image/webp','image/gif','application/pdf'].includes(record.mimeType)) {
+      throw new Error('Invalid encrypted attachment MIME');
+    }
+    const bytes = exactBase64(record.base64, null);
+    if (!bytes.length || bytes.length > 5 * 1024 * 1024 || digest(bytes) !== record.sha256) {
+      throw new Error('Encrypted attachment checksum mismatch');
+    }
+    if (!links?.transactions?.some(x=>x.id === record.transactionId && x.attachmentIds?.includes(record.attachmentId)) ||
+        !links?.attachments?.some(x=>x.id === record.attachmentId && x.transactionId === record.transactionId)) {
+      throw new Error('Encrypted attachment is not linked to a committed ledger record');
+    }
+  }
+}
+
 export async function encryptOwnerBackup(snapshot, passphrase) {
   passphraseRequired(passphrase);
   if (!snapshot || typeof snapshot !== 'object' ||
@@ -21,9 +47,11 @@ export async function encryptOwnerBackup(snapshot, passphrase) {
       (snapshot.payload !== null && typeof snapshot.payload !== 'string')) {
     throw new Error('Invalid owner backup snapshot');
   }
+  if (snapshot.attachments !== undefined) validateAttachmentRecords(snapshot.attachments, snapshot.payload);
   const plaintext = Buffer.from(JSON.stringify({
     revision: snapshot.revision, payload: snapshot.payload,
     payload_sha256: snapshot.payload === null ? null : digest(Buffer.from(snapshot.payload, 'utf8')),
+    ...(snapshot.attachments === undefined ? {} : { attachments: snapshot.attachments }),
   }), 'utf8');
   if (plaintext.length > MAX_BACKUP_BYTES) throw new Error('Backup exceeds size limit');
   const salt = randomBytes(32);
@@ -79,10 +107,14 @@ export async function decryptOwnerBackup(serialized, passphrase) {
   const snapshot = JSON.parse(raw.toString('utf8'));
   if (!snapshot || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
       (snapshot.payload !== null && typeof snapshot.payload !== 'string') ||
-      Object.keys(snapshot).sort().join(',') !== ['payload', 'payload_sha256', 'revision'].sort().join(',')) {
+      Object.keys(snapshot).sort().join(',') !==
+        (snapshot.attachments === undefined
+          ? ['payload', 'payload_sha256', 'revision']
+          : ['attachments', 'payload', 'payload_sha256', 'revision']).sort().join(',')) {
     throw new Error('Invalid decrypted owner snapshot');
   }
   const actual = snapshot.payload === null ? null : digest(Buffer.from(snapshot.payload, 'utf8'));
   if (actual !== snapshot.payload_sha256) throw new Error('Owner backup checksum mismatch');
+  if (snapshot.attachments !== undefined) validateAttachmentRecords(snapshot.attachments, snapshot.payload);
   return snapshot;
 }
