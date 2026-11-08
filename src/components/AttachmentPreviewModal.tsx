@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AttachmentModel } from '../domain/types.ts';
-import { downloadAttachment, formatFileSize } from '../services/attachment_service.ts';
+import { downloadAttachment, formatFileSize, resolveAttachmentUrl } from '../services/attachment_service.ts';
 import { PdfViewerCanvas } from './PdfViewerCanvas.tsx';
 import {
   X,
@@ -20,6 +20,7 @@ import {
   FileText,
   Image as ImageIcon,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 
 interface AttachmentPreviewModalProps {
@@ -37,6 +38,9 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState<number>(initialIndex);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [resolvedUrl, setResolvedUrl] = useState<string>('');
+  const [attachmentLoading, setAttachmentLoading] = useState<boolean>(false);
+  const [attachmentError, setAttachmentError] = useState<string>('');
 
   useEffect(() => {
     setCurrentIndex(initialIndex);
@@ -50,6 +54,36 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
   const isPdf = currentAttachment
     ? currentAttachment.mimeType.includes('pdf') || currentAttachment.originalName.toLowerCase().endsWith('.pdf')
     : false;
+
+  useEffect(() => {
+    let cancelled = false;
+    let revokeUrl: string | null = null;
+    setResolvedUrl('');
+    setAttachmentError('');
+    if (!isOpen || !currentAttachment) {
+      setAttachmentLoading(false);
+      return () => {};
+    }
+    setAttachmentLoading(true);
+    void resolveAttachmentUrl(currentAttachment).then((resolved) => {
+      if (cancelled) {
+        if (resolved.revoke) URL.revokeObjectURL(resolved.url);
+        return;
+      }
+      if (resolved.revoke) revokeUrl = resolved.url;
+      setResolvedUrl(resolved.url);
+    }).catch((error) => {
+      if (!cancelled) {
+        setAttachmentError(error instanceof Error ? error.message : 'تعذر تحميل المرفق.');
+      }
+    }).finally(() => {
+      if (!cancelled) setAttachmentLoading(false);
+    });
+    return () => {
+      cancelled = true;
+      if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+    };
+  }, [isOpen, currentAttachment?.id, currentAttachment?.dataUrl]);
 
   if (!isOpen || !attachments || attachments.length === 0 || !currentAttachment) return null;
 
@@ -167,16 +201,27 @@ export const AttachmentPreviewModal: React.FC<AttachmentPreviewModalProps> = ({
 
         {/* Content Render */}
         <div className="w-full h-full flex items-center justify-center overflow-auto p-2">
-          {isImage ? (
+          {attachmentLoading ? (
+            <div className="flex flex-col items-center gap-3 text-slate-300">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+              <p className="text-xs font-semibold">جاري تحميل المرفق الخاص...</p>
+            </div>
+          ) : attachmentError ? (
+            <div className="text-center p-8 bg-slate-900/90 border border-slate-800 rounded-2xl max-w-md space-y-3 text-white">
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+              <h4 className="text-sm font-bold">تعذر تحميل المرفق</h4>
+              <p className="text-xs text-slate-400">{attachmentError}</p>
+            </div>
+          ) : isImage ? (
             <img
-              src={currentAttachment.dataUrl}
+              src={resolvedUrl}
               alt={currentAttachment.originalName}
               style={{ transform: `scale(${zoomLevel})` }}
               className="max-h-full max-w-full object-contain rounded-xl shadow-2xl transition-transform duration-200 ease-out"
             />
           ) : isPdf ? (
             <PdfViewerCanvas
-              dataUrl={currentAttachment.dataUrl}
+              dataUrl={resolvedUrl}
               originalName={currentAttachment.originalName}
             />
           ) : (
