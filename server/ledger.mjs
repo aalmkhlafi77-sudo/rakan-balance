@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
+import express from 'express';
 import { validateBackupFile } from './generated/owner-validator.mjs';
 
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
 function responseError(res, status, reason) {
   return res.status(status).json({ error: reason });
-}
-function jsonSize(value) {
-  return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
 
 export function registerOwnerLedgerRoutes(app, pool, auth) {
@@ -31,7 +29,8 @@ export function registerOwnerLedgerRoutes(app, pool, auth) {
     }
   });
 
-  app.put('/api/owner/ledger', auth.requireOwner, auth.strictOrigin, auth.requireCsrf, async (req, res) => {
+  app.put('/api/owner/ledger', auth.requireOwner, auth.strictOrigin,
+    express.json({ limit: '18mb', type: 'application/json' }), auth.requireCsrf, async (req, res) => {
     const { expectedRevision, bundle } = req.body || {};
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || !bundle || typeof bundle !== 'object' ||
         Array.isArray(bundle)) return responseError(res, 400, 'invalid_request');
