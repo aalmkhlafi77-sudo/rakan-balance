@@ -88,7 +88,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-transparent flex text-slate-900 dark:text-slate-100 selection:bg-[#B56CE8]/30" dir="rtl">
+    <div className="luxury-shell min-h-screen bg-slate-50 dark:bg-transparent flex text-slate-900 dark:text-slate-100 selection:bg-[#B56CE8]/30" dir="rtl">
       {/* Local Lock Screen Overlay */}
       {isLocked && <LockScreen />}
 
