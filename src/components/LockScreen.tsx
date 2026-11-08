@@ -7,10 +7,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { useOwnerAccess } from './OwnerAccessGate.tsx';
 import { Lock, Delete, ArrowRight, ShieldCheck, AlertTriangle } from 'lucide-react';
 
 export const LockScreen: React.FC = () => {
   const { unlockWithPin, settings } = useApp();
+  const ownerAccess = useOwnerAccess();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,6 +91,12 @@ export const LockScreen: React.FC = () => {
           width={80} height={80} />
 
         <h1 className="text-xl font-bold tracking-tight mb-1">راكان بلانس | RAKAN BALANCE</h1>
+        {ownerAccess.status === 'visitor' && (
+          <button type="button" onClick={ownerAccess.openLogin}
+            className="mt-2 mb-3 min-h-10 px-4 rounded-xl text-xs font-semibold border border-emerald-400/50 text-emerald-200">
+            دخول المالك الخاص
+          </button>
+        )}
         <p className="text-xs text-slate-400 mb-5">
           شاشة التطبيق مقفلة محلياً برمز مرور المالك
         </p>
