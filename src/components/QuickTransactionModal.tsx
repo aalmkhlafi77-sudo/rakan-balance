@@ -35,7 +35,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
   defaultAccountId,
   defaultEntryType = 'owedByAccount',
 }) => {
-  const { accounts, addTransaction, updateTransaction, getAccountBalance } = useApp();
+  const { accounts, addTransaction, updateTransaction, getAccountBalance, settings } = useApp();
 
   const [accountId, setAccountId] = useState<string>('');
   const [entryType, setEntryType] = useState<EntryType>(defaultEntryType);
@@ -296,7 +296,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                المبلغ بالريال السعودي (ر.س):
+                المبلغ بالعملة المحلية ({settings.currencySymbol}):
               </label>
               <div className="relative">
                 <input
@@ -310,7 +310,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                   required
                 />
                 <span className="absolute left-3 top-2.5 text-xs font-mono text-slate-400">
-                  SAR
+                  {settings.currencyCode}
                 </span>
               </div>
             </div>

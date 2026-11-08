@@ -11,6 +11,7 @@ import 'fake-indexeddb/auto';
 import { runFinancialVerificationSuite } from '../domain/financial_rules_spec.ts';
 import { runGoldenFixturesTests } from '../../tests/fixtures/run_golden_fixtures_test.ts';
 import { runWebLedgerImportTestSuite } from './web_ledger_import_spec.ts';
+import { runWebCurrencySetupTestSuite } from './web_currency_setup_spec.ts';
 import {
   createIsolatedTestStorage,
   DB_NAME,
@@ -173,7 +174,11 @@ async function main(): Promise<number> {
     console.log('\n');
     const webImportResults = await runWebLedgerImportTestSuite();
 
-    // 5. Verify zero touch / zero pollution on simulated user environment
+    // 5. Execute Web Currency & Initial Setup Verification Suite (WEB-F2)
+    console.log('\n');
+    const webCurrencyResults = await runWebCurrencySetupTestSuite();
+
+    // 6. Verify zero touch / zero pollution on simulated user environment
     const [accsAfter, catsAfter, txsAfter, attsAfter, notesAfter, demoNotesAfter] =
       await Promise.all([
         simulatedUserStorage.getAll<AccountModel>(STORES_REAL.ACCOUNTS),
@@ -210,17 +215,18 @@ async function main(): Promise<number> {
     console.log(`Simulated Demo Note Preserved: ${demoNotePreserved ? 'YES' : 'NO'}`);
     console.log('='.repeat(80));
 
-    console.log(`\nTEST SUMMARY: Invariants (${passedCount}/${results.length}) | Golden Fixtures (${goldenResults.passedCount}/${goldenResults.results.length}) | Web Import (${webImportResults.passed}/${webImportResults.passed + webImportResults.failed})`);
+    const totalWebCurrency = webCurrencyResults.passedCount + webCurrencyResults.failedCount;
+    console.log(`\nTEST SUMMARY: Invariants (${passedCount}/${results.length}) | Golden Fixtures (${goldenResults.passedCount}/${goldenResults.results.length}) | Web Import (${webImportResults.passed}/${webImportResults.passed + webImportResults.failed}) | Web Currency & Setup (${webCurrencyResults.passedCount}/${totalWebCurrency})`);
     console.log(`Time elapsed: ${elapsedMs}ms`);
 
     if (!fingerprintsMatch || !demoNotePreserved || !realAccountPreserved || !realTxPreserved) {
       console.error('\nSECURITY CRITICAL ERROR: The test suite modified user environment data!');
       exitCode = 1;
-    } else if (failedCount > 0 || goldenResults.failedCount > 0 || webImportResults.failed > 0) {
-      console.error(`\nFAILED: Invariant failures: ${failedCount}, Golden failures: ${goldenResults.failedCount}, Web Import failures: ${webImportResults.failed}.`);
+    } else if (failedCount > 0 || goldenResults.failedCount > 0 || webImportResults.failed > 0 || webCurrencyResults.failedCount > 0) {
+      console.error(`\nFAILED: Invariant failures: ${failedCount}, Golden failures: ${goldenResults.failedCount}, Web Import failures: ${webImportResults.failed}, Web Currency failures: ${webCurrencyResults.failedCount}.`);
       exitCode = 1;
     } else {
-      console.log(`\nSUCCESS: All ${results.length} invariant tests, all ${goldenResults.results.length} golden fixtures, AND all ${webImportResults.passed} web import tests passed & 100% data isolation verified.`);
+      console.log(`\nSUCCESS: All ${results.length} invariant tests, all ${goldenResults.results.length} golden fixtures, all ${webImportResults.passed} web import tests, AND all ${webCurrencyResults.passedCount} web currency & setup tests passed & 100% data isolation verified.`);
       exitCode = 0;
     }
   } finally {

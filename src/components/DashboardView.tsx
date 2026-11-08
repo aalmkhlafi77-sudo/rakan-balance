@@ -33,7 +33,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenQuickTx,
   onSelectAccountForStatement,
 }) => {
-  const { dashboardSummary, accounts, transactions } = useApp();
+  const { dashboardSummary, accounts, transactions, settings } = useApp();
 
   const recentTransactions = [...transactions].sort((a, b) => {
     if (a.date !== b.date) return b.date.localeCompare(a.date);
@@ -84,12 +84,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <TrendingUp className="w-4 h-4 text-emerald-500" />
               <span>إجمالي لك (مستحق لك طرف الغير)</span>
             </span>
-            <span className="text-[10px] font-mono text-slate-400">SAR</span>
+            <span className="text-[10px] font-mono text-slate-400">{settings.currencyCode}</span>
           </div>
 
           <div className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-slate-900 dark:text-slate-100 tracking-tight">
             {formatMinorAmount(dashboardSummary.totalReceivableMinor)}
-            <span className="text-xs font-sans font-medium text-slate-400 mr-1.5">ر.س</span>
+            <span className="text-xs font-sans font-medium text-slate-400 mr-1.5">{settings.currencySymbol}</span>
           </div>
 
           <div className="mt-3 text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
@@ -107,12 +107,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <TrendingDown className="w-4 h-4 text-rose-500" />
               <span>إجمالي عليك (التزامات مستحقة للغير)</span>
             </span>
-            <span className="text-[10px] font-mono text-slate-400">SAR</span>
+            <span className="text-[10px] font-mono text-slate-400">{settings.currencyCode}</span>
           </div>
 
           <div className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-slate-900 dark:text-slate-100 tracking-tight">
             {formatMinorAmount(dashboardSummary.totalPayableMinor)}
-            <span className="text-xs font-sans font-medium text-slate-400 mr-1.5">ر.س</span>
+            <span className="text-xs font-sans font-medium text-slate-400 mr-1.5">{settings.currencySymbol}</span>
           </div>
 
           <div className="mt-3 text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
@@ -233,7 +233,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         }`}
                       >
                         {isOwedBy ? '+' : '-'}
-                        {formatMinorAmount(tx.amountMinor)} ر.س
+                        {formatMinorAmount(tx.amountMinor)} {settings.currencySymbol}
                       </div>
                       <div className="text-[10px] text-slate-400 font-sans">
                         {isOwedBy ? 'عليه (لك)' : 'له (عليك/سداد)'}

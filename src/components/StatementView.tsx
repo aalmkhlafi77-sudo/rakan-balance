@@ -216,7 +216,7 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
               كشف حساب: {selectedAccount?.name || '—'}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              الفترة: {fromDate || 'بداية التعامل'} إلى {toDate || 'تاريخ اليوم'} · العملة: ريال سعودي (SAR)
+              الفترة: {fromDate || 'بداية التعامل'} إلى {toDate || 'تاريخ اليوم'} · العملة: {settings.currencyName || 'ريال سعودي'} ({settings.currencyCode})
             </p>
           </div>
 
@@ -242,7 +242,7 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
                   : 'text-slate-700 dark:text-slate-300'
               }`}
             >
-              {formatCurrency(statement.openingBalanceMinor, { showSign: true })}
+              {formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
             </div>
           </div>
 
@@ -250,7 +250,7 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
             <div className="text-[11px] text-slate-500 mb-1">إجمالي عليه (خلال الفترة)</div>
             <div className="text-base font-extrabold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-              +{formatMinorAmount(statement.totalOwedByMinor)} ر.س
+              +{formatMinorAmount(statement.totalOwedByMinor)} {settings.currencySymbol}
             </div>
           </div>
 
@@ -258,7 +258,7 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
             <div className="text-[11px] text-slate-500 mb-1">إجمالي له (خلال الفترة)</div>
             <div className="text-base font-extrabold font-mono tabular-nums text-rose-600 dark:text-rose-400">
-              -{formatMinorAmount(statement.totalOwedToMinor)} ر.س
+              -{formatMinorAmount(statement.totalOwedToMinor)} {settings.currencySymbol}
             </div>
           </div>
 

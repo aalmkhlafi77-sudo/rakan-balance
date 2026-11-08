@@ -24,12 +24,17 @@ import {
   FileCode,
   ShieldCheck,
   KeyRound,
+  AlertTriangle,
 } from 'lucide-react';
+import { SUPPORTED_CURRENCIES } from '../domain/types.ts';
 
 export const SettingsView: React.FC = () => {
   const {
     settings,
+    accounts,
+    transactions,
     updateOwnerName,
+    updateCurrency,
     hasPinSet,
     setupPin,
     removePin,
@@ -37,6 +42,32 @@ export const SettingsView: React.FC = () => {
 
   const [ownerInput, setOwnerInput] = useState(settings.ownerName);
   const [ownerSaved, setOwnerSaved] = useState(false);
+
+  // Currency Selection State
+  const [selectedCurrencyCode, setSelectedCurrencyCode] = useState(settings.currencyCode);
+  const [currencySaved, setCurrencySaved] = useState(false);
+  const [showCurrencyConfirmModal, setShowCurrencyConfirmModal] = useState(false);
+
+  const hasExistingData = accounts.length > 0 || transactions.length > 0;
+
+  const handleCurrencyFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedCurrencyCode === settings.currencyCode) return;
+    if (hasExistingData) {
+      setShowCurrencyConfirmModal(true);
+    } else {
+      confirmCurrencyChange();
+    }
+  };
+
+  const confirmCurrencyChange = async () => {
+    const cur = SUPPORTED_CURRENCIES.find((c) => c.code === selectedCurrencyCode);
+    if (!cur) return;
+    await updateCurrency(cur.code, cur.symbol, cur.name);
+    setShowCurrencyConfirmModal(false);
+    setCurrencySaved(true);
+    setTimeout(() => setCurrencySaved(false), 2500);
+  };
 
   // PIN Setup State
   const [newPin, setNewPin] = useState('');
@@ -171,31 +202,129 @@ export const SettingsView: React.FC = () => {
                 العملة المحلية الموحدة
               </h3>
               <p className="text-[11px] text-slate-500">
-                سياسة العملة الواحدة الصارمة (Document v2)
+                سياسة العملة الواحدة الصارمة (Document v2 & WEB-F2)
               </p>
             </div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-2 mb-3">
             <div className="flex items-center justify-between">
-              <span className="text-slate-600 dark:text-slate-400">العملة المعتمدة:</span>
+              <span className="text-slate-600 dark:text-slate-400">العملة المعتمدة حالياً:</span>
               <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                ريال سعودي (SAR) — ر.س
+                {settings.currencyName || 'ريال سعودي'} ({settings.currencyCode}) — {settings.currencySymbol}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-slate-600 dark:text-slate-400">الدقة الحسابية:</span>
+              <span className="text-slate-600 dark:text-slate-400">الدقة الحسابية المعتمدة:</span>
               <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                100 هللة (أعداد صحيحة Minor Units)
+                منزلتان عشريتان (أعداد صحيحة Minor Units)
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-600 dark:text-slate-400">حجم السجلات المالية:</span>
+              <span className="font-mono text-slate-700 dark:text-slate-300">
+                {accounts.length} حسابات · {transactions.length} حركات
               </span>
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            وفق ميثاق العمل، لا يدعم التطبيق تعدد العملات أو أسعار الصرف المتذبذبة لضمان بساطة الحسابات الشخصية واستقرار الأرصدة.
+          <form onSubmit={handleCurrencyFormSubmit} className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                تحديد العملة المحلية:
+              </label>
+              <select
+                value={selectedCurrencyCode}
+                onChange={(e) => setSelectedCurrencyCode(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 font-medium focus:outline-hidden focus:ring-2 focus:ring-amber-500/50"
+              >
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name} ({c.code}) — {c.symbol}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              {currencySaved ? (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  تم اعتماد العملة بنجاح
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400">
+                  {hasExistingData ? 'تغيير العرض مع حماية الأرقام' : 'تطبيق العملة للنظام'}
+                </span>
+              )}
+              <button
+                type="submit"
+                disabled={selectedCurrencyCode === settings.currencyCode}
+                className="py-1.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-medium cursor-pointer transition-colors shadow-sm"
+              >
+                تحديث العملة
+              </button>
+            </div>
+          </form>
+
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-3">
+            وفق ميثاق العمل، لا يدعم التطبيق تعدد العملات في نفس الحساب أو أسعار الصرف المتذبذبة لضمان بساطة الحسابات الشخصية واستقرار الأرصدة.
           </p>
         </div>
       </div>
+
+      {/* Currency Change Explanation & Confirmation Modal */}
+      {showCurrencyConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2.5 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                تأكيد تغيير العملة المعروضة للنظام
+              </h3>
+            </div>
+
+            <div className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed space-y-2 bg-amber-50/60 dark:bg-amber-950/30 p-3.5 rounded-xl border border-amber-200/80 dark:border-amber-900/60">
+              <p className="font-bold text-amber-900 dark:text-amber-200">
+                تنبيه حماية البيانات المالية القائمة:
+              </p>
+              <p>
+                قاعدة البيانات تحتوي حالياً على <strong>{accounts.length} حسابات</strong> و <strong>{transactions.length} حركات مالية</strong>.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-700 dark:text-slate-300 pr-1">
+                <li>
+                  تغيير العملة <strong>لا يُجري أي تحويل رياضي أو سعر صرف</strong> للقيم المخزنة.
+                </li>
+                <li>
+                  تبقى جميع الأرقام والأرصدة بوحداتها الصغرى كما هي دون زيادة أو نقصان.
+                </li>
+                <li>
+                  سيتم فقط تحديث الرمز واسم العملة الظاهر في كافة الواجهات وكشوفات الحساب إلى: <strong>{SUPPORTED_CURRENCIES.find((c) => c.code === selectedCurrencyCode)?.name} ({SUPPORTED_CURRENCIES.find((c) => c.code === selectedCurrencyCode)?.symbol})</strong>.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCurrencyConfirmModal(false);
+                  setSelectedCurrencyCode(settings.currencyCode);
+                }}
+                className="py-2 px-4 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                إلغاء التغيير
+              </button>
+              <button
+                type="button"
+                onClick={confirmCurrencyChange}
+                className="py-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer shadow-sm"
+              >
+                تأكيد واعتماد الرمز
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Local PIN Security Card */}
       <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">

@@ -21,6 +21,7 @@ import { SettingsView } from './components/SettingsView.tsx';
 import { LockScreen } from './components/LockScreen.tsx';
 import { QuickTransactionModal } from './components/QuickTransactionModal.tsx';
 import { InterAccountTransferModal } from './components/InterAccountTransferModal.tsx';
+import { FirstSetupModal } from './components/FirstSetupModal.tsx';
 import { TransactionModel } from './domain/types.ts';
 
 const AppContent: React.FC = () => {
@@ -89,6 +90,9 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex text-slate-900 dark:text-slate-100 selection:bg-emerald-500/20" dir="rtl">
       {/* Local Lock Screen Overlay */}
       {isLocked && <LockScreen />}
+
+      {/* First-time Onboarding & Setup Wizard */}
+      <FirstSetupModal />
 
       {/* Main Navigation Sidebar */}
       <Sidebar

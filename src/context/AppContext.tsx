@@ -29,11 +29,15 @@ import {
 import { dbStorage, STORES_DEMO, STORES_REAL } from '../storage/indexed_db.ts';
 import {
   getActiveScopePref,
+  getCurrencyPref,
+  getFirstSetupDonePref,
   getOwnerNamePref,
   getPinAuthPref,
   getSidebarCollapsedPref,
   getThemePref,
   setActiveScopePref,
+  setCurrencyPref,
+  setFirstSetupDonePref,
   setOwnerNamePref,
   setPinAuthPref,
   setSidebarCollapsedPref,
@@ -48,7 +52,7 @@ import {
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
 import { dueRemaining, validateDueRecord, validDate } from '../domain/dues.ts';
-import { MAX_SAFE_MINOR_AMOUNT } from '../domain/money.ts';
+import { MAX_SAFE_MINOR_AMOUNT, setActiveCurrencySymbol } from '../domain/money.ts';
 import {
   buildTransferEntries,
   validateInterAccountTransfer,
@@ -127,6 +131,8 @@ interface AppContextType {
   toggleTheme: () => void;
   toggleSidebar: () => void;
   updateOwnerName: (name: string) => void;
+  updateCurrency: (code: string, symbol: string, name?: string) => Promise<void>;
+  completeFirstSetup: (ownerName: string, currencyCode: string, currencySymbol: string, currencyName: string, initialPin?: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -149,13 +155,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [theme, setTheme] = useState<'dark' | 'light'>(getThemePref());
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(getSidebarCollapsedPref());
   const [ownerName, setOwnerName] = useState<string>(getOwnerNamePref());
+  const initialCurrency = getCurrencyPref();
+  const [currencyCode, setCurrencyCode] = useState<string>(initialCurrency.code);
+  const [currencySymbol, setCurrencySymbol] = useState<string>(initialCurrency.symbol);
+  const [currencyName, setCurrencyName] = useState<string>(initialCurrency.name);
+  const [isFirstSetupDone, setIsFirstSetupDone] = useState<boolean>(getFirstSetupDonePref());
   const pinAuth = getPinAuthPref();
   const [isLocked, setIsLocked] = useState<boolean>(Boolean(pinAuth.hash));
 
-  // Initialize theme on DOM
+  // Initialize theme on DOM and active currency symbol globally
   useEffect(() => {
     setThemePref(theme);
   }, [theme]);
+
+  useEffect(() => {
+    setActiveCurrencySymbol(currencySymbol);
+  }, [currencySymbol]);
 
   // Load workspace data based on active scope
   const loadWorkspaceData = useCallback(async (scope: 'real' | 'demo') => {
@@ -757,6 +772,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setTheme(bundleData.settings.theme);
           setThemePref(bundleData.settings.theme);
         }
+        if (bundleData.settings.currencyCode && bundleData.settings.currencySymbol) {
+          await updateCurrency(
+            bundleData.settings.currencyCode,
+            bundleData.settings.currencySymbol,
+            bundleData.settings.currencyName
+          );
+        }
         if (typeof bundleData.settings.sidebarCollapsed === 'boolean') {
           setSidebarCollapsed(bundleData.settings.sidebarCollapsed);
           setSidebarCollapsedPref(bundleData.settings.sidebarCollapsed);
@@ -849,11 +871,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOwnerNamePref(name);
   };
 
+  const updateCurrency = async (code: string, symbol: string, name?: string): Promise<void> => {
+    const cleanCode = code.trim().toUpperCase();
+    const cleanSymbol = symbol.trim();
+    const cleanName = (name || cleanCode).trim();
+    
+    // Updates presentation settings ONLY.
+    // Explicitly prevents modifying existing minor unit integers or recalculating balances.
+    setCurrencyCode(cleanCode);
+    setCurrencySymbol(cleanSymbol);
+    setCurrencyName(cleanName);
+    setCurrencyPref(cleanCode, cleanSymbol, cleanName);
+    setActiveCurrencySymbol(cleanSymbol);
+  };
+
+  const completeFirstSetup = async (
+    newOwnerName: string,
+    newCurrencyCode: string,
+    newCurrencySymbol: string,
+    newCurrencyName: string,
+    initialPin?: string
+  ): Promise<void> => {
+    if (newOwnerName.trim()) {
+      updateOwnerName(newOwnerName.trim());
+    }
+    await updateCurrency(newCurrencyCode, newCurrencySymbol, newCurrencyName);
+    if (initialPin && initialPin.length >= 4 && initialPin.length <= 8) {
+      await setupPin(initialPin);
+    }
+    setIsFirstSetupDone(true);
+    setFirstSetupDonePref(true);
+  };
+
   const settings: UserSettings = {
     ownerName,
-    currencyCode: 'SAR',
-    currencySymbol: 'ر.س',
+    currencyCode,
+    currencySymbol,
+    currencyName,
     currencyDecimals: 2,
+    isFirstSetupDone,
     pinCodeHash: pinAuth.hash,
     pinSalt: pinAuth.salt,
     isLocked,
@@ -916,6 +972,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleTheme,
         toggleSidebar,
         updateOwnerName,
+        updateCurrency,
+        completeFirstSetup,
       }}
     >
       {children}

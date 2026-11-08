@@ -11,7 +11,7 @@ const localToday = () => {
 const statusLabels = { pending: 'قادم', partially_settled: 'مسدد جزئيًا', settled: 'مسدد', overdue: 'متأخر', today: 'مستحق اليوم' } as const;
 
 export const DuesView: React.FC = () => {
-  const { accounts, dues, reminders, createDue, settleDue, deleteUnpaidDue, createReminder, completeReminder, activeScope, getAccountBalance } = useApp();
+  const { accounts, dues, reminders, createDue, settleDue, deleteUnpaidDue, createReminder, completeReminder, activeScope, getAccountBalance, settings } = useApp();
   const [accountId, setAccountId] = useState('');
   const [entryType, setEntryType] = useState<EntryType>('owedByAccount');
   const [amount, setAmount] = useState('');
@@ -59,7 +59,7 @@ export const DuesView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-900"><p className="text-xs text-slate-500">الاستحقاقات المفتوحة</p><p className="text-2xl font-bold">{openCount}</p></div>
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-900"><p className="text-xs text-slate-500">الاستحقاقات المتأخرة</p><p className="text-2xl font-bold text-rose-600">{overdueCount}</p></div>
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-900"><p className="text-xs text-slate-500">إجمالي المتبقي للمتابعة</p><p className="text-xl font-bold">{formatMinorAmount(remaining)} ر.س</p></div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-900"><p className="text-xs text-slate-500">إجمالي المتبقي للمتابعة</p><p className="text-xl font-bold">{formatMinorAmount(remaining)} {settings.currencySymbol}</p></div>
       </div>
 
       {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300">{error}</p>}
@@ -79,7 +79,7 @@ export const DuesView: React.FC = () => {
           <label className="text-xs font-semibold space-y-1">الحساب
             <select required value={accountId} onChange={e => setAccountId(e.target.value)} className="block w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800">
               <option value="">اختر الحساب</option>
-              {activeAccounts.map(a => <option value={a.id} key={a.id}>{a.name} ({formatMinorAmount(getAccountBalance(a.id))} ر.س)</option>)}
+              {activeAccounts.map(a => <option value={a.id} key={a.id}>{a.name} ({formatMinorAmount(getAccountBalance(a.id))} {settings.currencySymbol})</option>)}
             </select>
           </label>
           <label className="text-xs font-semibold space-y-1">نوع الاستحقاق
@@ -88,7 +88,7 @@ export const DuesView: React.FC = () => {
               <option value="owedToAccount">مستحق عليك</option>
             </select>
           </label>
-          <label className="text-xs font-semibold space-y-1">المبلغ (ريال)
+          <label className="text-xs font-semibold space-y-1">المبلغ ({settings.currencySymbol})
             <input required inputMode="decimal" placeholder="مثال: 150.25" value={amount} onChange={e => setAmount(e.target.value)} className="block w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800"/>
           </label>
           <label className="text-xs font-semibold space-y-1">تاريخ الاستحقاق
@@ -119,14 +119,14 @@ export const DuesView: React.FC = () => {
               <span className={`text-xs font-bold px-2 py-1 rounded-lg ${status === 'overdue' ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/30' : 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30'}`}>{statusLabels[status]}</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-              <p>الأصل: <strong>{formatMinorAmount(due.originalAmountMinor)} ر.س</strong></p>
-              <p>المسدد: <strong>{formatMinorAmount(due.settledAmountMinor)} ر.س</strong></p>
-              <p>المتبقي: <strong>{formatMinorAmount(dueRemaining(due))} ر.س</strong></p>
+              <p>الأصل: <strong>{formatMinorAmount(due.originalAmountMinor)} {settings.currencySymbol}</strong></p>
+              <p>المسدد: <strong>{formatMinorAmount(due.settledAmountMinor)} {settings.currencySymbol}</strong></p>
+              <p>المتبقي: <strong>{formatMinorAmount(dueRemaining(due))} {settings.currencySymbol}</strong></p>
             </div>
             {due.notes && <p className="text-xs text-slate-500">{due.notes}</p>}
             {dueRemaining(due) > 0 && <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => {setPayingDue(payingDue === due.id ? null : due.id); setRemindingDue(null); setPaymentAmount(''); setError('');}} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600">تسجيل سداد جزئي / كامل</button>
-              <button type="button" onClick={() => {setRemindingDue(remindingDue === due.id ? null : due.id); setPayingDue(null); setRemindText(`تذكير: يوجد استحقاق بتاريخ ${due.dueDate} بمبلغ متبقٍ ${formatMinorAmount(dueRemaining(due))} ر.س.`); setError('');}} className="px-3 py-2 rounded-lg text-xs border border-slate-300 dark:border-slate-700">تذكير يدوي</button>
+              <button type="button" onClick={() => {setRemindingDue(remindingDue === due.id ? null : due.id); setPayingDue(null); setRemindText(`تذكير: يوجد استحقاق بتاريخ ${due.dueDate} بمبلغ متبقٍ ${formatMinorAmount(dueRemaining(due))} ${settings.currencySymbol}.`); setError('');}} className="px-3 py-2 rounded-lg text-xs border border-slate-300 dark:border-slate-700">تذكير يدوي</button>
               {due.settledAmountMinor === 0 && <button type="button" disabled={busy} onClick={() => {
                 if (!window.confirm('هل تريد حذف الاستحقاق غير المسدد وتذكيراته دون أي تغيير للحركات المالية؟')) return;
                 void run(() => deleteUnpaidDue(due.id), 'تم حذف الاستحقاق غير المسدد وتذكيراته.');

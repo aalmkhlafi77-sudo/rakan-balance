@@ -45,6 +45,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     transactions,
     accounts,
     attachments,
+    settings,
     deleteTransaction,
     deleteInterAccountTransfer,
   } = useApp();
@@ -245,10 +246,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           </div>
           <div className="flex items-center gap-4 font-mono">
             <div>
-              مجموع عليه: <span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">+{formatMinorAmount(filteredSummary.totalOwedBy)} ر.س</span>
+              مجموع عليه: <span className="text-emerald-600 dark:text-emerald-400 font-bold tabular-nums">+{formatMinorAmount(filteredSummary.totalOwedBy)} {settings.currencySymbol}</span>
             </div>
             <div>
-              مجموع له: <span className="text-rose-600 dark:text-rose-400 font-bold tabular-nums">-{formatMinorAmount(filteredSummary.totalOwedTo)} ر.س</span>
+              مجموع له: <span className="text-rose-600 dark:text-rose-400 font-bold tabular-nums">-{formatMinorAmount(filteredSummary.totalOwedTo)} {settings.currencySymbol}</span>
             </div>
           </div>
         </div>
@@ -363,7 +364,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                           {isOwedBy ? '+' : '-'}
                           {formatMinorAmount(tx.amountMinor)}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-sans mr-1">ر.س</span>
+                        <span className="text-[10px] text-slate-400 font-sans mr-1">{settings.currencySymbol}</span>
                       </td>
 
                       <td className="py-3 px-4 text-center whitespace-nowrap">

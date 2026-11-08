@@ -40,6 +40,7 @@ export const InterAccountTransferModal: React.FC<InterAccountTransferModalProps>
     getAccountBalance,
     createInterAccountTransfer,
     updateInterAccountTransfer,
+    settings,
   } = useApp();
 
   const [sourceAccountId, setSourceAccountId] = useState<string>('');
@@ -351,7 +352,7 @@ export const InterAccountTransferModal: React.FC<InterAccountTransferModalProps>
             {/* Amount */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                المبلغ المراد نقله (ر.س): <span className="text-rose-500">*</span>
+                المبلغ المراد نقله ({settings.currencySymbol}): <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -366,7 +367,7 @@ export const InterAccountTransferModal: React.FC<InterAccountTransferModalProps>
                   className="w-full h-10 px-3 pl-12 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-purple-500/50"
                 />
                 <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-sans">
-                  ر.س
+                  {settings.currencySymbol}
                 </span>
               </div>
               {parsedAmountResult?.success && (

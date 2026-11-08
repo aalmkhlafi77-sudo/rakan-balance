@@ -192,7 +192,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/40">
             <span>العملة الموحدة</span>
             <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
-              SAR (ر.س)
+              {settings.currencyCode} ({settings.currencySymbol})
             </span>
           </div>
 

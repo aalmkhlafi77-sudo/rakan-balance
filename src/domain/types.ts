@@ -108,14 +108,47 @@ export interface StickyNoteModel {
 }
 
 /**
+ * Standard Currency Definition
+ * Follows Document v2 & WEB-F2 Single Local Currency:
+ * Strictly 2 decimals minor units across all supported currencies to guarantee exact integer halala math.
+ */
+export interface CurrencyDefinition {
+  code: string;
+  name: string;
+  symbol: string;
+  decimals: 2;
+  minorUnitName: string; // e.g. هللة، فلس، قرش، سنت
+}
+
+export const SUPPORTED_CURRENCIES: CurrencyDefinition[] = [
+  { code: 'SAR', name: 'ريال سعودي', symbol: 'ر.س', decimals: 2, minorUnitName: 'هللة' },
+  { code: 'YER', name: 'ريال يمني', symbol: 'ر.ي', decimals: 2, minorUnitName: 'فلس' },
+  { code: 'AED', name: 'درهم إماراتي', symbol: 'د.إ', decimals: 2, minorUnitName: 'فلس' },
+  { code: 'QAR', name: 'ريال قطري', symbol: 'ر.ق', decimals: 2, minorUnitName: 'درهم' },
+  { code: 'OMR', name: 'ريال عماني', symbol: 'ر.ع', decimals: 2, minorUnitName: 'بيسة' },
+  { code: 'BHD', name: 'دينار بحريني', symbol: 'د.ب', decimals: 2, minorUnitName: 'فلس' },
+  { code: 'KWD', name: 'دينار كويتي', symbol: 'د.ك', decimals: 2, minorUnitName: 'فلس' },
+  { code: 'EGP', name: 'جنيه مصري', symbol: 'ج.م', decimals: 2, minorUnitName: 'قرش' },
+  { code: 'JOD', name: 'دينار أردني', symbol: 'د.أ', decimals: 2, minorUnitName: 'قرش' },
+  { code: 'USD', name: 'دولار أمريكي', symbol: '$', decimals: 2, minorUnitName: 'سنت' },
+  { code: 'EUR', name: 'يورو', symbol: '€', decimals: 2, minorUnitName: 'سنت' },
+  { code: 'GBP', name: 'جنيه إسترليني', symbol: '£', decimals: 2, minorUnitName: 'بنس' },
+  { code: 'TRY', name: 'ليرة تركية', symbol: '₺', decimals: 2, minorUnitName: 'قروش' },
+];
+
+export const DEFAULT_CURRENCY: CurrencyDefinition = SUPPORTED_CURRENCIES[0];
+
+/**
  * User Settings Entity
  * Single owner, single local currency
  */
 export interface UserSettings {
   ownerName: string;
-  currencyCode: 'SAR';
-  currencySymbol: string; // 'ر.س'
+  currencyCode: string; // Default 'SAR'
+  currencySymbol: string; // Default 'ر.س'
+  currencyName?: string; // Default 'ريال سعودي'
   currencyDecimals: number; // 2
+  isFirstSetupDone?: boolean; // Flag indicating initial onboarding was completed
   pinCodeHash: string | null; // Salted SHA-256 or null if no lock
   pinSalt: string | null;
   isLocked: boolean;

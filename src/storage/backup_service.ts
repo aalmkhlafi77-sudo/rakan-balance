@@ -28,6 +28,7 @@ import { checkTreeCycle } from '../domain/balance_calculator.ts';
 import { dbStorage, STORES_REAL } from './indexed_db.ts';
 import { MAX_SAFE_MINOR_AMOUNT } from '../domain/money.ts';
 import {
+  getCurrencyPref,
   getOwnerNamePref,
   getSidebarCollapsedPref,
   getThemePref,
@@ -62,13 +63,16 @@ export async function exportBackupBundle(): Promise<{ jsonString: string; filena
     dbStorage.getAll<ReminderContract>(STORES_REAL.REMINDERS),
   ]);
 
+  const currency = typeof window !== 'undefined' ? getCurrencyPref() : { code: 'SAR', symbol: 'ر.س', name: 'ريال سعودي' };
+
   // Safe non-sensitive owner settings (PIN hashes/salts are explicitly excluded)
   const safeSettings: Partial<UserSettings> = {
     ownerName: typeof window !== 'undefined' ? getOwnerNamePref() : 'راكان',
     theme: typeof window !== 'undefined' ? getThemePref() : 'dark',
     sidebarCollapsed: typeof window !== 'undefined' ? getSidebarCollapsedPref() : false,
-    currencyCode: 'SAR',
-    currencySymbol: 'ر.س',
+    currencyCode: currency.code,
+    currencySymbol: currency.symbol,
+    currencyName: currency.name,
     currencyDecimals: 2,
   };
 

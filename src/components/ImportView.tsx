@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export const ImportView: React.FC = () => {
-  const { accounts, transactions, activeScope, importLedger } = useApp();
+  const { accounts, transactions, activeScope, importLedger, settings } = useApp();
 
   const [preview, setPreview] = useState<LedgerImportPreview | null>(null);
   const [lastCommittedPreview, setLastCommittedPreview] = useState<LedgerImportPreview | null>(null);
@@ -421,7 +421,7 @@ export const ImportView: React.FC = () => {
                         <td className="px-4 py-2.5 font-bold">{acc.name}</td>
                         <td className="px-4 py-2.5">{acc.categoryName}</td>
                         <td className="px-4 py-2.5 font-mono dir-ltr text-right">
-                          {formatHalalaAmount(acc.openingBalanceMinor)} ر.س
+                          {formatHalalaAmount(acc.openingBalanceMinor)} {settings.currencySymbol}
                         </td>
                         <td className="px-4 py-2.5">
                           {acc.duplicate ? (
@@ -484,7 +484,7 @@ export const ImportView: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 font-mono font-bold">
-                          {formatHalalaAmount(tx.amountMinor)} ر.س
+                          {formatHalalaAmount(tx.amountMinor)} {settings.currencySymbol}
                         </td>
                         <td className="px-4 py-2.5 font-mono">{tx.date}</td>
                         <td className="px-4 py-2.5">{tx.description}</td>

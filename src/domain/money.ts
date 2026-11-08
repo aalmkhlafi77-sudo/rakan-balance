@@ -155,6 +155,18 @@ export function formatMinorAmount(minor: number, absolute: boolean = false): str
 
 export const formatHalalaAmount = formatMinorAmount;
 
+let activeAppCurrencySymbol = 'ر.س';
+
+export function setActiveCurrencySymbol(symbol: string): void {
+  if (symbol && symbol.trim()) {
+    activeAppCurrencySymbol = symbol.trim();
+  }
+}
+
+export function getActiveCurrencySymbol(): string {
+  return activeAppCurrencySymbol;
+}
+
 /**
  * Formats a monetary amount with currency symbol and Arabic presentation
  * Example: 15025 -> "150.25 ر.س"
@@ -167,7 +179,7 @@ export function formatCurrency(
     absolute?: boolean;
   }
 ): string {
-  const symbol = options?.symbol ?? 'ر.س';
+  const symbol = options?.symbol ?? activeAppCurrencySymbol;
   const absFormatted = formatMinorAmount(minor, true);
   
   if (options?.absolute) {
