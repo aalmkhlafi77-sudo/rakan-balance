@@ -74,9 +74,8 @@ for (const device of ['desktop', 'mobile'] as const) {
 
     await row.getByRole('button', { name: 'تذكير', exact: true }).click();
     await row.getByRole('button', { name: 'حفظ ملاحظة تذكير تاريخية' }).click();
-    await row.getByRole('button', { name: 'حفظ ملاحظة تذكير تاريخية' }).click();
-  await row.getByRole('button', { name: 'تأكيد حفظ التذكير' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'تم حفظ التذكير' })).toBeVisible();
+    await row.getByRole('button', { name: 'تأكيد حفظ التذكير' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'تم حفظ تذكير للمتابعة اليدوية' })).toBeVisible();
     const afterReminder = await snapshotDemo(page);
     expect(afterReminder.reminders).toHaveLength(before.reminders.length + 1);
     await page.reload();
