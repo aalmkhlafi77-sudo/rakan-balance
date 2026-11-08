@@ -345,6 +345,8 @@
   --luxury-shadow: 0 20px 48px rgba(0, 0, 0, .42), 0 5px 18px rgba(0, 0, 0, .22);
 }
 
+.dark body.dark\\:bg-slate-950,
+.dark body.dark\\:bg-slate-900,
 .dark body {
   background-color: #041713 !important;
   background-image:
