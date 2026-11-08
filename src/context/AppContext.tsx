@@ -145,6 +145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const ownerDbStorage = useMemo(() => new OwnerRemoteStorage(() => ownerAccess.csrfToken), [ownerAccess.csrfToken]);
   const dbStorage = ownerAccess.status === 'owner' ? ownerDbStorage as unknown as typeof visitorDbStorage : visitorDbStorage;
   const [isLoading, setIsLoading] = useState(true);
+  const [ownerLoadError, setOwnerLoadError] = useState<string | null>(null);
   const [activeScope, setActiveScope] = useState<'real' | 'demo'>(ownerAccess.status === 'owner' ? 'real' : getActiveScopePref());
 
   // In-memory active stores
@@ -181,6 +182,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load workspace data based on active scope
   const loadWorkspaceData = useCallback(async (scope: 'real' | 'demo') => {
     setIsLoading(true);
+    if (ownerAccess.status === 'owner') setOwnerLoadError(null);
     try {
       if (scope === 'demo') {
         let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
@@ -242,11 +244,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setReminders(realReminders || []);
       }
     } catch (err) {
-      console.error('Failed to load workspace data from IndexedDB:', err);
+      if (ownerAccess.status === 'owner') {
+        setOwnerLoadError('تعذر تحميل البيانات الخاصة من الخادم. أُوقفت الوظائف المالية لمنع الحفظ محليًا أو عرض أرصدة غير مؤكدة.');
+      } else {
+        console.error('Failed to load local workspace:', err);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [dbStorage]);
+  }, [dbStorage, ownerAccess.status]);
 
   useEffect(() => {
     loadWorkspaceData(activeScope);
@@ -260,7 +266,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const changed = await ownerDbStorage.refreshIfChanged();
         if (!cancelled && changed) await loadWorkspaceData('real');
-      } catch { /* preserve current in-memory view; writes fail closed */ }
+      } catch {
+        if (!cancelled) setOwnerLoadError('انقطع الاتصال بالخادم الخاص. أُوقفت العمليات حتى إعادة التحقق.');
+      }
     };
     const timer = window.setInterval(() => { void refresh(); }, 30000);
     const onConflict = () => { void refresh(); };
@@ -974,6 +982,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     sidebarCollapsed,
     activeScope,
   };
+
+  if (ownerAccess.status === 'owner' && ownerLoadError) {
+    return (
+      <section dir="rtl" role="alert" className="min-h-screen flex flex-col items-center justify-center p-6 text-center gap-4 bg-slate-950 text-white">
+        <h1 className="font-bold text-lg">تعذر الوصول إلى بيانات المالك</h1>
+        <p className="max-w-md text-sm leading-7">{ownerLoadError}</p>
+        <button type="button" onClick={() => { void loadWorkspaceData('real'); }} className="px-5 py-3 rounded-xl bg-emerald-700 font-semibold">إعادة المحاولة</button>
+      </section>
+    );
+  }
 
   return (
     <AppContext.Provider
