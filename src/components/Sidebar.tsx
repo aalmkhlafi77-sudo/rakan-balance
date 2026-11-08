@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-1 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {navItems.filter((item) => ownerAccess.status !== 'owner' || !['import', 'backup', 'tests', 'settings'].includes(item.id)).map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
@@ -186,6 +186,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Footer Actions: Owner login (server auth), Currency, Theme & Lock */}
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+          {ownerAccess.status === 'owner' && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 text-center">مساحة المالك الخاصة</p>
+              <button type="button" onClick={() => void ownerAccess.logout()} aria-label="تسجيل خروج المالك"
+                className="w-full min-h-10 rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 text-xs font-bold">
+                تسجيل الخروج
+              </button>
+            </div>
+          )}
           {ownerAccess.status === 'visitor' && (
             <button type="button" onClick={ownerAccess.openLogin} aria-label="دخول المالك الخاص"
               className="w-full min-h-10 rounded-xl border border-emerald-600/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 text-xs font-bold">
