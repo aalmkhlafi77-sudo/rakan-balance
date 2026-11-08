@@ -16,9 +16,25 @@ async function main() {
   const pool = action === 'verify' ? null : createDatabasePool();
   try {
     if (action === 'export') {
-      const [rows] = await pool.execute(
-        'SELECT revision, payload, payload_sha256 FROM owner_ledger_snapshot WHERE id = 1 LIMIT 1',
-      );
+      // Read the ledger and its binary objects from a single InnoDB consistent snapshot.
+      const readConnection = await pool.getConnection();
+      let rows, blobRows;
+      try {
+        await readConnection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        await readConnection.beginTransaction();
+        [rows] = await readConnection.execute(
+          'SELECT revision, payload, payload_sha256 FROM owner_ledger_snapshot WHERE id = 1 LIMIT 1',
+        );
+        [blobRows] = await readConnection.execute(
+          'SELECT attachment_id, transaction_id, mime_type, byte_length, sha256, content FROM owner_attachment_blobs',
+        );
+        await readConnection.commit();
+      } catch (error) {
+        await readConnection.rollback();
+        throw error;
+      } finally {
+        readConnection.release();
+      }
       if (rows.length !== 1 || rows[0].payload === null) {
         throw new Error('Owner ledger is not initialized or is empty');
       }
@@ -29,9 +45,6 @@ async function main() {
       if (checksum !== rows[0].payload_sha256) throw new Error('Owner ledger checksum mismatch');
       const validation = await validateBackupFile(raw.toString('utf8'));
       if (!validation.isValid) throw new Error('Owner ledger validation failed');
-      const [blobRows] = await pool.execute(
-        'SELECT attachment_id, transaction_id, mime_type, byte_length, sha256, content FROM owner_attachment_blobs',
-      );
       const attachments = blobRows.map(row => {
         const bytes = Buffer.isBuffer(row.content) ? row.content : Buffer.from(row.content);
         if (bytes.length !== Number(row.byte_length) ||
