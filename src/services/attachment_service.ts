@@ -25,11 +25,9 @@ export function isPrivateAttachment(attachment: AttachmentModel): boolean {
   return attachment.dataUrl === PRIVATE_ATTACHMENT_PREFIX + attachment.id;
 }
 
-export async function resolveAttachmentUrl(
-  attachment: AttachmentModel
-): Promise<{ url: string; revoke: boolean }> {
+export async function fetchPrivateAttachmentBlob(attachment: AttachmentModel): Promise<Blob> {
   if (!isPrivateAttachment(attachment)) {
-    return { url: attachment.dataUrl, revoke: false };
+    throw new Error('المرفق ليس مرجعًا خاصًا على الخادم.');
   }
   let response: Response;
   try {
@@ -52,6 +50,16 @@ export async function resolveAttachmentUrl(
   if (blob.size !== attachment.size || (blob.type && blob.type !== expected)) {
     throw new Error('المرفق المستلم لا يطابق بياناته المحفوظة.');
   }
+  return blob;
+}
+
+export async function resolveAttachmentUrl(
+  attachment: AttachmentModel
+): Promise<{ url: string; revoke: boolean }> {
+  if (!isPrivateAttachment(attachment)) {
+    return { url: attachment.dataUrl, revoke: false };
+  }
+  const blob = await fetchPrivateAttachmentBlob(attachment);
   return { url: URL.createObjectURL(blob), revoke: true };
 }
 
