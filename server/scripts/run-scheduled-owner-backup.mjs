@@ -48,6 +48,10 @@ async function main() {
   const mirror = process.env.RAKAN_BACKUP_MIRROR_DIR
     ? protectedDirectory(process.env.RAKAN_BACKUP_MIRROR_DIR, 'RAKAN_BACKUP_MIRROR_DIR')
     : null;
+  if (mirror && (mirror === directory ||
+      mirror.startsWith(directory + path.sep) || directory.startsWith(mirror + path.sep))) {
+    throw new Error('Backup primary and mirror directories must be separate paths');
+  }
   const keep = retentionCount();
   await mkdir(directory, { recursive: true, mode: 0o700 });
   if (mirror) await mkdir(mirror, { recursive: true, mode: 0o700 });
