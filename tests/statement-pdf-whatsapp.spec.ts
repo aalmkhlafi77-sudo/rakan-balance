@@ -64,7 +64,7 @@ test('mobile emulation: native share receives a genuine PDF File', async ({ page
 
 test('recipient: no stored number must not silently choose general sharing', async ({ page }) => {
   await openStatement(page);
-  await expect(page.getByText('لا يوجد رقم محفوظ لهذا الطرف.')).toBeVisible();
+  await expect(page.getByText('الرقم المسجل غير مكتمل دوليًا.')).toBeVisible();
   await expect(page.getByRole('link', { name: /أدخل رقم مستلم صحيحًا/ })).toHaveAttribute('aria-disabled', 'true');
   await page.getByPlaceholder('إدخال رقم واتساب دولي (مثال: 966501234567)').fill('+966 50 123 4567');
   const link = page.getByRole('link', { name: /فتح محادثة واتساب/ });
