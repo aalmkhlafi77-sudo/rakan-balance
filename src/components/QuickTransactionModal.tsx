@@ -1,15 +1,9 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- * RAKAN BALANCE (راكان بلانس) — Quick Transaction Entry Modal
- * Handles Adding or Editing financial movements (عليه / له) with attachments
- */
-
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { AttachmentModel, EntryType, TransactionModel } from '../domain/types.ts';
 import { formatCurrency, fromMinorUnits, toMinorUnits } from '../domain/money.ts';
-import { validateAttachmentFile, fileToAttachmentModel, formatFileSize } from '../services/attachment_service.ts';
+import { validateAttachmentFile, fileToAttachmentModel, formatFileSize, downloadAttachment } from '../services/attachment_service.ts';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import {
   X,
   ArrowUpRight,
@@ -19,6 +13,8 @@ import {
   Calendar,
   AlertCircle,
   FileText,
+  Eye,
+  Download,
 } from 'lucide-react';
 
 interface QuickTransactionModalProps {
@@ -36,7 +32,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
   defaultAccountId,
   defaultEntryType = 'owedByAccount',
 }) => {
-  const { accounts, addTransaction, updateTransaction, getAccountBalance, settings } = useApp();
+  const { accounts, addTransaction, updateTransaction, getAccountBalance, settings, attachments: globalAttachments } = useApp();
 
   const [accountId, setAccountId] = useState<string>('');
   const [entryType, setEntryType] = useState<EntryType>(defaultEntryType);
@@ -49,6 +45,10 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
   const [error, setError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Attachment preview in modal
+  const [modalPreviewList, setModalPreviewList] = useState<AttachmentModel[]>([]);
+  const [modalPreviewIndex, setModalPreviewIndex] = useState<number>(0);
+
   // Populate form when modal opens
   useEffect(() => {
     if (editingTransaction) {
@@ -58,7 +58,13 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
       setDate(editingTransaction.date);
       setDescription(editingTransaction.description);
       setNotes(editingTransaction.notes || '');
-      setAttachments([]);
+
+      // Load saved attachments belonging to this transaction from global state
+      const savedAtts = (editingTransaction.attachmentIds || [])
+        .map((id) => globalAttachments.find((a) => a.id === id))
+        .filter((a): a is AttachmentModel => Boolean(a));
+
+      setAttachments(savedAtts);
       setRemovedAttachmentIds([]);
     } else {
       setAccountId(defaultAccountId || (accounts.find((a) => a.status === 'active')?.id || ''));
@@ -71,7 +77,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
       setRemovedAttachmentIds([]);
     }
     setError('');
-  }, [isOpen, editingTransaction, defaultAccountId, defaultEntryType, accounts]);
+  }, [isOpen, editingTransaction, defaultAccountId, defaultEntryType, accounts, globalAttachments]);
 
   if (!isOpen) return null;
 
@@ -107,7 +113,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
 
   const removeAttachment = (attId: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== attId));
-    if (editingTransaction && editingTransaction.attachmentIds.includes(attId)) {
+    if (editingTransaction && editingTransaction.attachmentIds?.includes(attId)) {
       setRemovedAttachmentIds((prev) => [...prev, attId]);
     }
   };
@@ -140,6 +146,9 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
     setIsSubmitting(true);
     try {
       if (editingTransaction) {
+        const newAtts = attachments.filter(
+          (a) => !editingTransaction.attachmentIds?.includes(a.id)
+        );
         await updateTransaction(
           {
             ...editingTransaction,
@@ -150,7 +159,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             description: description.trim(),
             notes: notes.trim() || undefined,
           },
-          attachments.filter((a) => !editingTransaction.attachmentIds.includes(a.id)),
+          newAtts,
           removedAttachmentIds
         );
       } else {
@@ -379,7 +388,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
 
             {attachments.length > 0 && (
               <div className="space-y-1.5 mt-2">
-                {attachments.map((att) => (
+                {attachments.map((att, idx) => (
                   <div
                     key={att.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
@@ -393,13 +402,36 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                         ({formatFileSize(att.size)})
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(att.id)}
-                      className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalPreviewList(attachments);
+                          setModalPreviewIndex(idx);
+                        }}
+                        className="p-1 rounded text-slate-500 hover:text-emerald-600 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                        title="معاينة"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadAttachment(att)}
+                        className="p-1 rounded text-slate-500 hover:text-emerald-600 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                        title="تنزيل"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
+                        title="حذف المرفق"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -424,7 +456,16 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             </button>
           </div>
         </form>
+
+        {/* Attachment Preview Modal Inside Transaction Modal */}
+        <AttachmentPreviewModal
+          attachments={modalPreviewList}
+          initialIndex={modalPreviewIndex}
+          isOpen={modalPreviewList.length > 0}
+          onClose={() => setModalPreviewList([])}
+        />
       </div>
     </div>
   );
 };
+
