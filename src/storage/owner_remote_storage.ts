@@ -45,6 +45,11 @@ function failIfDemo(isDemo: boolean): void {
 function verifyUnique(items: { id: string }[], id: string): void {
   if (items.some((x) => x.id === id)) throw new Error('هذا المعرف موجود بالفعل.');
 }
+function ensureOwnerAttachmentSupported(files: AttachmentModel[]): void {
+  if (files.some(file => file.mimeType === 'image/svg+xml')) {
+    throw new Error('لأمان مساحة المالك، ملفات SVG غير مدعومة. استخدم PNG أو JPG أو WEBP أو GIF أو PDF.');
+  }
+}
 
 export class OwnerRemoteStorage {
   private data: LedgerData = emptyData();
@@ -214,6 +219,7 @@ export class OwnerRemoteStorage {
   }
   public async saveTransactionAtomic(item: TransactionModel, files: AttachmentModel[], demo: boolean) {
     failIfDemo(demo);
+    ensureOwnerAttachmentSupported(files);
     await this.change(d => {
       verifyUnique(d.transactions, item.id);
       for (const f of files) verifyUnique(d.attachments, f.id);
@@ -223,6 +229,7 @@ export class OwnerRemoteStorage {
   }
   public async updateTransactionAtomic(item: TransactionModel, files: AttachmentModel[], removed: string[], demo: boolean) {
     failIfDemo(demo);
+    ensureOwnerAttachmentSupported(files);
     await this.change(d => {
       const idx = d.transactions.findIndex(t => t.id === item.id);
       if (idx < 0 || d.transactions[idx].transferId) throw new Error('الحركة غير موجودة أو لا يمكن تعديل طرف حركة بينية.');
