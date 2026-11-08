@@ -41,6 +41,13 @@ export function registerOwnerLedgerRoutes(app, pool, auth) {
       return responseError(res, 400, 'invalid_request');
     }
     if (raw.length > MAX_JSON_BYTES) return responseError(res, 413, 'ledger_payload_too_large');
+    // Credentials and local PIN secrets are never permitted in remote ledger payloads.
+    const savedSettings = bundle.data?.settings;
+    if (savedSettings && typeof savedSettings === 'object' &&
+        ['pinCodeHash', 'pinSalt', 'isLocked', 'password', 'passwordHash', 'csrfToken'].some(
+          (field) => Object.prototype.hasOwnProperty.call(savedSettings, field))) {
+      return responseError(res, 422, 'sensitive_settings_not_allowed');
+    }
     // Hash supplied by client is not a password. Full source-of-truth N0/N1/N2
     // validation is run on the server, not trusted to the caller.
     const check = await validateBackupFile(raw.toString('utf8'));
