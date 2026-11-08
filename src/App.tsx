@@ -22,6 +22,7 @@ import { BackupRestoreView } from './components/BackupRestoreView.tsx';
 import { OwnerBackupRestoreView } from './components/OwnerBackupRestoreView.tsx';
 import { VerificationModal } from './components/VerificationModal.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
+import { OwnerSettingsView } from './components/OwnerSettingsView.tsx';
 import { LockScreen } from './components/LockScreen.tsx';
 import { QuickTransactionModal } from './components/QuickTransactionModal.tsx';
 import { InterAccountTransferModal } from './components/InterAccountTransferModal.tsx';
@@ -167,7 +168,7 @@ const AppContent: React.FC = () => {
 
           {currentTab === 'tests' && ownerAccess.status !== 'owner' && <VerificationModal />}
 
-          {currentTab === 'settings' && ownerAccess.status !== 'owner' && <SettingsView />}
+          {currentTab === 'settings' && (ownerAccess.status === 'owner' ? <OwnerSettingsView /> : <SettingsView />)}
         </main>
         {/* Designer attribution: profile link opens separately, never affects the ledger. */}
         <footer className="no-print max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-6 text-center text-[11px] text-slate-500 dark:text-slate-400">
