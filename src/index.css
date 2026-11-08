@@ -330,3 +330,185 @@
     display: block !important;
   }
 }
+
+
+/* ==========================================================================
+   RAKAN LUXURY GLASS — refined surface system, dark mode only.
+   Deliberately scoped to named components so financial rows, warning controls,
+   PDF/print content and the approved light theme are not overwritten.
+   ========================================================================== */
+.dark {
+  --luxury-rim: rgba(230, 194, 122, .65);
+  --luxury-rim-muted: rgba(231, 202, 145, .34);
+  --luxury-glass-top: rgba(49, 100, 89, .58);
+  --luxury-glass-bottom: rgba(5, 23, 23, .86);
+  --luxury-shadow: 0 20px 48px rgba(0, 0, 0, .42), 0 5px 18px rgba(0, 0, 0, .22);
+}
+
+.dark body.dark\:bg-slate-950,
+.dark body.dark\:bg-slate-900,
+.dark body {
+  background-color: #041713 !important;
+  background-image:
+    radial-gradient(ellipse 85% 72% at 50% 0%, rgba(4, 24, 19, .40), transparent 75%),
+    linear-gradient(90deg, rgba(2, 13, 12, .18), transparent 35%, rgba(2, 13, 12, .12)),
+    url('/assets/luxury-emerald-marble.svg') !important;
+  background-position: center top, center, center top !important;
+  background-size: cover, cover, cover !important;
+  background-repeat: no-repeat !important;
+  background-attachment: fixed !important;
+}
+.dark .luxury-shell {
+  isolation: isolate;
+  background: transparent !important;
+}
+.dark .luxury-shell > .flex-1 {
+  background: transparent;
+}
+
+/* Floating mineral-light panels, with highlights attached to the actual card
+   instead of broadly targeting every dark Tailwind utility. */
+.dark .luxury-dashboard .luxury-summary-card,
+.dark .luxury-dashboard .luxury-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 105% 85% at 5% 0%, rgba(120, 201, 168, .19), transparent 57%),
+    linear-gradient(140deg, rgba(52, 91, 82, .66) 0%, rgba(12, 48, 42, .81) 31%, rgba(4, 22, 23, .91) 100%) !important;
+  border: 1px solid var(--luxury-rim) !important;
+  border-radius: 19px !important;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 251, 219, .57),
+    inset 1px 0 0 rgba(245, 227, 187, .18),
+    inset 0 -12px 25px rgba(0, 0, 0, .13),
+    0 1px 0 rgba(247, 219, 152, .21),
+    var(--luxury-shadow),
+    0 0 24px rgba(160, 109, 206, .06) !important;
+  backdrop-filter: blur(17px) saturate(1.38) !important;
+  -webkit-backdrop-filter: blur(17px) saturate(1.38) !important;
+  transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
+}
+.dark .luxury-dashboard .luxury-summary-card::before,
+.dark .luxury-dashboard .luxury-panel::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+  inset: 1px;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.12), transparent 19%, transparent 74%, rgba(216, 180, 106, .055)),
+    radial-gradient(ellipse 70% 19% at 40% 0%, rgba(239, 229, 196, .19), transparent);
+}
+.dark .luxury-dashboard .luxury-summary-card:hover,
+.dark .luxury-dashboard .luxury-panel:hover {
+  border-color: rgba(240, 205, 137, .79) !important;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 250, 211, .65),
+    0 20px 50px rgba(0, 0, 0, .50),
+    0 0 23px rgba(191, 105, 239, .17) !important;
+}
+
+/* Small entries stay readable; they should never look like major neon buttons. */
+.dark .luxury-dashboard .luxury-account-entry {
+  background:
+    linear-gradient(155deg, rgba(72, 117, 104, .25), rgba(4, 25, 23, .48)) !important;
+  border: 1px solid rgba(213, 188, 137, .23) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14) !important;
+}
+.dark .luxury-dashboard .luxury-account-entry:hover {
+  border-color: var(--luxury-rim-muted) !important;
+  background: linear-gradient(155deg, rgba(87, 132, 115, .31), rgba(11, 37, 33, .67)) !important;
+}
+
+/* Header and sidebar use a restrained glass-metal treatment to reduce clutter. */
+.dark .luxury-navbar,
+.dark .luxury-sidebar {
+  background:
+    linear-gradient(145deg, rgba(35, 80, 68, .81), rgba(4, 23, 22, .94) 49%, rgba(3, 16, 17, .96)) !important;
+  border-color: rgba(218, 187, 122, .50) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 253, 219, .27), 0 12px 36px rgba(0, 0, 0, .42) !important;
+  backdrop-filter: blur(23px) saturate(1.28) !important;
+  -webkit-backdrop-filter: blur(23px) saturate(1.28) !important;
+}
+.dark .luxury-sidebar nav button[class*="dark:bg-emerald"] {
+  background:
+    linear-gradient(160deg, rgba(131, 80, 153, .46), rgba(54, 41, 85, .66), rgba(9, 43, 40, .88)) !important;
+  border: 1px solid rgba(237, 202, 142, .84) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.52), 0 0 14px rgba(183, 105, 228, .26) !important;
+}
+
+/* The Beso-inspired beveled button appears only on intentionally selected
+   primary dashboard/header actions, not all emerald buttons across the app. */
+.dark .luxury-dashboard > div:first-child button.bg-emerald-600,
+.dark .luxury-navbar button.bg-emerald-600 {
+  background:
+    linear-gradient(171deg, rgba(255, 243, 255, .83) 0%, rgba(188, 118, 232, .94) 10%, rgba(112, 36, 144, .97) 47%, rgba(57, 16, 81, .98) 84%, rgba(36, 9, 54, 1) 100%) !important;
+  border: 1.5px solid #e8c67d !important;
+  border-radius: 999px !important;
+  color: #fff6eb !important;
+  box-shadow:
+    inset 0 2px 1px rgba(255,255,255,.80),
+    inset 0 -3px 2px rgba(27,2,42,.65),
+    0 0 0 2px rgba(220, 174, 107, .12),
+    0 0 18px rgba(204, 72, 243, .35),
+    0 8px 14px rgba(0,0,0,.37) !important;
+}
+.dark .luxury-dashboard > div:first-child button.bg-emerald-600:hover,
+.dark .luxury-navbar button.bg-emerald-600:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 2px 1px rgba(255,255,255,.89),
+    inset 0 -3px 3px rgba(27,2,42,.64),
+    0 0 24px rgba(204, 72, 243, .48),
+    0 9px 18px rgba(0,0,0,.39) !important;
+}
+.dark .luxury-dashboard > div:first-child button.bg-emerald-600:focus-visible,
+.dark .luxury-navbar button.bg-emerald-600:focus-visible {
+  outline: 2px solid #f4d9a0 !important;
+  outline-offset: 4px;
+}
+
+/* Dark theme form and table legibility remains functional rather than glossy. */
+.dark .luxury-shell input,
+.dark .luxury-shell select,
+.dark .luxury-shell textarea {
+  accent-color: #d2b16f;
+}
+.dark .luxury-shell table tbody tr:hover {
+  background-color: rgba(171, 207, 180, .08) !important;
+}
+.dark .luxury-shell table td,
+.dark .luxury-shell table th {
+  text-shadow: none;
+}
+@media (max-width: 767px) {
+  .dark body { background-attachment: scroll !important; }
+  .dark .luxury-dashboard .luxury-summary-card,
+  .dark .luxury-dashboard .luxury-panel {
+    backdrop-filter: blur(8px) saturate(1.17) !important;
+    -webkit-backdrop-filter: blur(8px) saturate(1.17) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.34), 0 9px 24px rgba(0,0,0,.39) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dark .luxury-dashboard .luxury-summary-card,
+  .dark .luxury-dashboard .luxury-panel,
+  .dark .luxury-navbar button.bg-emerald-600 {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+@media print {
+  .dark body {
+    background: #fff !important;
+  }
+  .dark .luxury-dashboard .luxury-summary-card,
+  .dark .luxury-dashboard .luxury-panel {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+  }
+}
