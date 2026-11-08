@@ -266,8 +266,72 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             لا توجد حركات مالية مطابقة للفلاتر المحددة.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
+
+          <>
+            {/* Mobile-first transaction rows: readable descriptions instead of squeezed table columns. */}
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800/80" data-testid="mobile-transactions-list">
+              {filteredTransactions.map((tx) => {
+                const account = accounts.find((a) => a.id === tx.accountId);
+                const positive = tx.entryType === 'owedByAccount';
+                const transfer = Boolean(tx.transferId);
+                const counterparty = transfer && tx.counterpartyAccountId
+                  ? accounts.find((a) => a.id === tx.counterpartyAccountId) : null;
+                const txFiles = attachments.filter((att) => tx.attachmentIds?.includes(att.id));
+                return (
+                  <article key={tx.id} className="p-4 space-y-3 min-w-0" data-testid="mobile-transaction-card">
+                    <div className="flex justify-between items-start gap-3">
+                      <button type="button" onClick={() => onOpenStatementForAccount(tx.accountId)}
+                        className="min-w-0 flex-1 text-right font-bold text-sm text-slate-900 dark:text-slate-100">
+                        <span className="break-words">{account?.name || 'حساب غير معروف'}</span>
+                      </button>
+                      <time className="font-mono text-[11px] text-slate-500 shrink-0" dir="ltr">{tx.date}</time>
+                    </div>
+                    <div className="text-sm leading-7 text-slate-700 dark:text-slate-200 break-words whitespace-normal [overflow-wrap:anywhere]">
+                      {tx.description}
+                    </div>
+                    {transfer && (
+                      <p className="text-xs text-purple-700 dark:text-purple-300">
+                        حركة بينية {counterparty ? '— ' + (tx.transferRole === 'source' ? 'إلى ' : 'من ') + counterparty.name : ''}
+                      </p>
+                    )}
+                    {tx.notes && <p className="text-[11px] leading-5 text-slate-500 break-words">{tx.notes}</p>}
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className={`font-mono tabular-nums text-sm font-bold ${positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        <bdi dir="ltr">{positive ? '+' : '-'}{formatMinorAmount(tx.amountMinor)}</bdi>
+                        <span className="mr-1 font-sans text-[10px]">{settings.currencySymbol}</span>
+                        <span className="block mt-1 font-sans text-[10px] font-medium">{positive ? 'عليه (لك)' : 'له (عليك)'}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {txFiles.map((att) => (
+                          <button key={att.id} type="button" aria-label={`معاينة: ${att.originalName}`}
+                            onClick={() => { setPreviewAttachmentsList(txFiles); setPreviewIndex(txFiles.findIndex((a) => a.id === att.id)); }}
+                            className="min-h-10 min-w-10 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            <Paperclip className="w-4 h-4" />
+                          </button>
+                        ))}
+                        {!transfer && <button type="button" aria-label="مشاركة الحركة عبر واتساب"
+                          onClick={() => setShareModalTx({ tx, account })}
+                          className="min-h-10 min-w-10 flex items-center justify-center rounded-xl bg-green-50 dark:bg-green-950/40 text-green-600">
+                          <Send className="w-4 h-4" />
+                        </button>}
+                        <button type="button" aria-label="تعديل الحركة"
+                          onClick={() => transfer ? onEditInterAccountTransfer?.(tx.transferId!) : onEditTransaction(tx)}
+                          className="min-h-10 min-w-10 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button type="button" aria-label="حذف الحركة"
+                          onClick={() => transfer ? setDeletingTransferId(tx.transferId!) : setDeletingTxId(tx.id)}
+                          className="min-h-10 min-w-10 flex items-center justify-center rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-right text-xs">
               <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold">
                 <tr>
                   <th className="py-3 px-4">التاريخ</th>
@@ -450,7 +514,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
 
