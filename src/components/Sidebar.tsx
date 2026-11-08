@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-1 space-y-1 overflow-y-auto">
-          {navItems.filter((item) => ownerAccess.status !== 'owner' || !['import', 'backup', 'tests', 'settings'].includes(item.id)).map((item) => {
+          {navItems.filter((item) => ownerAccess.status !== 'owner' || !['import', 'tests', 'settings'].includes(item.id)).map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
