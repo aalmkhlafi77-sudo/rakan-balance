@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import { Sidebar, TabView } from './components/Sidebar.tsx';
 import { Navbar } from './components/Navbar.tsx';
+import { MobileBottomNav } from './components/MobileBottomNav.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
 import { AccountsView } from './components/AccountsView.tsx';
 import { TransactionsView } from './components/TransactionsView.tsx';
@@ -104,7 +105,7 @@ const AppContent: React.FC = () => {
       />
 
       {/* Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0">
         {/* Top Navbar */}
         <Navbar
           currentTab={currentTab}
@@ -114,7 +115,7 @@ const AppContent: React.FC = () => {
         />
 
         {/* Viewport Canvas */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {currentTab === 'dashboard' && (
             <DashboardView
               onNavigateTab={setCurrentTab}
@@ -164,7 +165,21 @@ const AppContent: React.FC = () => {
 
           {currentTab === 'settings' && <SettingsView />}
         </main>
+        {/* Designer attribution: profile link opens separately, never affects the ledger. */}
+        <footer className="no-print max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pb-6 text-center text-[11px] text-slate-500 dark:text-slate-400">
+          <a href="https://github.com/aalmkhlafi77-sudo" target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 hover:text-emerald-600 dark:hover:text-amber-200 underline-offset-4 hover:underline"
+            aria-label="الصفحة الشخصية للمصمم عبدالله المخلافي">
+            <span>تصميم عبدالله المخلافي © 2026</span>
+          </a>
+        </footer>
       </div>
+
+      <MobileBottomNav
+        currentTab={currentTab}
+        onSelectTab={(tab) => { setCurrentTab(tab); setMobileSidebarOpen(false); }}
+        onOpenMore={() => setMobileSidebarOpen(true)}
+      />
 
       {/* Universal Quick Transaction Entry / Edit Modal */}
       <QuickTransactionModal
