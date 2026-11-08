@@ -250,7 +250,7 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
                 <span className="text-purple-900 dark:text-purple-200 font-medium">
-                  مشاركة ملف PDF عبر التطبيقات المتاحة بالجهاز
+                  حفظ الكشف أو طباعته كملف PDF
                 </span>
               </div>
               <button
@@ -259,7 +259,7 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
                 className="py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-2xs"
               >
                 <Share2 className="w-3.5 h-3.5" />
-                <span>مشاركة PDF</span>
+                <span>طباعة / حفظ PDF</span>
               </button>
             </div>
           )}
