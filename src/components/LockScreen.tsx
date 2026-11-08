@@ -83,9 +83,10 @@ export const LockScreen: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
       <div className="w-full max-w-sm bg-slate-800 border border-slate-700/60 rounded-2xl p-6 shadow-2xl text-center text-slate-100">
-        <div className="w-14 h-14 mx-auto mb-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400">
-          <Lock className="w-7 h-7" />
-        </div>
+        <img src="/assets/rakan-icon-192.webp"
+          alt="أيقونة راكان بلانس"
+          className="w-20 h-20 mx-auto mb-3 object-contain rounded-2xl"
+          width={80} height={80} />
 
         <h1 className="text-xl font-bold tracking-tight mb-1">راكان بلانس | RAKAN BALANCE</h1>
         <p className="text-xs text-slate-400 mb-5">
