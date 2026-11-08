@@ -244,13 +244,13 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
             </div>
           </div>
 
-          {/* Optional PDF File Share Section for Statements */}
+          {/* Print-to-PDF fallback: this action does not share a file automatically. */}
           {onSharePdf && (
             <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 flex items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
                 <span className="text-purple-900 dark:text-purple-200 font-medium">
-                  حفظ الكشف أو طباعته كملف PDF
+                  احفظ الكشف بصيغة PDF، ثم أرفقه يدويًا في محادثة واتساب
                 </span>
               </div>
               <button
@@ -258,7 +258,7 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
                 onClick={onSharePdf}
                 className="py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-2xs"
               >
-                <Share2 className="w-3.5 h-3.5" />
+                <FileText className="w-3.5 h-3.5" />
                 <span>طباعة / حفظ PDF</span>
               </button>
             </div>
