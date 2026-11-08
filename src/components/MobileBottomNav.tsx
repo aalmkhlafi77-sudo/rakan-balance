@@ -26,9 +26,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   ];
   return (
     <nav
+      role="toolbar"
       dir="rtl"
       aria-label="التنقل السفلي للجوال"
-      className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-30 lg:hidden border-t border-slate-200 dark:border-amber-200/20 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl shadow-[0_-8px_24px_rgba(0,0,0,0.12)]"
+      className="mobile-bottom-nav no-print fixed inset-x-0 bottom-0 z-30 lg:hidden border-t border-slate-200 dark:border-amber-200/20 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl shadow-[0_-8px_24px_rgba(0,0,0,0.12)]"
     >
       <div className="grid grid-cols-6 max-w-xl mx-auto px-1 pt-1 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
         {links.map((item) => {
