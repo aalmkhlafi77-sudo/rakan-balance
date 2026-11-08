@@ -8,6 +8,7 @@ async function main() {
   // Fail closed if host credentials are invalid or phase-A migrations are missing.
   await pool.query('SELECT 1 FROM owner_credentials LIMIT 1');
   await pool.query('SELECT 1 FROM owner_sessions LIMIT 1');
+  await pool.query('SELECT 1 FROM owner_ledger_state LIMIT 1');
   const app = createApp({ pool });
   const port = Number(process.env.PORT || 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT');
