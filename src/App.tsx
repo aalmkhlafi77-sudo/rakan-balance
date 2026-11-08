@@ -77,9 +77,10 @@ const AppContent: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-transparent flex flex-col items-center justify-center p-4 text-center" dir="rtl">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-emerald-600/30 animate-pulse mb-3">
-          ر
-        </div>
+        <img src="/assets/rakan-icon-192.webp"
+          alt="أيقونة راكان بلانس"
+          className="w-16 h-16 object-contain rounded-2xl mb-3 shadow-lg"
+          width={64} height={64} decoding="async" />
         <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
           راكان بلانس | RAKAN BALANCE
         </div>
