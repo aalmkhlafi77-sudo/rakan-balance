@@ -58,10 +58,10 @@ test('private owner account from MySQL response cannot appear in visitor local I
   if (page.viewportSize()!.width < 1024) await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   await page.getByRole('button', { name: 'تسجيل خروج المالك' }).click();
   const setup = page.getByRole('button', { name: 'بدء استخدام راكان بلانس' });
-  if (await setup.isVisible()) {
-    await setup.click();
-    await expect(setup).toBeHidden();
-  }
+  // First-setup modal is mounted asynchronously after leaving the private owner tree.
+  await expect(setup).toBeVisible();
+  await setup.click();
+  await expect(setup).toBeHidden();
   if (page.viewportSize()!.width < 1024) await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   await page.getByRole('navigation').getByRole('button', { name: 'دليل الحسابات', exact: true }).click();
   await expect(page.getByText(secret)).toHaveCount(0);
