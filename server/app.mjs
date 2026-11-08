@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createOwnerAuth } from './auth.mjs';
+import { registerOwnerLedgerRoutes } from './ledger.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -19,9 +20,9 @@ export function createApp({ pool, env = process.env, staticRoot = dist }) {
     res.set('Cache-Control', 'no-store');
     next();
   });
-  app.use(express.json({ limit: '16kb', type: 'application/json' }));
   const auth = createOwnerAuth(pool, env);
-  app.use('/api/auth', auth.router);
+  app.use('/api/auth', express.json({ limit: '16kb', type: 'application/json' }), auth.router);
+  registerOwnerLedgerRoutes(app, pool, auth);
   app.get('/api/health', async (_req, res) => {
     try {
       await pool.query('SELECT 1');
@@ -30,10 +31,9 @@ export function createApp({ pool, env = process.env, staticRoot = dist }) {
       res.status(503).json({ ok: false, databaseReady: false });
     }
   });
-  // No financial records API in phase A. This protected probe proves the guard,
-  // but intentionally returns no account or transaction data.
+  // Guarded operational status. No browser visitor can access owner data.
   app.get('/api/owner/status', auth.requireOwner, (_req, res) => {
-    res.json({ authenticated: true, storageReady: false });
+    res.json({ authenticated: true, storageReady: true });
   });
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
