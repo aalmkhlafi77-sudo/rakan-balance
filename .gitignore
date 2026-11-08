@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Server validation bundle (built from shared domain validators)
+server/generated/
