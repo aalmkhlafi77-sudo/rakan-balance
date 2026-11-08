@@ -76,13 +76,7 @@ test('owner storage commits only to validated server, never to IndexedDB; stale 
     });
     assert.equal(revision, 6);
     await assert.rejects(() => secondDevice.updateOwnerPreferences('مالك الحساب', {
-      code: 'USD', symbol: '
-    globalThis.fetch = initialFetch;
-    (globalThis as any).window = initialWindow;
-    (globalThis as any).indexedDB = initialDb;
-  }
-});
-, name: 'دولار أمريكي',
+      code: 'USD', symbol: '$', name: 'دولار أمريكي',
     }), /العملة/);
     assert.equal(revision, 6);
   } finally {
