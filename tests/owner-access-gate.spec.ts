@@ -41,12 +41,12 @@ test('visitor remains local; owner authentication switches into an isolated, loc
   await dialog.getByRole('button', { name: 'تسجيل الدخول' }).click();
 
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('مساحة المالك الخاصة')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'لوحة التحكم المالية' })).toBeVisible();
   expect(revision).toBeGreaterThan(0);
   if (page.viewportSize()!.width < 1024) {
     await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   }
+  await expect(page.getByText('مساحة المالك الخاصة')).toBeVisible();
   await page.getByRole('button', { name: 'تسجيل خروج المالك' }).click();
   await expect(page.getByRole('button', { name: 'دخول المالك', exact: true })).toBeVisible();
 });
