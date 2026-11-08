@@ -159,7 +159,7 @@ const AppContent: React.FC = () => {
             <FinancialReportsView onSelectAccountForStatement={handleOpenStatementForAccount} />
           )}
 
-          {currentTab === 'import' && ownerAccess.status !== 'owner' && <ImportView />}
+          {currentTab === 'import' && <ImportView />}
 
           {currentTab === 'notes' && <NotesView />}
           {currentTab === 'dues' && <DuesView />}
