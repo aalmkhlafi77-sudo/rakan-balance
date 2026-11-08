@@ -94,9 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm shadow-emerald-600/30 font-bold text-lg">
-              ر
-            </div>
+            <img src="/brand-icon.svg" alt="شعار راكان بلانس" width={40} height={40} className="w-10 h-10 shrink-0 rounded-xl shadow-md shadow-emerald-950/15" />
             <div>
               <div className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                 <span>راكان بلانس</span>
