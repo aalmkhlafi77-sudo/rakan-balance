@@ -10,6 +10,8 @@ test('mobile statement and transactions show readable descriptions; bottom navig
   }
   await page.getByRole('button', { name: 'القائمة الرئيسية' }).click();
   await page.getByRole('button', { name: 'بيانات المعاينة' }).click();
+  // Selecting a data scope leaves the drawer open; navigate once to dismiss it.
+  await page.getByRole('navigation').getByRole('button', { name: 'لوحة التحكم', exact: true }).click();
 
   const toolbar = page.getByRole('toolbar', { name: 'التنقل السفلي للجوال' });
   await expect(toolbar).toBeVisible();
@@ -37,5 +39,5 @@ test('mobile statement and transactions show readable descriptions; bottom navig
   await expect(page.getByRole('navigation').getByRole('button', { name: 'الاستحقاقات والتذكيرات' })).toBeVisible();
 
   await expect(page.getByRole('link', { name: 'الصفحة الشخصية للمصمم عبدالله المخلافي' }))
-    .toHaveAttribute('href', 'https://github.com/aalmkhlafi77-sudo');
+    .toHaveAttribute('href', 'https://almkhlafi.carpetbazar.org/');
 });
