@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { AttachmentModel, EntryType, TransactionModel } from '../domain/types.ts';
 import { formatCurrency, fromMinorUnits, toMinorUnits } from '../domain/money.ts';
+import { validateAttachmentFile, fileToAttachmentModel, formatFileSize } from '../services/attachment_service.ts';
 import {
   X,
   ArrowUpRight,
@@ -79,32 +80,28 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
   const currentAccountBalance = selectedAccount ? getAccountBalance(selectedAccount.id) : 0;
 
   // Handle local file uploads
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    setError('');
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (file.size > 5 * 1024 * 1024) {
-        setError(`حجم الملف "${file.name}" يتجاوز الحد المسموح به (5 ميجابايت).`);
+      const validation = validateAttachmentFile(file);
+      if (!validation.isValid) {
+        setError(validation.error || 'فشل التحقق من الملف.');
         continue;
       }
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        const newAtt: AttachmentModel = {
-          id: `att_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          transactionId: editingTransaction ? editingTransaction.id : '',
-          originalName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          size: file.size,
-          dataUrl,
-          createdAt: new Date().toISOString(),
-        };
-        setAttachments((prev) => [...prev, newAtt]);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const attModel = await fileToAttachmentModel(
+          file,
+          editingTransaction ? editingTransaction.id : ''
+        );
+        setAttachments((prev) => [...prev, attModel]);
+      } catch (err: any) {
+        setError(err.message || 'حدث خطأ أثناء قراءة المرفق.');
+      }
     }
   };
 
@@ -393,7 +390,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                         {att.originalName}
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        ({(att.size / 1024).toFixed(1)} KB)
+                        ({formatFileSize(att.size)})
                       </span>
                     </div>
                     <button

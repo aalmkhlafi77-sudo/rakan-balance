@@ -11,6 +11,8 @@ import { calculateAccountStatement } from '../domain/balance_calculator.ts';
 import { buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
+import { AttachmentModel } from '../domain/types.ts';
 import {
   FileSpreadsheet,
   Printer,
@@ -21,6 +23,7 @@ import {
   ArrowDownLeft,
   Filter,
   ArrowLeftRight,
+  Paperclip,
 } from 'lucide-react';
 
 interface StatementViewProps {
@@ -28,13 +31,17 @@ interface StatementViewProps {
 }
 
 export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }) => {
-  const { accounts, transactions, settings } = useApp();
+  const { accounts, transactions, attachments, settings } = useApp();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
     initialAccountId || (accounts[0]?.id || '')
   );
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
+
+  // Attachment Preview Modal
+  const [previewAttachmentsList, setPreviewAttachmentsList] = useState<AttachmentModel[]>([]);
+  const [previewIndex, setPreviewIndex] = useState<number>(0);
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
@@ -406,6 +413,30 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
                               {row.transaction.notes && (
                                 <div className="text-[10px] text-slate-400">{row.transaction.notes}</div>
                               )}
+                              {(() => {
+                                const rowAtts = attachments.filter((att) =>
+                                  row.transaction.attachmentIds?.includes(att.id)
+                                );
+                                if (rowAtts.length === 0) return null;
+                                return (
+                                  <div className="flex items-center gap-1.5 mt-1 no-print">
+                                    {rowAtts.map((att) => (
+                                      <button
+                                        key={att.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setPreviewAttachmentsList(rowAtts);
+                                          setPreviewIndex(rowAtts.findIndex((a) => a.id === att.id));
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 text-slate-600 dark:text-slate-300 hover:text-emerald-600 cursor-pointer transition-colors"
+                                      >
+                                        <Paperclip className="w-3 h-3" />
+                                        <span className="truncate max-w-[100px]">{att.originalName}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })()}
@@ -442,6 +473,14 @@ export const StatementView: React.FC<StatementViewProps> = ({ initialAccountId }
           <span>تم استخراج هذا الكشف من منصة راكان بلانس (RAKAN BALANCE)</span>
         </div>
       </div>
+
+      {/* Attachment Preview Modal Component */}
+      <AttachmentPreviewModal
+        attachments={previewAttachmentsList}
+        initialIndex={previewIndex}
+        isOpen={previewAttachmentsList.length > 0}
+        onClose={() => setPreviewAttachmentsList([])}
+      />
     </div>
   );
 };

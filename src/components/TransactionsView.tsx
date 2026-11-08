@@ -7,8 +7,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { TransactionModel } from '../domain/types.ts';
+import { TransactionModel, AttachmentModel } from '../domain/types.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import {
   ReceiptText,
   Search,
@@ -61,11 +62,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [deletingTransferId, setDeletingTransferId] = useState<string | null>(null);
 
   // Attachment Preview Modal
-  const [previewAttachment, setPreviewAttachment] = useState<{
-    name: string;
-    url: string;
-    mime: string;
-  } | null>(null);
+  const [previewAttachmentsList, setPreviewAttachmentsList] = useState<AttachmentModel[]>([]);
+  const [previewIndex, setPreviewIndex] = useState<number>(0);
 
   // Filtered & stably sorted transactions
   const filteredTransactions = useMemo(() => {
@@ -374,13 +372,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               <button
                                 key={att.id}
                                 type="button"
-                                onClick={() =>
-                                  setPreviewAttachment({
-                                    name: att.originalName,
-                                    url: att.dataUrl,
-                                    mime: att.mimeType,
-                                  })
-                                }
+                                onClick={() => {
+                                  setPreviewAttachmentsList(txAttachments);
+                                  setPreviewIndex(txAttachments.findIndex((a) => a.id === att.id));
+                                }}
                                 className="p-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 cursor-pointer"
                                 title={`معاينة: ${att.originalName}`}
                               >
@@ -515,65 +510,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         </div>
       )}
 
-      {/* Attachment Preview Modal */}
-      {previewAttachment && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                {previewAttachment.name}
-              </span>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewAttachment.url}
-                  download={previewAttachment.name}
-                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                  title="تنزيل الملف"
-                >
-                  <Download className="w-4 h-4" />
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewAttachment(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 flex items-center justify-center max-h-[70vh] overflow-auto bg-slate-50 dark:bg-slate-950">
-              {previewAttachment.mime.startsWith('image/') ? (
-                <img
-                  src={previewAttachment.url}
-                  alt={previewAttachment.name}
-                  className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-sm"
-                />
-              ) : previewAttachment.mime.includes('pdf') ? (
-                <iframe
-                  src={previewAttachment.url}
-                  title={previewAttachment.name}
-                  className="w-full h-[60vh] rounded-lg border border-slate-200 dark:border-slate-800"
-                />
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-xs text-slate-500 mb-3">
-                    ملف مستند ({previewAttachment.mime})
-                  </p>
-                  <a
-                    href={previewAttachment.url}
-                    download={previewAttachment.name}
-                    className="py-2 px-4 rounded-xl bg-emerald-600 text-white text-xs font-medium inline-flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>تنزيل المستند</span>
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Attachment Preview Modal Component */}
+      <AttachmentPreviewModal
+        attachments={previewAttachmentsList}
+        initialIndex={previewIndex}
+        isOpen={previewAttachmentsList.length > 0}
+        onClose={() => setPreviewAttachmentsList([])}
+      />
     </div>
   );
 };
