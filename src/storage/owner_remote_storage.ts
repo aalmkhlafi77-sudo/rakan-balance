@@ -12,6 +12,7 @@ import type {
 } from '../domain/types.ts';
 import { STORES_REAL } from './indexed_db.ts';
 import { computeSHA256 } from './backup_service.ts';
+import type { LedgerImportPreview, LedgerImportCommitResult } from '../domain/web_ledger_import.ts';
 
 type LedgerData = BackupBundle['data'] & {
   accounts: AccountModel[];
@@ -329,8 +330,68 @@ export class OwnerRemoteStorage {
   public async restoreLatestSnapshot(): Promise<boolean> {
     throw new Error('الرجوع إلى نسخة المالك السابقة متوقف حتى تفعيل نسخ الخادم التاريخية.');
   }
-  public async importLedgerAtomic(): Promise<never> {
-    throw new Error('الاستيراد إلى بيانات المالك متوقف مؤقتاً إلى حين ربط الاستيراد المركزي.');
+  public async importLedgerAtomic(preview: LedgerImportPreview, scope: 'real' | 'demo'): Promise<LedgerImportCommitResult> {
+    if (scope !== 'real') throw new Error('لا يمكن الاستيراد إلى مساحة تجريبية للمالك.');
+    if (!preview.canCommit) throw new Error('لا يمكن استيراد ملف يحتوي على أخطاء مانعة.');
+    const norm = (val: unknown) => String(val ?? '').trim().toLowerCase()
+      .replace(/\uFEFF/g, '').replace(/[\s_\-]+/g, '');
+    const result: LedgerImportCommitResult = {
+      importedAccounts: 0, skippedAccounts: 0, importedTransactions: 0, skippedTransactions: 0,
+    };
+    await this.change((d) => {
+      const categories = new Map(d.categories.map(c => [norm(c.name), c.id]));
+      const accountsByName = new Map(d.accounts.map(a => [norm(a.name), a.id]));
+      const accountsById = new Map(d.accounts.map(a => [norm(a.id), a.id]));
+      const externalRefs = new Map<string, string>();
+      const signatures = new Set(d.transactions.map(t =>
+        [norm(t.accountId), t.entryType, t.amountMinor, t.date, t.description.trim()].join('|')));
+      const stamp = new Date().toISOString();
+      for (const item of preview.accounts) {
+        const key = norm(item.name);
+        const existing = accountsByName.get(key);
+        if (item.duplicate || existing) {
+          if (existing && item.externalRef) externalRefs.set(norm(item.externalRef), existing);
+          result.skippedAccounts += 1;
+          continue;
+        }
+        const categoryName = item.categoryName.trim();
+        const categoryKey = norm(categoryName);
+        let categoryId = categories.get(categoryKey);
+        if (!categoryId) {
+          categoryId = crypto.randomUUID();
+          d.categories.push({ id: categoryId, name: categoryName, sortOrder: d.categories.length + 1 });
+          categories.set(categoryKey, categoryId);
+        }
+        const id = crypto.randomUUID();
+        d.accounts.push({
+          id, name: item.name.trim(), parentId: null, categoryId,
+          openingBalanceMinor: item.openingBalanceMinor, status: 'active',
+          phone: item.phone?.trim(), notes: item.notes?.trim(),
+          isDemo: false, createdAt: stamp, updatedAt: stamp,
+        });
+        accountsByName.set(key, id);
+        accountsById.set(norm(id), id);
+        if (item.externalRef) externalRefs.set(norm(item.externalRef), id);
+        result.importedAccounts += 1;
+      }
+      for (const item of preview.transactions) {
+        if (item.duplicate) { result.skippedTransactions += 1; continue; }
+        const ref = norm(item.accountRef);
+        const accountId = accountsById.get(ref) || externalRefs.get(ref) || accountsByName.get(ref);
+        if (!accountId) throw new Error('تعذر ربط الحركة في الصف ' + item.sourceRow + ' بحساب معروف.');
+        const signature = [norm(accountId), item.entryType, item.amountMinor, item.date, item.description.trim()].join('|');
+        if (signatures.has(signature)) { result.skippedTransactions += 1; continue; }
+        signatures.add(signature);
+        d.transactions.push({
+          id: crypto.randomUUID(), accountId, entryType: item.entryType,
+          amountMinor: item.amountMinor, date: item.date,
+          description: item.description.trim(), notes: item.notes?.trim(),
+          attachmentIds: [], isDemo: false, createdAt: stamp, updatedAt: stamp,
+        });
+        result.importedTransactions += 1;
+      }
+    });
+    return result;
   }
   public async saveDemoWorkspace(): Promise<never> {
     throw new Error('بيانات المعاينة لا تستخدم في مساحة المالك.');
