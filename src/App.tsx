@@ -9,6 +9,7 @@ import { AppProvider, useApp } from './context/AppContext.tsx';
 import { Sidebar, TabView } from './components/Sidebar.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { MobileBottomNav } from './components/MobileBottomNav.tsx';
+import { OwnerAccessGate } from './components/OwnerAccessGate.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
 import { AccountsView } from './components/AccountsView.tsx';
 import { TransactionsView } from './components/TransactionsView.tsx';
@@ -203,8 +204,10 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <OwnerAccessGate>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </OwnerAccessGate>
   );
 }
