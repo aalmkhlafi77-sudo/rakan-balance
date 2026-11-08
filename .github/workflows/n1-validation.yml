@@ -9,6 +9,8 @@ on:
       - main
     paths:
       - 'src/**'
+      - 'server/**'
+      - 'database/**'
       - 'tests/**'
       - 'public/**'
       - 'package.json'
@@ -43,6 +45,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Execute isolated financial tests
         run: npm test
+      - name: Owner authentication security tests
+        run: npm run test:server
       - name: TypeScript validation
         run: npm run lint
       - name: Production build
