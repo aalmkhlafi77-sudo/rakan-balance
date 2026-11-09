@@ -499,7 +499,8 @@ export const InterAccountTransferModal: React.FC<InterAccountTransferModalProps>
             <button
               type="submit"
               disabled={isSubmitting || amountMinor <= 0 || sourceAccountId === destinationAccountId}
-              className="py-2.5 px-6 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-sm shadow-purple-600/30 cursor-pointer"
+              data-ui-effect="synthwave-laser-transfer-confirm"
+              className="rakan-laser-button py-2.5 px-6 rounded-xl disabled:opacity-50 font-bold text-xs flex items-center gap-2 cursor-pointer"
             >
               {isSubmitting ? (
                 <span>جاري الحفظ الآمن...</span>
