@@ -102,9 +102,9 @@ export const FirstSetupModal: React.FC = () => {
                 <img
                   src="/assets/rakan-logo.webp"
                   alt="راكان بلانس — RAKAN BALANCE"
-                  className="w-full max-w-[210px] h-auto object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.7)]"
-                  width={920}
-                  height={320}
+                  className="w-full max-w-[248px] h-auto object-contain filter drop-shadow-[0_10px_24px_rgba(0,0,0,0.58)]"
+                  width={384}
+                  height={384}
                   loading="eager"
                   decoding="async"
                 />

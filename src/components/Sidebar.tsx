@@ -103,13 +103,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         dir="rtl"
       >
         {/* Approved logo: full artwork, transparent, no frame or decorative padding. */}
-        <div className="min-h-[88px] px-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
+        <div className="min-h-[132px] px-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
           <img
             src="/assets/rakan-logo.webp"
             alt="راكان بلانس — RAKAN BALANCE"
-            className="block w-full max-w-[222px] h-[76px] object-contain object-center"
-            width={920}
-            height={320}
+            className="block w-full max-w-[148px] h-[118px] object-contain object-center drop-shadow-[0_8px_18px_rgba(0,0,0,0.28)]"
+            width={384}
+            height={384}
             loading="eager"
             decoding="async"
           />
