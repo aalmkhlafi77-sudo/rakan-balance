@@ -47,6 +47,8 @@ jobs:
       # setup-node's npm cache requires a package-lock.json or npm-shrinkwrap.json.
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Production dependency security audit
+        run: npm audit --omit=dev --audit-level=high
       - name: Execute isolated financial tests
         run: npm test
       - name: Owner authentication security tests
