@@ -137,8 +137,8 @@ export const ImportView: React.FC = () => {
     downloadFile(csv, 'rakan_transactions_template.csv', 'text/csv;charset=utf-8;');
   };
 
-  const downloadXlsxTemplate = () => {
-    const bytes = buildXlsxTemplate();
+  const downloadXlsxTemplate = async () => {
+    const bytes = await buildXlsxTemplate();
     downloadFile(
       bytes,
       'rakan_ledger_template.xlsx',
@@ -206,7 +206,7 @@ export const ImportView: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="font-bold text-sm text-slate-900 dark:text-slate-100">
-              اختر ملف الاستيراد (.csv, .xlsx, .xls)
+              اختر ملف الاستيراد (.csv, .xlsx)
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               يدعم الملفات التي تحتوي على جداول الحسابات والحركات بالعربية والإنجليزية (UTF-8)
@@ -227,7 +227,7 @@ export const ImportView: React.FC = () => {
             )}
             <input
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx"
               onChange={handleFileChange}
               disabled={isBusy}
               className="hidden"
@@ -259,7 +259,7 @@ export const ImportView: React.FC = () => {
             </button>
 
             <button
-              onClick={downloadXlsxTemplate}
+              onClick={() => void downloadXlsxTemplate()}
               className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 border border-emerald-200 dark:border-emerald-800 transition-colors"
             >
               <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
