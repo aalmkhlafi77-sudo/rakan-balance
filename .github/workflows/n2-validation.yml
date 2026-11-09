@@ -15,7 +15,6 @@ on:
       - 'tests/**'
       - 'public/**'
       - 'package.json'
-      - 'bun.lock'
       - 'index.html'
       - 'metadata.json'
       - 'playwright.config.ts'
