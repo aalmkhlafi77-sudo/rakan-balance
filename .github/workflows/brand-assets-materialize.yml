@@ -1,0 +1,39 @@
+name: Materialize approved RAKAN brand assets
+on:
+  push:
+    branches:
+      - brand/new-rakan-logo
+    paths:
+      - .brand-tmp/READY
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: brand/new-rakan-logo
+      - name: Rebuild binary brand assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public/assets
+          cat .brand-tmp/logo.*.b64 | tr -d '\n' | base64 -d > public/assets/rakan-logo.webp
+          cat .brand-tmp/icon512.*.b64 | tr -d '\n' | base64 -d > public/assets/rakan-icon-512.webp
+          cat .brand-tmp/icon192.*.b64 | tr -d '\n' | base64 -d > public/assets/rakan-icon-192.webp
+          cat .brand-tmp/apple.*.b64 | tr -d '\n' | base64 -d > public/apple-touch-icon.png
+          file public/assets/rakan-logo.webp public/assets/rakan-icon-512.webp public/assets/rakan-icon-192.webp public/apple-touch-icon.png
+      - name: Commit materialized assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .brand-tmp
+          rm -f .github/workflows/brand-assets-materialize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/assets/rakan-logo.webp public/assets/rakan-icon-512.webp public/assets/rakan-icon-192.webp public/apple-touch-icon.png .brand-tmp .github/workflows/brand-assets-materialize.yml
+          git commit -m "brand: replace RAKAN logo and app icons"
+          git push origin HEAD:brand/new-rakan-logo
