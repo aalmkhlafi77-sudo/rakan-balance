@@ -22,10 +22,12 @@ import {
   ArrowLeft,
   KeyRound,
   CheckCircle2,
+  Sun,
+  Sparkles,
 } from 'lucide-react';
 
 export const FirstSetupModal: React.FC = () => {
-  const { settings, completeFirstSetup } = useApp();
+  const { settings, completeFirstSetup, toggleTheme } = useApp();
   const ownerAccess = useOwnerAccess();
 
   const [ownerNameInput, setOwnerNameInput] = useState(settings.ownerName || 'راكان');
@@ -83,15 +85,29 @@ export const FirstSetupModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#020b0a]/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto overscroll-contain"
+      className="welcome-screen fixed inset-0 z-50 bg-[#020b0a]/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto overscroll-contain"
+      data-theme={settings.theme}
       dir="rtl"
     >
-      <div className="w-full max-w-4xl min-h-[100dvh] sm:min-h-0 bg-gradient-to-br from-[#0c2b26]/95 via-[#071d1a]/95 to-[#041210]/98 border-0 sm:border border-[#d8b46a]/40 rounded-none sm:rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85),0_0_35px_rgba(216,180,106,0.15)] overflow-hidden my-0 sm:my-4">
+      <div className="welcome-card relative w-full max-w-4xl min-h-[100dvh] sm:min-h-0 bg-gradient-to-br from-[#0c2b26]/95 via-[#071d1a]/95 to-[#041210]/98 border-0 sm:border border-[#d8b46a]/40 rounded-none sm:rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85),0_0_35px_rgba(216,180,106,0.15)] overflow-hidden my-0 sm:my-4">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={settings.theme === 'dark' ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الزجاجي'}
+          title={settings.theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الزجاجي'}
+          className="welcome-theme-toggle absolute top-3 left-3 sm:top-4 sm:left-4 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[#d8b46a]/45 bg-[#071d1a]/78 backdrop-blur-xl text-[#e8d7a8] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_6px_16px_rgba(0,0,0,0.35)] hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+        >
+          {settings.theme === 'dark' ? (
+            <Sun className="w-4 h-4" aria-hidden="true" />
+          ) : (
+            <Sparkles className="w-4 h-4" aria-hidden="true" />
+          )}
+        </button>
         {/* Main 2-Column Responsive Layout: Hero Brand Area + User Setup Form */}
         <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[100dvh] sm:min-h-[580px]">
           
           {/* Right Column (Hero / Brand Identity / Owner Action / Feature Highlights) */}
-          <div className="lg:col-span-5 px-5 pt-6 pb-5 sm:p-8 bg-gradient-to-b from-[#123933]/70 via-[#0a2320]/85 to-[#041513]/92 border-b lg:border-b-0 lg:border-l border-[#d8b46a]/25 flex flex-col lg:justify-between relative overflow-hidden">
+          <div className="welcome-hero lg:col-span-5 px-5 pt-6 pb-5 sm:p-8 bg-gradient-to-b from-[#123933]/70 via-[#0a2320]/85 to-[#041513]/92 border-b lg:border-b-0 lg:border-l border-[#d8b46a]/25 flex flex-col lg:justify-between relative overflow-hidden">
             {/* Ambient specular light highlight */}
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#d8b46a]/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-[#b56ce8]/15 rounded-full blur-3xl pointer-events-none" />
@@ -192,7 +208,7 @@ export const FirstSetupModal: React.FC = () => {
           </div>
 
           {/* Left Column (Configuration Form Area) */}
-          <div className="lg:col-span-7 p-4 sm:p-8 flex flex-col justify-between">
+          <div className="welcome-form lg:col-span-7 p-4 sm:p-8 flex flex-col justify-between">
             <div>
               {ownerAccess.status !== 'owner' && (
                 <div className="lg:hidden mb-4">
