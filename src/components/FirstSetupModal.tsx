@@ -131,6 +131,7 @@ export const FirstSetupModal: React.FC = () => {
                   <button
                     type="button"
                     onClick={ownerAccess.openLogin}
+                    aria-label="دخول المالك"
                     data-ui-effect="liquid-metal-owner"
                     className="rakan-liquid-metal-button w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
                   >
