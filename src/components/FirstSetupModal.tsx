@@ -83,39 +83,40 @@ export const FirstSetupModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#020b0a]/90 backdrop-blur-xl flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-[#020b0a]/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-0 sm:p-5 overflow-y-auto overscroll-contain"
       dir="rtl"
     >
-      <div className="w-full max-w-4xl bg-gradient-to-br from-[#0c2b26]/95 via-[#071d1a]/95 to-[#041210]/98 border border-[#d8b46a]/40 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85),0_0_35px_rgba(216,180,106,0.15)] overflow-hidden my-4">
+      <div className="w-full max-w-4xl min-h-[100dvh] sm:min-h-0 bg-gradient-to-br from-[#0c2b26]/95 via-[#071d1a]/95 to-[#041210]/98 border-0 sm:border border-[#d8b46a]/40 rounded-none sm:rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85),0_0_35px_rgba(216,180,106,0.15)] overflow-hidden my-0 sm:my-4">
         {/* Main 2-Column Responsive Layout: Hero Brand Area + User Setup Form */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[580px]">
+        <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[100dvh] sm:min-h-[580px]">
           
           {/* Right Column (Hero / Brand Identity / Owner Action / Feature Highlights) */}
-          <div className="lg:col-span-5 p-6 sm:p-8 bg-gradient-to-b from-[#123933]/60 via-[#0a2320]/80 to-[#041513]/90 border-b lg:border-b-0 lg:border-l border-[#d8b46a]/25 flex flex-col justify-between relative overflow-hidden">
+          <div className="lg:col-span-5 px-5 pt-6 pb-5 sm:p-8 bg-gradient-to-b from-[#123933]/70 via-[#0a2320]/85 to-[#041513]/92 border-b lg:border-b-0 lg:border-l border-[#d8b46a]/25 flex flex-col lg:justify-between relative overflow-hidden">
             {/* Ambient specular light highlight */}
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#d8b46a]/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-[#b56ce8]/15 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="space-y-6 relative z-10">
+            <div className="space-y-4 lg:space-y-6 relative z-10">
               {/* Logo Presentation with Specular Shadow */}
-              <div className="pt-1">
+              <div className="pt-0 text-center lg:text-right">
                 <img
                   src="/assets/rakan-logo.webp"
                   alt="راكان بلانس — RAKAN BALANCE"
-                  className="w-full max-w-[248px] h-auto object-contain filter drop-shadow-[0_10px_24px_rgba(0,0,0,0.58)]"
+                  className="block w-full max-w-[188px] sm:max-w-[220px] lg:max-w-[248px] h-auto object-contain mx-auto lg:mx-0 filter drop-shadow-[0_12px_28px_rgba(0,0,0,0.62)]"
                   width={384}
                   height={384}
                   loading="eager"
                   decoding="async"
                 />
-                <p className="text-xs text-[#d7d0c2] mt-3 leading-relaxed font-medium">
-                  المنصة المستقلة لإدارة الذمم والعمليات المالية بدقة الهللة والعملة الموحدة.
+                <p className="text-[11px] sm:text-xs text-[#e3dbcb] mt-2 sm:mt-3 leading-relaxed font-semibold max-w-sm mx-auto lg:mx-0">
+                  <span className="sm:hidden">دفترك المالي الشخصي — محلي كضيف أو متزامن عبر حساب المالك.</span>
+                  <span className="hidden sm:inline">المنصة المستقلة لإدارة الذمم والعمليات المالية بدقة الهللة والعملة الموحدة.</span>
                 </p>
               </div>
 
               {/* Owner Access Card Action (Requirement 5.4) */}
               {ownerAccess.status !== 'owner' && (
-                <div className="p-3.5 rounded-2xl bg-[#081b19]/90 border border-[#d8b46a]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_20px_rgba(0,0,0,0.5)]">
+                <div className="hidden lg:block p-3.5 rounded-2xl bg-[#081b19]/90 border border-[#d8b46a]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_20px_rgba(0,0,0,0.5)]">
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <span className="text-xs font-bold text-[#f8f4e8] flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-[#d8b46a]" />
@@ -142,7 +143,7 @@ export const FirstSetupModal: React.FC = () => {
               )}
 
               {/* 4 Concise Informative Badges (Requirement 5.6) */}
-              <div className="space-y-2.5 pt-1">
+              <div className="hidden lg:block space-y-2.5 pt-1">
                 <div className="flex items-start gap-2.5 text-right">
                   <div className="w-6 h-6 rounded-lg bg-[#d8b46a]/15 border border-[#d8b46a]/30 flex items-center justify-center shrink-0 mt-0.5 text-[#e8d7a8]">
                     <Shield className="w-3.5 h-3.5" />
@@ -185,23 +186,55 @@ export const FirstSetupModal: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 mt-4 border-t border-[#d8b46a]/15 text-[10px] text-slate-400">
+            <div className="hidden lg:block pt-4 mt-4 border-t border-[#d8b46a]/15 text-[10px] text-slate-400">
               راكان بلانس © 2026 · بيئة مالية مستقلة
             </div>
           </div>
 
           {/* Left Column (Configuration Form Area) */}
-          <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between">
+          <div className="lg:col-span-7 p-4 sm:p-8 flex flex-col justify-between">
             <div>
-              <div className="mb-5 pb-3 border-b border-[#d8b46a]/20">
+              {ownerAccess.status !== 'owner' && (
+                <div className="lg:hidden mb-4">
+                  <div className="p-3.5 rounded-2xl bg-[#081b19]/92 border border-[#d8b46a]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_10px_24px_rgba(0,0,0,0.42)]">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <span className="text-xs font-bold text-[#f8f4e8] flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-[#d8b46a]" />
+                        <span>مساحة المالك الخاصة</span>
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#d8b46a]/15 text-[#e8d7a8] border border-[#d8b46a]/30">
+                        مزامنة
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={ownerAccess.openLogin}
+                      aria-label="دخول المالك"
+                      data-ui-effect="liquid-metal-owner"
+                      className="rakan-liquid-metal-button w-full py-3 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <KeyRound className="relative z-10 w-4 h-4 text-[#fff0c7]" />
+                      <span className="relative z-10">دخول المالك المعتمد</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 py-3" aria-hidden="true">
+                    <span className="h-px flex-1 bg-gradient-to-l from-[#d8b46a]/45 to-transparent" />
+                    <span className="text-[10px] font-bold text-[#d7d0c2] whitespace-nowrap">أو ابدأ محليًا كضيف</span>
+                    <span className="h-px flex-1 bg-gradient-to-r from-[#d8b46a]/45 to-transparent" />
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-4 sm:mb-5 pb-3 border-b border-[#d8b46a]/20">
                 <span className="text-[10px] font-bold font-mono tracking-widest text-[#d8b46a] uppercase">
                   إعدادات البدء السريع
                 </span>
-                <h3 className="text-lg font-bold text-[#f8f4e8] mt-0.5">
+                <h3 className="text-base sm:text-lg font-bold text-[#f8f4e8] mt-0.5">
                   تهيئة الدفتر المالي الشخصي
                 </h3>
-                <p className="text-xs text-[#d7d0c2] mt-1">
-                  أدخل اسم المالك والعملة المحلية للبدء في تدوين العمليات فوراً بدقة الهللة.
+                <p className="text-[11px] sm:text-xs text-[#d7d0c2] mt-1">
+                  أدخل الاسم والعملة للبدء مباشرة. يمكنك تغيير الإعدادات لاحقًا.
                 </p>
               </div>
 
@@ -211,7 +244,7 @@ export const FirstSetupModal: React.FC = () => {
                 </div>
               )}
 
-              <form id="firstSetupForm" onSubmit={handleSubmit} className="space-y-4">
+              <form id="firstSetupForm" onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
                 {/* 1. Owner Name Field */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-[#f8f4e8] flex items-center gap-1.5">
@@ -226,7 +259,7 @@ export const FirstSetupModal: React.FC = () => {
                     className="w-full h-11 px-3.5 rounded-xl bg-[#061816]/90 border border-[#d8b46a]/40 focus:border-[#d8b46a] text-xs text-[#f8f4e8] placeholder:text-slate-500 font-semibold focus:outline-none focus:ring-2 focus:ring-[#d8b46a]/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] transition-all"
                     required
                   />
-                  <p className="text-[10px] text-[#d7d0c2]">
+                  <p className="hidden sm:block text-[10px] text-[#d7d0c2]">
                     الاسم الرسمي الذي يظهر في ترويسات كشوف الحساب والتقارير المالية.
                   </p>
                 </div>
@@ -238,7 +271,7 @@ export const FirstSetupModal: React.FC = () => {
                       <Coins className="w-4 h-4 text-[#e8d7a8]" />
                       <span>العملة المحلية الموحدة:</span>
                     </span>
-                    <span className="text-[10px] font-mono text-[#d8b46a]">
+                    <span className="hidden sm:inline text-[10px] font-mono text-[#d8b46a]">
                       مبدأ العملة الواحدة (منزلتين عشريتين)
                     </span>
                   </label>
@@ -261,7 +294,7 @@ export const FirstSetupModal: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  <p className="text-[10px] text-[#d7d0c2]">
+                  <p className="hidden sm:block text-[10px] text-[#d7d0c2]">
                     العملة المختارة: <span className="font-bold text-[#e8d7a8]">{selectedCurrency.name}</span> بحساب الهللات والكسور بأعداد صحيحة تمنع فروق التقريب.
                   </p>
                 </div>
@@ -322,7 +355,7 @@ export const FirstSetupModal: React.FC = () => {
             </div>
 
             {/* Primary Action Button: Beso 3D Glass CTA (Requirement 5.8) */}
-            <div className="pt-5 mt-4 border-t border-[#d8b46a]/20">
+            <div className="pt-4 sm:pt-5 mt-3 sm:mt-4 border-t border-[#d8b46a]/20">
               <button
                 type="submit"
                 form="firstSetupForm"
@@ -336,6 +369,9 @@ export const FirstSetupModal: React.FC = () => {
                   <ArrowLeft className="w-4 h-4 text-[#e8d7a8]" />
                 </span>
               </button>
+              <p className="lg:hidden mt-3 text-center text-[10px] text-[#bfc7c2]">
+                محلي كضيف • مزامنة خاصة للمالك • بياناتك تحت سيطرتك
+              </p>
             </div>
           </div>
 
