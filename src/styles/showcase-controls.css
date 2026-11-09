@@ -1,0 +1,460 @@
+/* RAKAN BALANCE — production adaptations of approved Cinematic UI Showcase controls.
+   Scoped classes only; no financial or storage behavior is changed. */
+
+:root {
+  --rakan-ivory: #fff8ec;
+  --rakan-gold: #d8b46a;
+  --rakan-gold-soft: #e8d7a8;
+  --rakan-emerald: #47cfa8;
+  --rakan-emerald-deep: #0b3d35;
+  --rakan-purple: #b56ce8;
+  --rakan-purple-deep: #4b145f;
+  --rakan-ink: #041210;
+}
+
+/* 1) ThreeUI-inspired cosmic glass CTA — adapted to a real submit button,
+   without the gallery canvas/background. */
+.rakan-cosmic-glass-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 58px;
+  border: 1px solid rgba(232, 215, 168, .82) !important;
+  border-radius: 18px !important;
+  color: var(--rakan-ivory) !important;
+  background:
+    radial-gradient(circle at 12% 28%, rgba(71, 207, 168, .24), transparent 28%),
+    radial-gradient(circle at 88% 82%, rgba(181, 108, 232, .30), transparent 36%),
+    linear-gradient(135deg, rgba(13, 62, 54, .86), rgba(38, 22, 55, .90) 58%, rgba(10, 31, 29, .92)) !important;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.65),
+    inset 0 -1px 0 rgba(0,0,0,.45),
+    0 12px 30px rgba(0,0,0,.42),
+    0 0 28px rgba(181,108,232,.24),
+    0 0 18px rgba(71,207,168,.16) !important;
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease;
+}
+.rakan-cosmic-glass-button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,.18), transparent 24%, transparent 66%, rgba(232,215,168,.10)),
+    radial-gradient(circle at 50% 0%, rgba(255,255,255,.16), transparent 42%);
+}
+.rakan-cosmic-glass-button::after {
+  content: "";
+  position: absolute;
+  top: -80%;
+  bottom: -80%;
+  width: 24%;
+  left: -35%;
+  z-index: 0;
+  pointer-events: none;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.48), transparent);
+  filter: blur(3px);
+  animation: rakan-cosmic-sweep 4.8s ease-in-out infinite;
+}
+.rakan-cosmic-glass-button:hover {
+  transform: translateY(-2px) scale(1.008);
+  border-color: rgba(255, 239, 197, .95) !important;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,.72),
+    0 15px 34px rgba(0,0,0,.48),
+    0 0 34px rgba(181,108,232,.34),
+    0 0 24px rgba(71,207,168,.22) !important;
+}
+.rakan-cosmic-glass-button:active { transform: translateY(1px) scale(.992); }
+.rakan-cosmic-glass-button:focus-visible {
+  outline: 2px solid var(--rakan-gold-soft);
+  outline-offset: 4px;
+}
+.rakan-cosmic-glass-button:disabled { opacity: .58; cursor: wait; transform: none; }
+.rakan-cosmic-orb {
+  position: relative;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 34% 28%, #fff7d7 0 5%, transparent 6%),
+    radial-gradient(circle at 58% 62%, rgba(181,108,232,.96), transparent 28%),
+    conic-gradient(from 30deg, #3fe0b6, #d8b46a, #b56ce8, #246d60, #3fe0b6);
+  box-shadow:
+    inset -4px -5px 10px rgba(0,0,0,.35),
+    inset 3px 3px 7px rgba(255,255,255,.30),
+    0 0 14px rgba(71,207,168,.55),
+    0 0 22px rgba(181,108,232,.34);
+  animation: rakan-orb-drift 5.5s ease-in-out infinite;
+}
+.rakan-cosmic-orb::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,.30);
+  transform: rotate(-22deg) scaleY(.58);
+}
+.rakan-cosmic-content { position: relative; z-index: 2; }
+@keyframes rakan-cosmic-sweep {
+  0%, 58% { left: -35%; opacity: 0; }
+  67% { opacity: .8; }
+  82% { left: 112%; opacity: .15; }
+  100% { left: 112%; opacity: 0; }
+}
+@keyframes rakan-orb-drift {
+  0%,100% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(12deg) scale(1.06); }
+}
+
+/* 2) Liquid-metal owner action — chromatic liquid reflection adapted to
+   the existing owner-login action, without introducing a heavy WebGL runtime. */
+.rakan-liquid-metal-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(242, 220, 171, .78) !important;
+  color: #fffaf0 !important;
+  background:
+    linear-gradient(108deg,
+      #142e2b 0%,
+      #70867f 14%,
+      #e5d6b1 27%,
+      #674b70 39%,
+      #183f38 54%,
+      #c8b985 68%,
+      #553a61 82%,
+      #132d2a 100%) !important;
+  background-size: 240% 100% !important;
+  box-shadow:
+    inset 0 2px 1px rgba(255,255,255,.72),
+    inset 0 -4px 8px rgba(0,0,0,.45),
+    0 7px 18px rgba(0,0,0,.44),
+    0 0 16px rgba(216,180,106,.18) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.75);
+  animation: rakan-liquid-metal-flow 7s ease-in-out infinite;
+  transition: transform .22s ease, box-shadow .22s ease, filter .22s ease;
+}
+.rakan-liquid-metal-button::before {
+  content: "";
+  position: absolute;
+  inset: -70% -20%;
+  z-index: -1;
+  pointer-events: none;
+  background: conic-gradient(from 120deg,
+    transparent 0 18%,
+    rgba(255,255,255,.34) 23%,
+    rgba(71,207,168,.20) 30%,
+    transparent 38% 58%,
+    rgba(181,108,232,.25) 67%,
+    rgba(255,239,197,.25) 72%,
+    transparent 82%);
+  animation: rakan-liquid-metal-roll 8.5s linear infinite;
+}
+.rakan-liquid-metal-button::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);
+}
+.rakan-liquid-metal-button:hover {
+  transform: translateY(-1.5px);
+  filter: saturate(1.08) brightness(1.06);
+  box-shadow:
+    inset 0 2px 1px rgba(255,255,255,.82),
+    inset 0 -4px 8px rgba(0,0,0,.42),
+    0 10px 22px rgba(0,0,0,.50),
+    0 0 22px rgba(216,180,106,.28) !important;
+}
+.rakan-liquid-metal-button:active { transform: translateY(1px) scale(.99); }
+.rakan-liquid-metal-button:focus-visible { outline: 2px solid var(--rakan-gold-soft); outline-offset: 4px; }
+@keyframes rakan-liquid-metal-flow {
+  0%,100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes rakan-liquid-metal-roll { to { transform: rotate(360deg); } }
+
+/* 3) Animated submit/share treatment for WhatsApp. */
+.rakan-share-motion-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(171, 242, 211, .52) !important;
+  background:
+    linear-gradient(180deg, rgba(85, 225, 168, .96), rgba(18, 145, 96, .98) 54%, rgba(8, 96, 67, 1)) !important;
+  color: #fff !important;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.52),
+    0 8px 18px rgba(5,100,69,.28),
+    0 0 0 1px rgba(216,180,106,.08) !important;
+  transition: transform .22s ease, box-shadow .22s ease, filter .22s ease;
+}
+.rakan-share-motion-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 22%, rgba(255,255,255,.18) 44%, transparent 62%);
+  transform: translateX(-120%);
+  transition: transform .6s ease;
+}
+.rakan-share-motion-button:hover::after { transform: translateX(120%); }
+.rakan-share-motion-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.62),
+    0 10px 24px rgba(5,100,69,.36),
+    0 0 15px rgba(216,180,106,.14) !important;
+}
+.rakan-share-motion-button:active { transform: translateY(1px) scale(.99); }
+.rakan-share-motion-button[aria-disabled="true"],
+.rakan-share-motion-button:disabled { opacity: .52; cursor: not-allowed; }
+.rakan-share-arrow {
+  position: relative;
+  z-index: 2;
+  transition: transform .35s cubic-bezier(.2,.8,.2,1);
+}
+.rakan-share-motion-button:hover .rakan-share-arrow {
+  animation: rakan-share-arrow-flight 1.25s ease-in-out infinite;
+}
+@keyframes rakan-share-arrow-flight {
+  0%,100% { transform: translate(0,0) rotate(0deg); }
+  45% { transform: translate(-4px,-3px) rotate(-8deg); }
+  70% { transform: translate(-1px,-1px) rotate(-2deg); }
+}
+
+/* 4) Synthwave laser action, recolored for the RAKAN identity. */
+.rakan-laser-button {
+  position: relative !important;
+  isolation: isolate;
+  overflow: hidden !important;
+  background: linear-gradient(180deg, rgba(24,31,38,.98), rgba(10,20,24,.99)) !important;
+  color: var(--rakan-ivory) !important;
+  border: 1px solid rgba(216,180,106,.72) !important;
+  box-shadow:
+    inset 0 0 13px rgba(71,207,168,.22),
+    0 0 16px rgba(181,108,232,.20),
+    0 6px 16px rgba(0,0,0,.34) !important;
+  text-shadow: 0 0 10px rgba(232,215,168,.32);
+  transition: transform .24s ease, box-shadow .24s ease !important;
+}
+.rakan-laser-button::before,
+.rakan-laser-button::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 54%;
+  z-index: -1;
+  pointer-events: none;
+  transform: translateX(-210%) skewX(-18deg);
+  filter: blur(2px);
+  animation: rakan-laser-pass 3.1s linear infinite;
+}
+.rakan-laser-button::before {
+  background: linear-gradient(90deg, transparent, rgba(71,207,168,.72), rgba(216,180,106,.42), transparent);
+}
+.rakan-laser-button::after {
+  background: linear-gradient(90deg, transparent, rgba(181,108,232,.68), rgba(232,215,168,.30), transparent);
+  animation-delay: 1.55s;
+}
+.rakan-laser-button:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 16px rgba(71,207,168,.30),
+    0 0 22px rgba(181,108,232,.30),
+    0 8px 20px rgba(0,0,0,.40) !important;
+}
+.rakan-laser-button:active { transform: scale(.98); }
+@keyframes rakan-laser-pass {
+  from { transform: translateX(-210%) skewX(-18deg); }
+  to { transform: translateX(310%) skewX(-18deg); }
+}
+
+/* 5) Mobile gradient button group — compact adaptation of the gallery bezel. */
+.rakan-gradient-mobile-nav {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(244,241,235,.95)) !important;
+  border-top: 1px solid rgba(185,145,77,.28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    0 -10px 28px rgba(15,23,42,.10) !important;
+  backdrop-filter: blur(20px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+}
+.dark .rakan-gradient-mobile-nav {
+  background:
+    linear-gradient(180deg, rgba(18,43,39,.94), rgba(4,18,18,.97)) !important;
+  border-top-color: rgba(216,180,106,.34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.12),
+    0 -10px 28px rgba(0,0,0,.26) !important;
+}
+.rakan-gradient-nav-item {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid transparent;
+  color: #64748b !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.28), rgba(148,163,184,.06)) padding-box !important;
+  transition: transform .22s ease, color .22s ease, box-shadow .22s ease, background .22s ease !important;
+}
+.dark .rakan-gradient-nav-item {
+  color: rgba(232, 222, 204, .76) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(0,0,0,.08)) padding-box !important;
+}
+.rakan-gradient-nav-item::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  z-index: -1;
+  border-radius: 10px;
+  opacity: 0;
+  background: linear-gradient(180deg, rgba(80,148,128,.30), rgba(55,27,70,.42));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
+  transition: opacity .22s ease;
+}
+.rakan-gradient-nav-item[data-active="true"] {
+  color: #17362f !important;
+  border-color: rgba(185,145,77,.55);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(237,241,236,.96)) padding-box,
+    conic-gradient(from 210deg, #55d5b0, #c9a657, #b56ce8, #55d5b0) border-box !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.82),
+    0 0 12px rgba(181,108,232,.10),
+    0 4px 10px rgba(15,23,42,.12) !important;
+  transform: translateY(-2px);
+}
+.dark .rakan-gradient-nav-item[data-active="true"] {
+  color: #fff8ec !important;
+  border-color: rgba(216,180,106,.72);
+  background:
+    linear-gradient(180deg, rgba(28,46,43,.90), rgba(11,20,24,.96)) padding-box,
+    conic-gradient(from 210deg, #55d5b0, #d8b46a, #b56ce8, #55d5b0) border-box !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.20),
+    0 0 14px rgba(181,108,232,.18),
+    0 4px 10px rgba(0,0,0,.24) !important;
+}
+.rakan-gradient-nav-item[data-active="true"]::before { opacity: 1; }
+.rakan-gradient-nav-item:active { transform: translateY(1px) scale(.98); }
+.rakan-gradient-nav-item svg { transition: transform .22s ease, filter .22s ease; }
+.rakan-gradient-nav-item[data-active="true"] svg {
+  transform: scale(1.06);
+  filter: drop-shadow(0 0 5px rgba(216,180,106,.35));
+}
+
+/* 6) Halo segmented control — frosted track with a sliding selected thumb. */
+.rakan-halo-segmented {
+  --halo-index: 2;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 38px;
+  padding: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(216,180,106,.28);
+  background: linear-gradient(180deg, rgba(255,255,255,.72), rgba(241,245,249,.68));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 4px 14px rgba(15,23,42,.08);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+.dark .rakan-halo-segmented {
+  background: linear-gradient(180deg, rgba(31,63,56,.70), rgba(6,24,24,.82));
+  border-color: rgba(216,180,106,.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 7px 18px rgba(0,0,0,.25);
+}
+.rakan-halo-segmented__aura {
+  position: absolute;
+  inset: auto -15% -26px;
+  height: 42px;
+  z-index: -2;
+  opacity: .62;
+  filter: blur(16px);
+  background: linear-gradient(90deg, rgba(71,207,168,.65), rgba(216,180,106,.60), rgba(181,108,232,.68));
+  animation: rakan-halo-breathe 4.6s ease-in-out infinite;
+}
+.rakan-halo-segmented__thumb {
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 3);
+  border-radius: 999px;
+  border: 1px solid rgba(232,215,168,.56);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.92), rgba(239,230,211,.74));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 2px 8px rgba(0,0,0,.10);
+  transform: translateX(calc(var(--halo-index) * 100%));
+  transition: transform .42s cubic-bezier(.22,1,.36,1), background .25s ease;
+}
+.dark .rakan-halo-segmented__thumb {
+  background: linear-gradient(180deg, rgba(91,108,96,.68), rgba(28,30,41,.86));
+  border-color: rgba(232,215,168,.45);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 4px 12px rgba(0,0,0,.28);
+}
+.rakan-halo-segmented button {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 8px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #64748b !important;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color .22s ease, transform .22s ease;
+}
+.dark .rakan-halo-segmented button { color: #cbd5e1 !important; }
+.rakan-halo-segmented button[data-active="true"] { color: #18211f !important; }
+.dark .rakan-halo-segmented button[data-active="true"] { color: #fff8ec !important; }
+.rakan-halo-segmented button:active { transform: scale(.97); }
+.rakan-halo-segmented button:focus-visible { outline: 2px solid rgba(216,180,106,.8); outline-offset: 1px; }
+@keyframes rakan-halo-breathe {
+  0%,100% { transform: translateX(-4%); opacity: .42; }
+  50% { transform: translateX(4%); opacity: .70; }
+}
+
+@media (max-width: 520px) {
+  .rakan-cosmic-glass-button { min-height: 54px; }
+  .rakan-cosmic-orb { width: 24px; height: 24px; flex-basis: 24px; }
+  .rakan-gradient-nav-item { min-height: 52px !important; border-radius: 12px !important; }
+  .rakan-halo-segmented button { padding-inline: 5px; font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rakan-cosmic-glass-button::after,
+  .rakan-cosmic-orb,
+  .rakan-liquid-metal-button,
+  .rakan-liquid-metal-button::before,
+  .rakan-share-motion-button:hover .rakan-share-arrow,
+  .rakan-laser-button::before,
+  .rakan-laser-button::after,
+  .rakan-halo-segmented__aura {
+    animation: none !important;
+  }
+  .rakan-cosmic-glass-button,
+  .rakan-liquid-metal-button,
+  .rakan-share-motion-button,
+  .rakan-laser-button,
+  .rakan-gradient-nav-item,
+  .rakan-halo-segmented__thumb {
+    transition-duration: .01ms !important;
+  }
+}

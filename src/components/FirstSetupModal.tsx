@@ -131,10 +131,12 @@ export const FirstSetupModal: React.FC = () => {
                   <button
                     type="button"
                     onClick={ownerAccess.openLogin}
-                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-[#173a34] via-[#1f4a43] to-[#173a34] hover:from-[#1e4c44] hover:to-[#1e4c44] border border-[#d8b46a]/70 hover:border-[#e8d7a8] text-[#f8f4e8] hover:text-[#fffdfa] text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.3)] cursor-pointer active:translate-y-0.5"
+                    aria-label="دخول المالك"
+                    data-ui-effect="liquid-metal-owner"
+                    className="rakan-liquid-metal-button w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <KeyRound className="w-3.5 h-3.5 text-[#d8b46a]" />
-                    <span>دخول المالك المعتمد</span>
+                    <KeyRound className="relative z-10 w-3.5 h-3.5 text-[#fff0c7]" />
+                    <span className="relative z-10">دخول المالك المعتمد</span>
                   </button>
                 </div>
               )}
@@ -325,10 +327,14 @@ export const FirstSetupModal: React.FC = () => {
                 type="submit"
                 form="firstSetupForm"
                 disabled={isSubmitting}
-                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#b56ce8] via-[#73208c] to-[#3b0a4d] hover:from-[#c378f5] hover:to-[#4e0f66] active:scale-[0.99] border-1.5 border-[#e8c67d] text-[#fffdfa] text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-[inset_0_2px_1px_rgba(255,255,255,0.85),inset_0_-2.5px_5px_rgba(0,0,0,0.6),0_8px_25px_rgba(0,0,0,0.6),0_0_24px_rgba(181,108,232,0.45)] disabled:opacity-50"
+                data-ui-effect="cosmic-glass-start"
+                className="rakan-cosmic-glass-button w-full px-6 text-sm font-bold flex items-center justify-center gap-3 cursor-pointer"
               >
-                <span>بدء استخدام راكان بلانس</span>
-                <ArrowLeft className="w-4 h-4 text-[#e8d7a8]" />
+                <span className="rakan-cosmic-orb" aria-hidden="true" />
+                <span className="rakan-cosmic-content flex items-center justify-center gap-2">
+                  <span>{isSubmitting ? 'جاري تجهيز الدفتر...' : 'بدء استخدام راكان بلانس'}</span>
+                  <ArrowLeft className="w-4 h-4 text-[#e8d7a8]" />
+                </span>
               </button>
             </div>
           </div>

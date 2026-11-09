@@ -138,10 +138,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             <button
               type="button"
               onClick={() => onOpenInterAccountTransfer()}
-              className="py-2 px-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-purple-600/30 cursor-pointer"
+              data-ui-effect="synthwave-laser-transfer"
+              className="rakan-laser-button py-2 px-3.5 rounded-xl font-medium text-xs flex items-center gap-1.5 cursor-pointer"
             >
-              <ArrowLeftRight className="w-4 h-4" />
-              <span>حركة بينية جديدة</span>
+              <ArrowLeftRight className="relative z-10 w-4 h-4" />
+              <span className="relative z-10">حركة بينية جديدة</span>
             </button>
           )}
           <button
@@ -186,38 +187,38 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             </select>
           </div>
 
-          {/* Direction Segmented control */}
-          <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-medium">
+          {/* Direction filter — adapted Halo Segmented Control from the UI Gallery */}
+          <div
+            className="rakan-halo-segmented"
+            data-ui-effect="halo-segmented-ledger-filter"
+            style={{
+              '--halo-index':
+                directionFilter === 'all' ? 2 : directionFilter === 'owedByAccount' ? 1 : 0,
+            } as React.CSSProperties}
+          >
+            <span className="rakan-halo-segmented__aura" aria-hidden="true" />
+            <span className="rakan-halo-segmented__thumb" aria-hidden="true" />
             <button
               type="button"
+              data-active={directionFilter === 'all'}
+              aria-pressed={directionFilter === 'all'}
               onClick={() => setDirectionFilter('all')}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                directionFilter === 'all'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
             >
               الكل
             </button>
             <button
               type="button"
+              data-active={directionFilter === 'owedByAccount'}
+              aria-pressed={directionFilter === 'owedByAccount'}
               onClick={() => setDirectionFilter('owedByAccount')}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                directionFilter === 'owedByAccount'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
             >
               عليه (+ لك)
             </button>
             <button
               type="button"
+              data-active={directionFilter === 'owedToAccount'}
+              aria-pressed={directionFilter === 'owedToAccount'}
               onClick={() => setDirectionFilter('owedToAccount')}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                directionFilter === 'owedToAccount'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
             >
               له (- عليك)
             </button>
