@@ -205,11 +205,12 @@ export const StatementView: React.FC<StatementViewProps> = ({
             type="button"
             onClick={() => setStatementShareOpen(true)}
             disabled={!selectedAccount}
-            className="py-2 px-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-xs shadow-green-600/30 cursor-pointer disabled:opacity-50"
+            data-ui-effect="animated-whatsapp-share"
+            className="rakan-share-motion-button py-2 px-3.5 rounded-xl font-medium text-xs flex items-center gap-2 cursor-pointer"
             title="إرسال ملخص كشف الحساب عبر واتساب"
           >
-            <Send className="w-4 h-4" />
-            <span>مشاركة واتساب</span>
+            <Send className="rakan-share-arrow w-4 h-4" />
+            <span className="relative z-10">مشاركة واتساب</span>
           </button>
           <button
             type="button"
