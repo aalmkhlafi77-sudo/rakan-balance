@@ -104,10 +104,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               type="button"
               onClick={onOpenInterAccountTransfer}
-              className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-xs flex items-center gap-1.5 transition-all shadow-sm shadow-purple-600/30 cursor-pointer"
+              data-ui-effect="synthwave-laser-transfer"
+              className="rakan-laser-button py-2 px-3 rounded-xl font-medium text-xs flex items-center gap-1.5 cursor-pointer"
             >
-              <ArrowLeftRight className="w-4 h-4" />
-              <span className="hidden sm:inline">حركة بينية</span>
+              <ArrowLeftRight className="relative z-10 w-4 h-4" />
+              <span className="relative z-10 hidden sm:inline">حركة بينية</span>
             </button>
           )}
           <button
