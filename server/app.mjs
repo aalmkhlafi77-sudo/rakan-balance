@@ -10,6 +10,9 @@ const dist = path.join(root, 'dist');
 
 export function createApp({ pool, env = process.env, staticRoot = dist }) {
   const app = express();
+  // Hostinger Node.js applications run behind one trusted CDN/reverse-proxy hop.
+  // This makes req.ip resolve to the last X-Forwarded-For address instead of the proxy itself.
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
