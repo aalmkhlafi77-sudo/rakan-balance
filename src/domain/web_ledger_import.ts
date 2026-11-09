@@ -10,7 +10,7 @@
  */
 
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
+import ExcelJS from '@andreeewill/exceljs';
 import { AccountModel, CategoryModel, EntryType, TransactionModel } from './types.ts';
 import { tryToMinorUnits, MAX_SAFE_MINOR_AMOUNT } from './money.ts';
 
@@ -364,20 +364,20 @@ export function buildTransactionsCsvTemplate(): string {
   return `\uFEFF${csv}\r\n`;
 }
 
-export function buildXlsxTemplate(): Uint8Array {
-  const wb = XLSX.utils.book_new();
-  const wsAccounts = XLSX.utils.aoa_to_sheet([
+export async function buildXlsxTemplate(): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  const accounts = workbook.addWorksheet('Accounts');
+  accounts.addRows([
     ['externalRef', 'name', 'category', 'openingBalance', 'phone', 'notes'],
     ['A-001', 'أحمد', 'أفراد', '0.00', '0500000000', ''],
   ]);
-  const wsTransactions = XLSX.utils.aoa_to_sheet([
+  const transactions = workbook.addWorksheet('Transactions');
+  transactions.addRows([
     ['accountRef', 'entryType', 'amount', 'date', 'description', 'notes'],
     ['A-001', 'لك', '125.50', '2026-11-07', 'مثال حركة', ''],
   ]);
-  XLSX.utils.book_append_sheet(wb, wsAccounts, 'Accounts');
-  XLSX.utils.book_append_sheet(wb, wsTransactions, 'Transactions');
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  return new Uint8Array(buf);
+  const buffer = await workbook.xlsx.writeBuffer();
+  return new Uint8Array(buffer as ArrayBuffer);
 }
 
 export function previewFromRows(options: {
@@ -817,10 +817,11 @@ export async function parseAndPreviewFile(options: {
     });
   }
 
-  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-    let workbook: XLSX.WorkBook;
+  if (lower.endsWith('.xlsx')) {
+    const workbook = new ExcelJS.Workbook();
     try {
-      workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+      const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+      await workbook.xlsx.load(bytes as unknown as ArrayBuffer);
     } catch (e: any) {
       return new LedgerImportPreview({
         sourceName: fileName,
@@ -840,10 +841,29 @@ export async function parseAndPreviewFile(options: {
     const accountRows: Array<Record<string, string>> = [];
     const transactionRows: Array<Record<string, string>> = [];
 
-    for (const sheetName of workbook.SheetNames) {
-      const sheetToken = normalizeToken(sheetName);
-      const ws = workbook.Sheets[sheetName];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+    for (const worksheet of workbook.worksheets) {
+      const sheetToken = normalizeToken(worksheet.name);
+      const rawRows: any[][] = [];
+      for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber++) {
+        const row = worksheet.getRow(rowNumber);
+        const values: any[] = [];
+        for (let column = 1; column <= Math.max(row.cellCount, worksheet.columnCount); column++) {
+          const cell = row.getCell(column);
+          const value = cell.value;
+          if (value === null || value === undefined) {
+            values.push('');
+          } else if (typeof value === 'object' && 'formula' in value) {
+            values.push(String((value as any).result ?? ''));
+          } else if (typeof value === 'object' && 'text' in value) {
+            values.push(String((value as any).text ?? ''));
+          } else if (value instanceof Date) {
+            values.push(value.toISOString().slice(0, 10));
+          } else {
+            values.push(String(value));
+          }
+        }
+        rawRows.push(values);
+      }
       const rows = tableToRows(rawRows);
 
       if (['accounts', 'account', 'الحسابات', 'حسابات'].includes(sheetToken)) {
@@ -891,7 +911,7 @@ export async function parseAndPreviewFile(options: {
       {
         section: 'file',
         rowNumber: 1,
-        message: 'صيغة الملف غير مدعومة. يجب استخدام ملف بصيغة CSV أو XLSX.',
+        message: 'صيغة الملف غير مدعومة. يجب استخدام ملف بصيغة CSV أو XLSX فقط.',
         blocking: true,
       },
     ],
