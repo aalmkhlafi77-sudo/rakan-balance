@@ -595,3 +595,103 @@
     box-shadow: none !important;
   }
 }
+
+
+/* ==========================================================================
+   Welcome screen theme bridge — makes the onboarding toggle visibly switch
+   between the approved glass treatment and a readable light presentation.
+   ========================================================================== */
+.welcome-screen,
+.welcome-card,
+.welcome-hero,
+.welcome-form,
+.welcome-theme-toggle {
+  transition:
+    background-color .25s ease,
+    background-image .25s ease,
+    border-color .25s ease,
+    color .25s ease,
+    box-shadow .25s ease;
+}
+
+.welcome-screen[data-theme="light"] {
+  background:
+    radial-gradient(circle 600px at 50% -80px, rgba(216,180,106,.15), transparent 68%),
+    linear-gradient(180deg, #eef3ef 0%, #f8fafc 52%, #f5f2ea 100%) !important;
+}
+
+.welcome-screen[data-theme="light"] .welcome-card {
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.98), rgba(246,248,246,.97) 55%, rgba(240,235,224,.96)) !important;
+  border-color: rgba(167,129,59,.32) !important;
+  box-shadow:
+    0 24px 58px rgba(28,44,38,.16),
+    0 0 24px rgba(216,180,106,.10) !important;
+}
+
+.welcome-screen[data-theme="light"] .welcome-hero {
+  background:
+    radial-gradient(circle at 78% 12%, rgba(216,180,106,.20), transparent 34%),
+    linear-gradient(155deg, rgba(235,244,239,.98), rgba(222,235,229,.96) 52%, rgba(239,235,224,.98)) !important;
+  border-color: rgba(167,129,59,.24) !important;
+}
+
+.welcome-screen[data-theme="light"] .welcome-form {
+  background: rgba(255,255,255,.44);
+}
+
+.welcome-screen[data-theme="light"] [class*="text-[#f8f4e8]"],
+.welcome-screen[data-theme="light"] [class*="text-[#fffdfa]"] {
+  color: #17221f !important;
+  text-shadow: none !important;
+}
+
+.welcome-screen[data-theme="light"] [class*="text-[#d7d0c2]"],
+.welcome-screen[data-theme="light"] [class*="text-[#e3dbcb]"],
+.welcome-screen[data-theme="light"] [class*="text-[#bfc7c2]"] {
+  color: #5f6f69 !important;
+}
+
+.welcome-screen[data-theme="light"] [class*="bg-[#081b19]"],
+.welcome-screen[data-theme="light"] [class*="bg-[#061816]"],
+.welcome-screen[data-theme="light"] [class*="bg-[#041210]"] {
+  background-color: rgba(255,255,255,.78) !important;
+}
+
+.welcome-screen[data-theme="light"] input[type="text"],
+.welcome-screen[data-theme="light"] input[type="password"],
+.welcome-screen[data-theme="light"] select {
+  background: rgba(255,255,255,.92) !important;
+  color: #17221f !important;
+  border-color: rgba(167,129,59,.36) !important;
+  box-shadow: inset 0 1px 3px rgba(15,23,42,.08) !important;
+  color-scheme: light !important;
+}
+
+.welcome-screen[data-theme="light"] select option {
+  background: #fffdf7 !important;
+  color: #17221f !important;
+}
+
+.welcome-screen[data-theme="light"] input::placeholder {
+  color: #8a9892 !important;
+}
+
+.welcome-screen[data-theme="light"] .welcome-theme-toggle {
+  background: rgba(255,255,255,.84) !important;
+  color: #8b6a2d !important;
+  border-color: rgba(167,129,59,.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    0 6px 16px rgba(48,64,58,.14) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-screen,
+  .welcome-card,
+  .welcome-hero,
+  .welcome-form,
+  .welcome-theme-toggle {
+    transition-duration: .01ms !important;
+  }
+}
