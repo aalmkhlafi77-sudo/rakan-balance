@@ -62,3 +62,54 @@ test('login limiter persists across separate app instances and fails closed on s
     await Promise.all(servers.map(server => new Promise(resolve => server.close(resolve))));
   }
 });
+
+
+test('Hostinger one-hop proxy trust keeps separate forwarded client addresses in separate limiter buckets', async () => {
+  const passwordHash = await hashPassword('another strong owner password 2026');
+  const attempts = new Map();
+  const pool = {
+    async execute(sql, params = []) {
+      if (sql.includes('INSERT INTO owner_login_limits')) {
+        attempts.set(params[0], (attempts.get(params[0]) || 0) + 1);
+        return [{ affectedRows: 1 }, []];
+      }
+      if (sql.includes('SELECT attempts,') && sql.includes('owner_login_limits')) {
+        return [[{ attempts: attempts.get(params[0]) || 0, retry_seconds: 900 }], []];
+      }
+      if (sql.startsWith('DELETE FROM owner_login_limits')) {
+        attempts.delete(params[0]);
+        return [{ affectedRows: 1 }, []];
+      }
+      if (sql.startsWith('SELECT password_hash')) return [[{ password_hash: passwordHash }], []];
+      throw new Error('Unexpected SQL: ' + sql);
+    },
+    async query() { return [[{ ok: 1 }], []]; },
+  };
+  const env = {
+    APP_ORIGIN: 'http://127.0.0.1:3000',
+    RAKAN_CSRF_SECRET: 'proxy-test-only-csrf-secret-more-than-32-characters',
+  };
+  const app = createApp({ pool, env });
+  const server = await new Promise(resolve => {
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+  });
+  const base = 'http://127.0.0.1:' + server.address().port;
+  async function login(forwardedFor) {
+    return fetch(base + '/api/auth/login', {
+      method: 'POST',
+      headers: {
+        Origin: env.APP_ORIGIN,
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': forwardedFor,
+      },
+      body: JSON.stringify({ password: 'wrong password' }),
+    });
+  }
+  try {
+    assert.equal((await login('203.0.113.10')).status, 401);
+    assert.equal((await login('203.0.113.11')).status, 401);
+    assert.equal(attempts.size, 2, 'different forwarded visitor IPs must not share one limiter bucket');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
