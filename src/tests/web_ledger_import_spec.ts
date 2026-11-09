@@ -59,7 +59,7 @@ export async function runWebLedgerImportTestSuite(): Promise<{ passed: number; f
 
   // 2. Generated XLSX template round-trip
   try {
-    const bytes = buildXlsxTemplate();
+    const bytes = await buildXlsxTemplate();
     const preview = await parseAndPreviewFile({
       buffer: bytes,
       fileName: 'rakan_import_template.xlsx',
