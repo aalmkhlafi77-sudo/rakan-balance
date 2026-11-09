@@ -216,7 +216,7 @@ export const FirstSetupModal: React.FC = () => {
                     <div className="flex items-center justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-[#f8f4e8] flex items-center gap-1.5">
                         <ShieldCheck className="w-4 h-4 text-[#d8b46a]" />
-                        <span>مساحة المالك الخاصة</span>
+                        <span>دخول المالك والمزامنة</span>
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#d8b46a]/15 text-[#e8d7a8] border border-[#d8b46a]/30">
                         مزامنة
