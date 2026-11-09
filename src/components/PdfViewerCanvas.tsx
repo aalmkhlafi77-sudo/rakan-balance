@@ -58,12 +58,19 @@ export const PdfViewerCanvas: React.FC<PdfViewerCanvasProps> = ({ dataUrl, origi
           throw new Error('بيانات مستند PDF مفقودة.');
         }
 
-        const parts = dataUrl.split(',');
-        const base64Data = parts.length > 1 ? parts[1] : parts[0];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        let bytes: Uint8Array;
+        if (dataUrl.startsWith('data:')) {
+          const parts = dataUrl.split(',');
+          const base64Data = parts.length > 1 ? parts[1] : parts[0];
+          const binaryString = atob(base64Data);
+          bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+        } else {
+          const response = await fetch(dataUrl, { cache: 'no-store' });
+          if (!response.ok) throw new Error('تعذر قراءة بيانات مستند PDF.');
+          bytes = new Uint8Array(await response.arrayBuffer());
         }
 
         const loadingTask = pdfjsLib.getDocument({ data: bytes });

@@ -9,10 +9,12 @@ on:
       - main
     paths:
       - 'src/**'
+      - 'scripts/**'
+      - 'server/**'
+      - 'database/**'
       - 'tests/**'
       - 'public/**'
       - 'package.json'
-      - 'bun.lock'
       - 'index.html'
       - 'metadata.json'
       - 'playwright.config.ts'
@@ -41,10 +43,16 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Financial regression tests
         run: npm test
+      - name: Owner authentication security tests
+        run: npm run test:server
+      - name: Verify owner server-only storage and conflict guards
+        run: npm run test:owner-adapter
       - name: TypeScript validation
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Verify public release contains no demo records or preview UI
+        run: node scripts/check-production-no-demo.mjs
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser integration tests (N1 and N2)

@@ -27,7 +27,9 @@ import {
   calculateDashboardSummary,
   checkTreeCycle,
 } from '../domain/balance_calculator.ts';
-import { dbStorage, STORES_DEMO, STORES_REAL } from '../storage/indexed_db.ts';
+import { dbStorage as visitorDbStorage, STORES_DEMO, STORES_REAL } from '../storage/indexed_db.ts';
+import { OwnerRemoteStorage } from '../storage/owner_remote_storage.ts';
+import { useOwnerAccess } from '../components/OwnerAccessGate.tsx';
 import {
   getActiveScopePref,
   getCurrencyPref,
@@ -44,12 +46,7 @@ import {
   setSidebarCollapsedPref,
   setThemePref,
 } from '../storage/local_storage.ts';
-import {
-  DEMO_ACCOUNTS,
-  DEMO_NOTES,
-  DEMO_TRANSACTIONS,
-  INITIAL_CATEGORIES,
-} from '../storage/initial_data.ts';
+import { INITIAL_CATEGORIES } from '../storage/initial_data.ts';
 import { computeSHA256 } from '../storage/backup_service.ts';
 import { validateTransactionInput } from '../domain/transaction_validator.ts';
 import { dueRemaining, validateDueRecord, validDate } from '../domain/dues.ts';
@@ -132,6 +129,7 @@ interface AppContextType {
   toggleTheme: () => void;
   toggleSidebar: () => void;
   updateOwnerName: (name: string) => void;
+  updateOwnerProfile: (name: string, currencyCode: string) => Promise<void>;
   updateCurrency: (code: string, symbol: string, name?: string) => Promise<void>;
   completeFirstSetup: (ownerName: string, currencyCode: string, currencySymbol: string, currencyName: string, initialPin?: string) => Promise<void>;
 }
@@ -139,8 +137,15 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const ownerAccess = useOwnerAccess();
+  const ownerDbStorage = useMemo(() => new OwnerRemoteStorage(() => ownerAccess.csrfToken), [ownerAccess.csrfToken]);
+  const dbStorage = ownerAccess.status === 'owner' ? ownerDbStorage as unknown as typeof visitorDbStorage : visitorDbStorage;
   const [isLoading, setIsLoading] = useState(true);
-  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(getActiveScopePref());
+  const [ownerLoadError, setOwnerLoadError] = useState<string | null>(null);
+  const [activeScope, setActiveScope] = useState<'real' | 'demo'>(
+    (import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true' && ownerAccess.status !== 'owner')
+      ? getActiveScopePref() : 'real'
+  );
 
   // In-memory active stores
   const [accounts, setAccounts] = useState<AccountModel[]>([]);
@@ -162,7 +167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currencyName, setCurrencyName] = useState<string>(initialCurrency.name);
   const [isFirstSetupDone, setIsFirstSetupDone] = useState<boolean>(getFirstSetupDonePref());
   const pinAuth = getPinAuthPref();
-  const [isLocked, setIsLocked] = useState<boolean>(Boolean(pinAuth.hash));
+  const [isLocked, setIsLocked] = useState<boolean>(ownerAccess.status !== 'owner' && Boolean(pinAuth.hash));
 
   // Initialize theme on DOM and active currency symbol globally
   useEffect(() => {
@@ -176,8 +181,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load workspace data based on active scope
   const loadWorkspaceData = useCallback(async (scope: 'real' | 'demo') => {
     setIsLoading(true);
+    if (ownerAccess.status === 'owner') setOwnerLoadError(null);
     try {
       if (scope === 'demo') {
+        // Fictional data exists only in tests, never a shipped production asset.
+        if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner') {
+          throw new Error('مساحة المعاينة غير متاحة في نسخة الإنتاج.');
+        }
+        const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
+          await import('../../tests/fixtures/demo-seed.ts');
         let [demoAccs, demoCats, demoTxs, demoNotes, demoDues, demoAllocations, demoReminders] = await Promise.all([
           dbStorage.getAll<AccountModel>(STORES_DEMO.ACCOUNTS),
           dbStorage.getAll<CategoryModel>(STORES_DEMO.CATEGORIES),
@@ -235,17 +247,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setDues(realDues || []);
         setAllocations(realAllocations || []);
         setReminders(realReminders || []);
+        if (ownerAccess.status === 'owner') {
+          const saved = await ownerDbStorage.getSafeSettings();
+          setOwnerName(saved?.ownerName?.trim() || 'المالك');
+          const currency = SUPPORTED_CURRENCIES.find((x) => x.code === saved?.currencyCode)
+            || SUPPORTED_CURRENCIES[0];
+          setCurrencyCode(currency.code);
+          setCurrencySymbol(currency.symbol);
+          setCurrencyName(currency.name);
+          setIsFirstSetupDone(true);
+        }
       }
     } catch (err) {
-      console.error('Failed to load workspace data from IndexedDB:', err);
+      if (ownerAccess.status === 'owner') {
+        setOwnerLoadError('تعذر تحميل البيانات الخاصة من الخادم. أُوقفت الوظائف المالية لمنع الحفظ محليًا أو عرض أرصدة غير مؤكدة.');
+      } else {
+        console.error('Failed to load local workspace:', err);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [dbStorage, ownerDbStorage, ownerAccess.status]);
 
   useEffect(() => {
     loadWorkspaceData(activeScope);
   }, [activeScope, loadWorkspaceData]);
+
+  // Owner data is refreshed without ever persisting it in visitor IndexedDB.
+  useEffect(() => {
+    if (ownerAccess.status !== 'owner') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const changed = await ownerDbStorage.refreshIfChanged();
+        if (!cancelled && changed) await loadWorkspaceData('real');
+      } catch {
+        if (!cancelled) setOwnerLoadError('انقطع الاتصال بالخادم الخاص. أُوقفت العمليات حتى إعادة التحقق.');
+      }
+    };
+    const timer = window.setInterval(() => { void refresh(); }, 30000);
+    const onConflict = () => { void refresh(); };
+    window.addEventListener('rakan-owner-ledger-conflict', onConflict);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('rakan-owner-ledger-conflict', onConflict);
+    };
+  }, [ownerAccess.status, ownerDbStorage, loadWorkspaceData]);
 
   // Derived Dashboard Totals
   const dashboardSummary = useMemo(() => {
@@ -736,11 +784,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
 
   const switchScope = (scope: 'real' | 'demo') => {
+    if (scope === 'demo' && (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner')) return;
     setActiveScope(scope);
     setActiveScopePref(scope);
   };
 
   const loadDemoData = async () => {
+    if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner') throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
+    const { DEMO_ACCOUNTS, DEMO_TRANSACTIONS, DEMO_NOTES } =
+      await import('../../tests/fixtures/demo-seed.ts');
     await dbStorage.saveDemoWorkspace(DEMO_ACCOUNTS, INITIAL_CATEGORIES, DEMO_TRANSACTIONS, DEMO_NOTES);
     if (activeScope === 'demo') {
       await loadWorkspaceData('demo');
@@ -748,6 +800,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const purgeDemoData = async () => {
+    if (!(import.meta.env.DEV && import.meta.env.VITE_E2E_DEMO_MODE === 'true') || ownerAccess.status === 'owner') throw new Error('هذه الوظيفة غير متاحة في نسخة الإنتاج.');
     await dbStorage.purgeDemoWorkspace();
     if (activeScope === 'demo') {
       setAccounts([]);
@@ -897,6 +950,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const updateOwnerProfile = async (name: string, currencyCode: string): Promise<void> => {
+    if (ownerAccess.status !== 'owner') throw new Error('هذه الوظيفة خاصة بحساب المالك.');
+    const currency = SUPPORTED_CURRENCIES.find(x => x.code === currencyCode);
+    if (!currency) throw new Error('العملة غير مدعومة.');
+    await ownerDbStorage.updateOwnerPreferences(name, currency);
+    setOwnerName(name.trim());
+    setCurrencyCode(currency.code);
+    setCurrencySymbol(currency.symbol);
+    setCurrencyName(currency.name);
+    setActiveCurrencySymbol(currency.symbol);
+  };
+
   const updateOwnerName = (name: string) => {
     setOwnerName(name);
     setOwnerNamePref(name);
@@ -941,13 +1006,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currencyName,
     currencyDecimals: 2,
     isFirstSetupDone,
-    pinCodeHash: pinAuth.hash,
-    pinSalt: pinAuth.salt,
+    pinCodeHash: ownerAccess.status === 'owner' ? null : pinAuth.hash,
+    pinSalt: ownerAccess.status === 'owner' ? null : pinAuth.salt,
     isLocked,
     theme,
     sidebarCollapsed,
     activeScope,
   };
+
+  if (ownerAccess.status === 'owner' && ownerLoadError) {
+    return (
+      <section dir="rtl" role="alert" className="min-h-screen flex flex-col items-center justify-center p-6 text-center gap-4 bg-slate-950 text-white">
+        <h1 className="font-bold text-lg">تعذر الوصول إلى بيانات المالك</h1>
+        <p className="max-w-md text-sm leading-7">{ownerLoadError}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button type="button" onClick={() => { void loadWorkspaceData('real'); }} className="px-5 py-3 rounded-xl bg-emerald-700 font-semibold">إعادة المحاولة</button>
+          <button type="button" onClick={() => { void ownerAccess.logout(); }} className="px-5 py-3 rounded-xl border border-slate-400 font-semibold">تسجيل الخروج</button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <AppContext.Provider
@@ -995,7 +1073,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rollbackLastRestore,
         importLedger,
         isLocked,
-        hasPinSet: Boolean(pinAuth.hash),
+        hasPinSet: ownerAccess.status !== 'owner' && Boolean(pinAuth.hash),
         unlockWithPin,
         lockApp,
         setupPin,
@@ -1003,6 +1081,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleTheme,
         toggleSidebar,
         updateOwnerName,
+        updateOwnerProfile,
         updateCurrency,
         completeFirstSetup,
       }}

@@ -7,12 +7,18 @@ on:
   pull_request:
     branches:
       - main
+      - feature/owner-launch-integration-e
+      - security/owner-db-login-limiter
+      - feature/owner-encrypted-backup-gate
+      - feature/owner-private-attachments-foundation
     paths:
       - 'src/**'
+      - 'scripts/**'
+      - 'server/**'
+      - 'database/**'
       - 'tests/**'
       - 'public/**'
       - 'package.json'
-      - 'bun.lock'
       - 'index.html'
       - 'metadata.json'
       - 'playwright.config.ts'
@@ -37,16 +43,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # No npm lockfile is tracked (bun.lock is the package-manager lock).
+      # No npm lockfile is tracked. Hostinger and CI intentionally resolve from package.json.
       # setup-node's npm cache requires a package-lock.json or npm-shrinkwrap.json.
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Production dependency security audit
+        run: npm audit --omit=dev --audit-level=high
       - name: Execute isolated financial tests
         run: npm test
+      - name: Owner authentication security tests
+        run: npm run test:server
+      - name: Verify owner server-only storage and conflict guards
+        run: npm run test:owner-adapter
       - name: TypeScript validation
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Verify public release contains no demo records or preview UI
+        run: node scripts/check-production-no-demo.mjs
       - name: Install Chromium for browser checks
         run: npx playwright install --with-deps chromium
       - name: Browser UI regression tests

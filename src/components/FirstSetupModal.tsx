@@ -8,6 +8,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { useOwnerAccess } from './OwnerAccessGate.tsx';
 import { SUPPORTED_CURRENCIES } from '../domain/types.ts';
 import {
   Sparkles,
@@ -21,6 +22,7 @@ import {
 
 export const FirstSetupModal: React.FC = () => {
   const { settings, completeFirstSetup } = useApp();
+  const ownerAccess = useOwnerAccess();
 
   const [ownerNameInput, setOwnerNameInput] = useState(settings.ownerName || 'راكان');
   const [selectedCurrencyCode, setSelectedCurrencyCode] = useState(settings.currencyCode || 'SAR');
@@ -90,6 +92,12 @@ export const FirstSetupModal: React.FC = () => {
             <Sparkles className="w-4 h-4 text-amber-300" />
             <span>مرحباً بك في راكان بلانس (RAKAN BALANCE)</span>
           </div>
+          {ownerAccess.status === 'visitor' && (
+            <button type="button" onClick={ownerAccess.openLogin}
+              className="float-left text-xs font-semibold border border-emerald-200/60 rounded-lg px-2 py-1">
+              دخول المالك
+            </button>
+          )}
           <h2 className="text-xl font-extrabold tracking-tight">
             التهيئة الأولى للمنصة المالية
           </h2>

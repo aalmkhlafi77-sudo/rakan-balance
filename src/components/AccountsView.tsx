@@ -571,7 +571,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: أحمد الشمري، مؤسسة الرياض..."
+                  placeholder="ابحث باسم الحساب أو الجهة..."
                   value={modalName}
                   onChange={(e) => setModalName(e.target.value)}
                   className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
