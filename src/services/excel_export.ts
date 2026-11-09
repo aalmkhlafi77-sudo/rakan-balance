@@ -2,10 +2,10 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * RAKAN BALANCE (راكان بلانس) — Professional Excel Export Service (.xlsx)
- * Uses SheetJS to generate clean, formula-injection-safe Excel workbooks in RTL orientation.
+ * Uses a security-patched ExcelJS build to generate formula-injection-safe XLSX workbooks in RTL orientation.
  */
 
-import * as XLSX from 'xlsx';
+import ExcelJS from '@andreeewill/exceljs';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { AccountBalanceReportRow, CategorySummaryReportRow, PartyRow, PeriodTransactionRow } from '../domain/financial_reports.ts';
 
@@ -29,17 +29,37 @@ function sanitizeCellString(val: unknown): string | number {
 /**
  * Common workbook trigger download
  */
-function downloadWorkbook(wb: XLSX.WorkBook, baseFilename: string) {
+async function downloadWorkbook(workbook: ExcelJS.Workbook, baseFilename: string): Promise<void> {
   const dateStr = new Date().toISOString().slice(0, 10);
   const cleanName = baseFilename.replace(/[^\w\u0600-\u06FF\s-]/g, '_');
   const filename = `${cleanName}_${dateStr}.xlsx`;
-  XLSX.writeFile(wb, filename);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const bytes = new Uint8Array(buffer as ArrayBuffer);
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function addRtlSheet(workbook: ExcelJS.Workbook, name: string, rows: (string | number)[][]): ExcelJS.Worksheet {
+  const worksheet = workbook.addWorksheet(name);
+  worksheet.views = [{ rightToLeft: true }];
+  worksheet.addRows(rows);
+  return worksheet;
 }
 
 /**
  * Export Accounts Balance Report to Excel
  */
-export function exportAccountsReportToExcel(
+export async function exportAccountsReportToExcel(
   rows: AccountBalanceReportRow[],
   currencySymbol: string,
   summary: { totalReceivable: number; totalPayable: number; netBalance: number }
@@ -82,18 +102,15 @@ export function exportAccountsReportToExcel(
     '',
   ]);
 
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
-  ws['!dir'] = 'rtl'; // Right to Left sheet orientation
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'تقرير الأرصدة الشامل');
-  downloadWorkbook(wb, 'Rakan_Balance_Accounts_Report');
+  const workbook = new ExcelJS.Workbook();
+  addRtlSheet(workbook, 'تقرير الأرصدة الشامل', [headers, ...dataRows]);
+  await downloadWorkbook(workbook, 'Rakan_Balance_Accounts_Report');
 }
 
 /**
  * Export Category Summary Report to Excel
  */
-export function exportCategoriesReportToExcel(
+export async function exportCategoriesReportToExcel(
   rows: CategorySummaryReportRow[],
   currencySymbol: string,
   grandTotals: { totalReceivable: number; totalPayable: number; grandNet: number }
@@ -123,18 +140,15 @@ export function exportCategoriesReportToExcel(
     grandTotals.grandNet / 100,
   ]);
 
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
-  ws['!dir'] = 'rtl';
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'تقرير التصنيفات');
-  downloadWorkbook(wb, 'Rakan_Balance_Category_Summary');
+  const workbook = new ExcelJS.Workbook();
+  addRtlSheet(workbook, 'تقرير التصنيفات', [headers, ...dataRows]);
+  await downloadWorkbook(workbook, 'Rakan_Balance_Category_Summary');
 }
 
 /**
  * Export Period Summary Statement to Excel
  */
-export function exportPeriodReportToExcel(
+export async function exportPeriodReportToExcel(
   rows: PeriodTransactionRow[],
   currencySymbol: string,
   meta: { fromDate?: string; toDate?: string; openingMinor: number; closingMinor: number }
@@ -175,23 +189,20 @@ export function exportPeriodReportToExcel(
     ...dataRows,
   ];
 
-  const ws = XLSX.utils.aoa_to_sheet(fullContent);
-  ws['!dir'] = 'rtl';
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'كشف الحركة الشامل');
-  downloadWorkbook(wb, 'Rakan_Balance_Period_Statement');
+  const workbook = new ExcelJS.Workbook();
+  addRtlSheet(workbook, 'كشف الحركة الشامل', fullContent);
+  await downloadWorkbook(workbook, 'Rakan_Balance_Period_Statement');
 }
 
 /**
  * Export Debtors / Creditors Report to Excel
  */
-export function exportDebtorsCreditorsReportToExcel(
+export async function exportDebtorsCreditorsReportToExcel(
   debtors: PartyRow[],
   creditors: PartyRow[],
   currencySymbol: string
 ) {
-  const wb = XLSX.utils.book_new();
+  const workbook = new ExcelJS.Workbook();
 
   // 1. Debtors Sheet (لك)
   const debtorHeaders = ['اسم الحساب (المدين)', 'التصنيف', `الرصيد لك (${currencySymbol})`, 'نسبة التركز (%)'];
@@ -202,9 +213,7 @@ export function exportDebtorsCreditorsReportToExcel(
     Number(d.sharePercentage.toFixed(2)),
   ]);
 
-  const wsDebtors = XLSX.utils.aoa_to_sheet([debtorHeaders, ...debtorData]);
-  wsDebtors['!dir'] = 'rtl';
-  XLSX.utils.book_append_sheet(wb, wsDebtors, 'المدينون (لك)');
+  addRtlSheet(workbook, 'المدينون (لك)', [debtorHeaders, ...debtorData]);
 
   // 2. Creditors Sheet (عليك)
   const creditorHeaders = ['اسم الحساب (الدائن)', 'التصنيف', `المبلغ عليك (${currencySymbol})`, 'نسبة التركز (%)'];
@@ -215,9 +224,7 @@ export function exportDebtorsCreditorsReportToExcel(
     Number(c.sharePercentage.toFixed(2)),
   ]);
 
-  const wsCreditors = XLSX.utils.aoa_to_sheet([creditorHeaders, ...creditorData]);
-  wsCreditors['!dir'] = 'rtl';
-  XLSX.utils.book_append_sheet(wb, wsCreditors, 'الدائنون (عليك)');
+  addRtlSheet(workbook, 'الدائنون (عليك)', [creditorHeaders, ...creditorData]);
 
-  downloadWorkbook(wb, 'Rakan_Balance_Debtors_Creditors');
+  await downloadWorkbook(workbook, 'Rakan_Balance_Debtors_Creditors');
 }
