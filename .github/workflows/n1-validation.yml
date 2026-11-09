@@ -19,7 +19,6 @@ on:
       - 'tests/**'
       - 'public/**'
       - 'package.json'
-      - 'bun.lock'
       - 'index.html'
       - 'metadata.json'
       - 'playwright.config.ts'
@@ -44,7 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # No npm lockfile is tracked (bun.lock is the package-manager lock).
+      # No npm lockfile is tracked. Hostinger and CI intentionally resolve from package.json.
       # setup-node's npm cache requires a package-lock.json or npm-shrinkwrap.json.
       - name: Install dependencies
         run: npm install --no-audit --no-fund
