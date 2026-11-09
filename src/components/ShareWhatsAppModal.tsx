@@ -326,9 +326,10 @@ export const ShareWhatsAppModal: React.FC<ShareWhatsAppModalProps> = ({
                 }
                 setTimeout(() => onClose(), 600);
               }}
-              className="py-2.5 px-5 rounded-xl bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-sm shadow-green-600/30 cursor-pointer"
+              data-ui-effect="animated-whatsapp-submit"
+              className="rakan-share-motion-button py-2.5 px-5 rounded-xl font-bold text-xs flex items-center gap-2 cursor-pointer"
             >
-              <Send className="w-4 h-4" />
+              <Send className="rakan-share-arrow w-4 h-4" />
               <span>
                 {targetPhone
                   ? `فتح محادثة واتساب (${targetPhone})`
