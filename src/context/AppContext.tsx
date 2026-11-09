@@ -132,6 +132,7 @@ interface AppContextType {
   updateOwnerProfile: (name: string, currencyCode: string) => Promise<void>;
   updateCurrency: (code: string, symbol: string, name?: string) => Promise<void>;
   completeFirstSetup: (ownerName: string, currencyCode: string, currencySymbol: string, currencyName: string, initialPin?: string) => Promise<void>;
+  returnToWelcomeScreen: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -999,6 +1000,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFirstSetupDonePref(true);
   };
 
+  const returnToWelcomeScreen = () => {
+    setIsFirstSetupDone(false);
+    setFirstSetupDonePref(false);
+  };
+
   const settings: UserSettings = {
     ownerName,
     currencyCode,
@@ -1084,6 +1090,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateOwnerProfile,
         updateCurrency,
         completeFirstSetup,
+        returnToWelcomeScreen,
       }}
     >
       {children}

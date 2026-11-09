@@ -27,8 +27,10 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { SUPPORTED_CURRENCIES } from '../domain/types.ts';
+import { useOwnerAccess } from './OwnerAccessGate.tsx';
 
 export const SettingsView: React.FC = () => {
+  const ownerAccess = useOwnerAccess();
   const {
     settings,
     accounts,
@@ -134,10 +136,10 @@ export const SettingsView: React.FC = () => {
       {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-          الإعدادات ومواصفات التصدير لـ Flutter
+          الإعدادات العامة للنظام المالي
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          إدارة إعدادات المالك الواحد، الأمان المحلي، وشيفرة Dart النقية المتوافقة مع Android وiOS
+          إدارة بيانات المالك الواحد، العملة المعتمدة، وأمان الشاشة المحلي
         </p>
       </div>
 
@@ -427,118 +429,120 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Dart Domain Specifications Section (For Flutter / Android / iOS) */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <Code2 className="w-4 h-4" />
+      {/* Dart Domain Specifications Section (For Flutter / Android / iOS) — Owner Only */}
+      {ownerAccess.status === 'owner' && (
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <Code2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  مواصفات وتصدير شيفرة Dart النقية (Pure Domain Engine)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  فصل المنطق المالي وتمكينه من العمل على Android وiOS بنفس القواعد الرياضية
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                مواصفات وتصدير شيفرة Dart النقية (Pure Domain Engine)
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                فصل المنطق المالي وتمكينه من العمل على Android وiOS بنفس القواعد الرياضية
-              </p>
+          </div>
+
+          {/* Flutter Porting Limits & Architectural Notice */}
+          <div className="mb-4 p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 text-xs text-blue-950 dark:text-blue-200 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-100">
+              <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>حدود التصدير الحالية ومتطلبات تطبيق الهاتف المحمول:</span>
+            </div>
+            <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
+              الشفرات البرمجية أدناه تمثل <strong>طبقة المنطق المالي النقي (Domain Layer)</strong> المكتوبة بلغة Dart (حساب الأرصدة، وقواعد الإشارات، ونماذج البيانات). هذه الشفرات جاهزة للنسخ مباشرة داخل مجلد <code className="font-mono bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 rounded">lib/domain/</code> في أي مشروع Flutter.
+            </p>
+            <div className="text-[11px] text-blue-800 dark:text-blue-300">
+              <strong>لإصدار تطبيق محمول متكامل (Android / iOS)، يتطلب مشروع Flutter إكمال:</strong>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 pr-2">
+                <li>واجهات المستخدم (Flutter Widgets & Screens) بدلاً من مكونات الويب.</li>
+                <li>طبقة التخزين الموضعي للهاتف (مثل sqflite أو Hive بدلاً من IndexedDB).</li>
+                <li>إدارة الحالة في التطبيق (Riverpod أو Bloc أو Provider).</li>
+                <li>أذونات الكاميرا وتخزين الملفات للمرفقات الخاصة بنظامي Android وiOS.</li>
+              </ul>
             </div>
           </div>
-        </div>
 
-        {/* Flutter Porting Limits & Architectural Notice */}
-        <div className="mb-4 p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 text-xs text-blue-950 dark:text-blue-200 space-y-1.5">
-          <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-100">
-            <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span>حدود التصدير الحالية ومتطلبات تطبيق الهاتف المحمول:</span>
-          </div>
-          <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
-            الشفرات البرمجية أدناه تمثل <strong>طبقة المنطق المالي النقي (Domain Layer)</strong> المكتوبة بلغة Dart (حساب الأرصدة، وقواعد الإشارات، ونماذج البيانات). هذه الشفرات جاهزة للنسخ مباشرة داخل مجلد <code className="font-mono bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 rounded">lib/domain/</code> في أي مشروع Flutter.
-          </p>
-          <div className="text-[11px] text-blue-800 dark:text-blue-300">
-            <strong>لإصدار تطبيق محمول متكامل (Android / iOS)، يتطلب مشروع Flutter إكمال:</strong>
-            <ul className="list-disc list-inside mt-1 space-y-0.5 pr-2">
-              <li>واجهات المستخدم (Flutter Widgets & Screens) بدلاً من مكونات الويب.</li>
-              <li>طبقة التخزين الموضعي للهاتف (مثل sqflite أو Hive بدلاً من IndexedDB).</li>
-              <li>إدارة الحالة في التطبيق (Riverpod أو Bloc أو Provider).</li>
-              <li>أذونات الكاميرا وتخزين الملفات للمرفقات الخاصة بنظامي Android وiOS.</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Dart Tabs */}
-        <div className="flex items-center gap-1.5 mb-3 border-b border-slate-200 dark:border-slate-800 pb-2">
-          <button
-            type="button"
-            onClick={() => setActiveDartTab('calculator')}
-            className={`py-1 px-3 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
-              activeDartTab === 'calculator'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-            }`}
-          >
-            account_balance_calculator.dart
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveDartTab('account')}
-            className={`py-1 px-3 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
-              activeDartTab === 'account'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-            }`}
-          >
-            account_model.dart
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveDartTab('transaction')}
-            className={`py-1 px-3 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
-              activeDartTab === 'transaction'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-            }`}
-          >
-            transaction_model.dart
-          </button>
-        </div>
-
-        {/* Code View with Copy Button */}
-        <div className="relative rounded-xl bg-slate-950 text-slate-200 font-mono text-xs p-4 overflow-x-auto max-h-96 border border-slate-800" dir="ltr">
-          <button
-            type="button"
-            onClick={() => {
-              const code =
+          {/* Dart Tabs */}
+          <div className="flex items-center gap-1.5 mb-3 border-b border-slate-200 dark:border-slate-800 pb-2">
+            <button
+              type="button"
+              onClick={() => setActiveDartTab('calculator')}
+              className={`py-1 px-3 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
                 activeDartTab === 'calculator'
-                  ? DART_BALANCE_CALCULATOR_SOURCE
-                  : activeDartTab === 'account'
-                  ? DART_ACCOUNT_MODEL_SOURCE
-                  : DART_TRANSACTION_MODEL_SOURCE;
-              copyDartSource(code, activeDartTab);
-            }}
-            className="absolute right-3 top-3 py-1 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-sans flex items-center gap-1 cursor-pointer transition-colors"
-          >
-            {copiedTab === activeDartTab ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span>تم النسخ</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>نسخ الكود</span>
-              </>
-            )}
-          </button>
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              account_balance_calculator.dart
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDartTab('account')}
+              className={`py-1 px-3 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                activeDartTab === 'account'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              account_model.dart
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveDartTab('transaction')}
+              className={`py-1 px-3 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                activeDartTab === 'transaction'
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-bold'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              transaction_model.dart
+            </button>
+          </div>
 
-          <pre>
-            <code>
-              {activeDartTab === 'calculator' && DART_BALANCE_CALCULATOR_SOURCE}
-              {activeDartTab === 'account' && DART_ACCOUNT_MODEL_SOURCE}
-              {activeDartTab === 'transaction' && DART_TRANSACTION_MODEL_SOURCE}
-            </code>
-          </pre>
+          {/* Code View with Copy Button */}
+          <div className="relative rounded-xl bg-slate-950 text-slate-200 font-mono text-xs p-4 overflow-x-auto max-h-96 border border-slate-800" dir="ltr">
+            <button
+              type="button"
+              onClick={() => {
+                const code =
+                  activeDartTab === 'calculator'
+                    ? DART_BALANCE_CALCULATOR_SOURCE
+                    : activeDartTab === 'account'
+                    ? DART_ACCOUNT_MODEL_SOURCE
+                    : DART_TRANSACTION_MODEL_SOURCE;
+                copyDartSource(code, activeDartTab);
+              }}
+              className="absolute right-3 top-3 py-1 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-sans flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              {copiedTab === activeDartTab ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>تم النسخ</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>نسخ الكود</span>
+                </>
+              )}
+            </button>
+
+            <pre>
+              <code>
+                {activeDartTab === 'calculator' && DART_BALANCE_CALCULATOR_SOURCE}
+                {activeDartTab === 'account' && DART_ACCOUNT_MODEL_SOURCE}
+                {activeDartTab === 'transaction' && DART_TRANSACTION_MODEL_SOURCE}
+              </code>
+            </pre>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

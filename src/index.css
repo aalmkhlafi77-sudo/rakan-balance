@@ -152,18 +152,18 @@
 
 /* 5. Beso Glass Primary Buttons (Convex Glass 3D Button) */
 .dark button.bg-emerald-600:not(.keep-green),
-.dark .btn-beso-glass {
+.dark .btn-beso-glass,
+.dark .btn-glass-primary {
   background: linear-gradient(180deg, 
-    rgba(215, 145, 255, 0.70) 0%, 
-    rgba(181, 108, 232, 0.55) 25%, 
-    rgba(115, 32, 140, 0.90) 65%, 
+    rgba(235, 170, 255, 0.78) 0%, 
+    rgba(181, 108, 232, 0.65) 20%, 
+    rgba(125, 38, 150, 0.92) 65%, 
     rgba(50, 10, 65, 0.98) 100%) !important;
   border: 1.5px solid #D8B46A !important;
-  border-radius: 9999px;
   box-shadow: 
     0 8px 24px rgba(0, 0, 0, 0.5),
-    0 0 22px rgba(181, 108, 232, 0.55),
-    0 0 12px rgba(216, 180, 106, 0.4),
+    0 0 20px rgba(181, 108, 232, 0.45),
+    0 0 10px rgba(216, 180, 106, 0.35),
     inset 0 2.5px 1px 0 rgba(255, 255, 255, 0.85),
     inset 0 -2.5px 5px 0 rgba(0, 0, 0, 0.6) !important;
   color: #F8F4E8 !important;
@@ -175,25 +175,27 @@
 }
 
 .dark button.bg-emerald-600:not(.keep-green):hover,
-.dark .btn-beso-glass:hover {
+.dark .btn-beso-glass:hover,
+.dark .btn-glass-primary:hover {
   background: linear-gradient(180deg, 
-    rgba(235, 165, 255, 0.82) 0%, 
-    rgba(195, 120, 245, 0.65) 25%, 
-    rgba(135, 42, 160, 0.95) 65%, 
-    rgba(65, 12, 80, 1) 100%) !important;
+    rgba(245, 185, 255, 0.88) 0%, 
+    rgba(198, 125, 248, 0.75) 20%, 
+    rgba(145, 48, 172, 0.96) 65%, 
+    rgba(68, 14, 86, 1) 100%) !important;
   border-color: #E8D7A8 !important;
   box-shadow: 
     0 12px 32px rgba(0, 0, 0, 0.6),
-    0 0 34px rgba(181, 108, 232, 0.75),
-    0 0 18px rgba(232, 215, 168, 0.6),
+    0 0 30px rgba(181, 108, 232, 0.65),
+    0 0 16px rgba(232, 215, 168, 0.55),
     inset 0 3px 1.5px 0 rgba(255, 255, 255, 0.95),
     inset 0 -2.5px 5px 0 rgba(0, 0, 0, 0.6) !important;
-  transform: translateY(-2px) scale(1.015);
+  transform: translateY(-1.5px) scale(1.015);
 }
 
 .dark button.bg-emerald-600:not(.keep-green):active,
-.dark .btn-beso-glass:active {
-  transform: translateY(1px) scale(0.98);
+.dark .btn-beso-glass:active,
+.dark .btn-glass-primary:active {
+  transform: translateY(1.5px) scale(0.98);
   box-shadow: 
     0 4px 12px rgba(0, 0, 0, 0.6),
     0 0 15px rgba(181, 108, 232, 0.4),
@@ -202,31 +204,82 @@
 
 /* 6. Secondary Glass Buttons */
 .dark button.border-slate-200,
-.dark button.border-slate-800 {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%) !important;
-  border: 1px solid rgba(216, 180, 106, 0.35) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+.dark button.border-slate-700,
+.dark button.border-slate-800,
+.dark .btn-glass-secondary {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(14, 42, 38, 0.65) 100%) !important;
+  border: 1px solid rgba(216, 180, 106, 0.4) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px rgba(0, 0, 0, 0.3) !important;
   color: #D7D0C2 !important;
   transition: all 0.2s ease;
 }
 
 .dark button.border-slate-200:hover,
-.dark button.border-slate-800:hover {
-  border-color: rgba(216, 180, 106, 0.65) !important;
+.dark button.border-slate-700:hover,
+.dark button.border-slate-800:hover,
+.dark .btn-glass-secondary:hover {
+  border-color: rgba(216, 180, 106, 0.75) !important;
   color: #F8F4E8 !important;
-  background: linear-gradient(180deg, rgba(216, 180, 106, 0.2) 0%, rgba(216, 180, 106, 0.08) 100%) !important;
-  box-shadow: 0 0 18px rgba(181, 108, 232, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+  background: linear-gradient(180deg, rgba(216, 180, 106, 0.22) 0%, rgba(18, 52, 47, 0.85) 100%) !important;
+  box-shadow: 0 0 20px rgba(181, 108, 232, 0.3), inset 0 1.5px 0 rgba(255, 255, 255, 0.5) !important;
+  transform: translateY(-1px);
 }
 
-/* Preserve Distinct Danger / Delete Buttons in Red */
+.dark button.border-slate-200:active,
+.dark button.border-slate-700:active,
+.dark button.border-slate-800:active,
+.dark .btn-glass-secondary:active {
+  transform: translateY(1px);
+}
+
+/* 6B. Preserve Distinct Danger / Delete Buttons in Ruby Glass 3D */
 .dark button.bg-rose-600,
 .dark button.bg-rose-700,
 .dark button.bg-red-600,
+.dark .btn-glass-danger,
 .dark .keep-danger {
-  background: linear-gradient(180deg, #f43f5e 0%, #be123c 100%) !important;
-  border: 1px solid #fda4af !important;
+  background: linear-gradient(180deg, 
+    rgba(254, 205, 211, 0.85) 0%, 
+    rgba(244, 63, 94, 0.90) 25%, 
+    rgba(190, 18, 60, 0.95) 70%, 
+    rgba(136, 19, 55, 1) 100%) !important;
+  border: 1.5px solid #fda4af !important;
   color: #ffffff !important;
-  box-shadow: 0 0 18px rgba(244, 63, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+  font-weight: 700 !important;
+  box-shadow: 
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    0 0 20px rgba(244, 63, 94, 0.45),
+    inset 0 2px 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 4px 0 rgba(0, 0, 0, 0.55) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark button.bg-rose-600:hover,
+.dark button.bg-rose-700:hover,
+.dark button.bg-red-600:hover,
+.dark .btn-glass-danger:hover,
+.dark .keep-danger:hover {
+  background: linear-gradient(180deg, 
+    rgba(255, 228, 230, 0.95) 0%, 
+    rgba(251, 113, 133, 0.95) 25%, 
+    rgba(225, 29, 72, 1) 70%, 
+    rgba(159, 18, 57, 1) 100%) !important;
+  border-color: #ffe4e6 !important;
+  box-shadow: 
+    0 10px 24px rgba(0, 0, 0, 0.55),
+    0 0 28px rgba(244, 63, 94, 0.65),
+    inset 0 2.5px 1px 0 rgba(255, 255, 255, 0.95) !important;
+  transform: translateY(-1.5px) scale(1.01);
+}
+
+.dark button.bg-rose-600:active,
+.dark button.bg-rose-700:active,
+.dark button.bg-red-600:active,
+.dark .btn-glass-danger:active,
+.dark .keep-danger:active {
+  transform: translateY(1.5px) scale(0.985);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6), inset 0 1px 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 
 /* 7. High-Readability Glass Tables */
@@ -256,17 +309,47 @@
   background: rgba(216, 180, 106, 0.10) !important;
 }
 
-/* 8. Crisp Form Inputs & Select Controls */
+/* 8. Crisp Form Inputs, Dark Select & Popover Controls */
 .dark input[type="text"],
 .dark input[type="number"],
 .dark input[type="date"],
 .dark input[type="password"],
-.dark select,
 .dark textarea {
-  background-color: rgba(4, 18, 16, 0.88) !important;
+  background-color: rgba(4, 18, 16, 0.90) !important;
   border: 1px solid rgba(216, 180, 106, 0.35) !important;
   color: #F8F4E8 !important;
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark select {
+  color-scheme: dark !important;
+  background-color: #081B19 !important;
+  border: 1px solid rgba(216, 180, 106, 0.4) !important;
+  color: #F8F4E8 !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark select option,
+.dark select optgroup {
+  background-color: #081B19 !important;
+  color: #F8F4E8 !important;
+}
+
+.dark select option:hover,
+.dark select option:focus,
+.dark select option:checked {
+  background-color: #123833 !important;
+  color: #E8D7A8 !important;
+}
+
+.dark [role="listbox"],
+.dark [role="menu"],
+.dark [role="option"],
+.dark .dropdown-menu {
+  background: linear-gradient(160deg, rgba(14, 42, 38, 0.98) 0%, rgba(6, 22, 20, 0.99) 100%) !important;
+  border: 1px solid rgba(216, 180, 106, 0.4) !important;
+  color: #F8F4E8 !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6) !important;
 }
 
 .dark input:focus,

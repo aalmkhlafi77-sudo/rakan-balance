@@ -1,9 +1,10 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * RAKAN BALANCE (راكان بلانس) — Initial Setup / Onboarding Modal
- * Milestone WEB-F2: Initial setup wizard for first-time use.
- * Allows setting owner name, single local currency, and optional local PIN.
+ * RAKAN BALANCE (راكان بلانس) — Initial Setup / Welcome Screen Modal
+ * Redesigned into Premium Financial Glass UI with emerald marble aesthetic,
+ * prominent 3D Owner Login, clean Currency Dropdown, concise security badges,
+ * and high-contrast tactile CTA.
  */
 
 import React, { useState } from 'react';
@@ -11,13 +12,16 @@ import { useApp } from '../context/AppContext.tsx';
 import { useOwnerAccess } from './OwnerAccessGate.tsx';
 import { SUPPORTED_CURRENCIES } from '../domain/types.ts';
 import {
-  Sparkles,
   Coins,
   User,
   Lock,
   ShieldCheck,
-  Check,
+  Shield,
+  UserCheck,
+  Cloud,
   ArrowLeft,
+  KeyRound,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const FirstSetupModal: React.FC = () => {
@@ -79,159 +83,257 @@ export const FirstSetupModal: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-[#020b0a]/90 backdrop-blur-xl flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
       dir="rtl"
     >
-      <div className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-6">
-        {/* Modal Banner Header */}
-        <div className="p-6 bg-gradient-to-l from-emerald-600 to-teal-700 text-white relative">
-          <img src="/assets/rakan-icon-192.webp" alt=""
-            aria-hidden="true" width={48} height={48}
-            className="w-12 h-12 object-contain rounded-xl float-left mr-2 mb-1" />
-          <div className="flex items-center gap-2 text-emerald-200 text-xs font-mono font-bold mb-1">
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>مرحباً بك في راكان بلانس (RAKAN BALANCE)</span>
-          </div>
-          {ownerAccess.status === 'visitor' && (
-            <button type="button" onClick={ownerAccess.openLogin}
-              className="float-left text-xs font-semibold border border-emerald-200/60 rounded-lg px-2 py-1">
-              دخول المالك
-            </button>
-          )}
-          <h2 className="text-xl font-extrabold tracking-tight">
-            التهيئة الأولى للمنصة المالية
-          </h2>
-          <p className="text-xs text-emerald-100 mt-1 leading-relaxed">
-            خصص إعدادات المالك الواحد والعملة المحلية الموحدة لحساباتك. تُحفظ كافة بياناتك محلياً بدقة متناهية.
-          </p>
-        </div>
+      <div className="w-full max-w-4xl bg-gradient-to-br from-[#0c2b26]/95 via-[#071d1a]/95 to-[#041210]/98 border border-[#d8b46a]/40 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85),0_0_35px_rgba(216,180,106,0.15)] overflow-hidden my-4">
+        {/* Main 2-Column Responsive Layout: Hero Brand Area + User Setup Form */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[580px]">
+          
+          {/* Right Column (Hero / Brand Identity / Owner Action / Feature Highlights) */}
+          <div className="lg:col-span-5 p-6 sm:p-8 bg-gradient-to-b from-[#123933]/60 via-[#0a2320]/80 to-[#041513]/90 border-b lg:border-b-0 lg:border-l border-[#d8b46a]/25 flex flex-col justify-between relative overflow-hidden">
+            {/* Ambient specular light highlight */}
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#d8b46a]/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-[#b56ce8]/15 rounded-full blur-3xl pointer-events-none" />
 
-        {errorMsg && (
-          <div className="mx-6 mt-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 font-medium">
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Section 1: Owner Name */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>اسم المالك الواحد:</span>
-            </label>
-            <p className="text-[11px] text-slate-500">
-              الاسم الذي يظهر في الترويسات الرسمية وكشوفات الحساب وتقارير الذمم.
-            </p>
-            <input
-              type="text"
-              value={ownerNameInput}
-              onChange={(e) => setOwnerNameInput(e.target.value)}
-              placeholder="مثال: راكان، أبو فهد، مؤسسة البركة..."
-              className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50"
-              required
-            />
-          </div>
-
-          {/* Section 2: Single Local Currency */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <Coins className="w-4 h-4 text-amber-500" />
-              <span>العملة المحلية الموحدة (مبدأ العملة الواحدة):</span>
-            </label>
-            <p className="text-[11px] text-slate-500">
-              اختر العملة المعتمدة لحساباتك. الدقة الحسابية مثبتة على منزلتين عشريتين بدقة الهللة / الفلس بأعداد صحيحة تمنع تراكم فروق التقريب.
-            </p>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
-              {SUPPORTED_CURRENCIES.map((c) => {
-                const isSelected = selectedCurrencyCode === c.code;
-                return (
-                  <button
-                    key={c.code}
-                    type="button"
-                    onClick={() => setSelectedCurrencyCode(c.code)}
-                    className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-100 ring-2 ring-emerald-500/30'
-                        : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="font-bold text-xs">{c.name}</span>
-                      {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-500 mt-1">
-                      {c.code} ({c.symbol})
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Section 3: Optional Local PIN Lock */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Lock className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  قفل الواجهة المحلي برقم PIN (اختياري)
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                id="enablePinToggle"
-                checked={enablePin}
-                onChange={(e) => setEnablePin(e.target.checked)}
-                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-              />
-            </div>
-
-            {enablePin ? (
-              <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-[11px] text-slate-500">
-                  أدخل رمزاً رقمياً مكوناً من 4 إلى 8 أرقام لحماية الشاشة عند ترك الجهاز:
+            <div className="space-y-6 relative z-10">
+              {/* Logo Presentation with Specular Shadow */}
+              <div className="pt-1">
+                <img
+                  src="/assets/rakan-logo.webp"
+                  alt="راكان بلانس — RAKAN BALANCE"
+                  className="w-full max-w-[210px] h-auto object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.7)]"
+                  width={920}
+                  height={320}
+                  loading="eager"
+                  decoding="async"
+                />
+                <p className="text-xs text-[#d7d0c2] mt-3 leading-relaxed font-medium">
+                  المنصة المستقلة لإدارة الذمم والعمليات المالية بدقة الهللة والعملة الموحدة.
                 </p>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <input
-                    type="password"
-                    value={pinInput}
-                    onChange={(e) => setPinInput(e.target.value)}
-                    placeholder="رمز المرور (4 - 8 أرقام)"
-                    maxLength={8}
-                    className="w-full h-9 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-mono text-center tracking-widest text-slate-900 dark:text-slate-100"
-                    required={enablePin}
-                  />
-                  <input
-                    type="password"
-                    value={confirmPinInput}
-                    onChange={(e) => setConfirmPinInput(e.target.value)}
-                    placeholder="تأكيد رمز المرور"
-                    maxLength={8}
-                    className="w-full h-9 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-mono text-center tracking-widest text-slate-900 dark:text-slate-100"
-                    required={enablePin}
-                  />
+              </div>
+
+              {/* Owner Access Card Action (Requirement 5.4) */}
+              {ownerAccess.status !== 'owner' && (
+                <div className="p-3.5 rounded-2xl bg-[#081b19]/90 border border-[#d8b46a]/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_20px_rgba(0,0,0,0.5)]">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <span className="text-xs font-bold text-[#f8f4e8] flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-[#d8b46a]" />
+                      <span>هل لديك حساب مالك؟</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#d8b46a]/15 text-[#e8d7a8] border border-[#d8b46a]/30">
+                      خاص
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#d7d0c2] mb-3 leading-snug">
+                    يتيح تسجيل دخول المالك المعتمد مزامنة بياناتك سحابياً والوصول للمساحة المخصصة.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={ownerAccess.openLogin}
+                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-[#173a34] via-[#1f4a43] to-[#173a34] hover:from-[#1e4c44] hover:to-[#1e4c44] border border-[#d8b46a]/70 hover:border-[#e8d7a8] text-[#f8f4e8] hover:text-[#fffdfa] text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.3)] cursor-pointer active:translate-y-0.5"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-[#d8b46a]" />
+                    <span>دخول المالك المعتمد</span>
+                  </button>
+                </div>
+              )}
+
+              {/* 4 Concise Informative Badges (Requirement 5.6) */}
+              <div className="space-y-2.5 pt-1">
+                <div className="flex items-start gap-2.5 text-right">
+                  <div className="w-6 h-6 rounded-lg bg-[#d8b46a]/15 border border-[#d8b46a]/30 flex items-center justify-center shrink-0 mt-0.5 text-[#e8d7a8]">
+                    <Shield className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-bold text-[#f8f4e8]">بياناتك تحت سيطرتك</h4>
+                    <p className="text-[10px] text-[#d7d0c2] leading-tight">تُخزن السجلات محلياً في جهازك بأمان تام دون تسريب.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 text-right">
+                  <div className="w-6 h-6 rounded-lg bg-[#b56ce8]/15 border border-[#b56ce8]/30 flex items-center justify-center shrink-0 mt-0.5 text-[#b56ce8]">
+                    <UserCheck className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-bold text-[#f8f4e8]">وضع الضيف متاح فوراً</h4>
+                    <p className="text-[10px] text-[#d7d0c2] leading-tight">يمكنك استخدام التطبيق محلياً كضيف بكامل الميزات دون قيود.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 text-right">
+                  <div className="w-6 h-6 rounded-lg bg-[#34d399]/15 border border-[#34d399]/30 flex items-center justify-center shrink-0 mt-0.5 text-[#34d399]">
+                    <Cloud className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-bold text-[#f8f4e8]">مساحة المالك الخاصة</h4>
+                    <p className="text-[10px] text-[#d7d0c2] leading-tight">تسجيل المالك يتيح المزامنة المشفرة بين أجهزتك المختلفة.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 text-right">
+                  <div className="w-6 h-6 rounded-lg bg-[#f59e0b]/15 border border-[#f59e0b]/30 flex items-center justify-center shrink-0 mt-0.5 text-[#f59e0b]">
+                    <Coins className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-bold text-[#f8f4e8]">مرونة العملة</h4>
+                    <p className="text-[10px] text-[#d7d0c2] leading-tight">يمكنك تغيير العملة وإعدادات العرض لاحقاً في أي وقت.</p>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <p className="text-[11px] text-slate-400">
-                يمكنك تفعيل القفل المحلي في أي وقت لاحقاً من شاشة الإعدادات.
-              </p>
-            )}
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-[#d8b46a]/15 text-[10px] text-slate-400">
+              راكان بلانس © 2026 · بيئة مالية مستقلة
+            </div>
           </div>
 
-          {/* Action Button */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-emerald-600/20"
-            >
-              <span>بدء استخدام راكان بلانس</span>
-              <ArrowLeft className="w-4 h-4" />
-            </button>
+          {/* Left Column (Configuration Form Area) */}
+          <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <div className="mb-5 pb-3 border-b border-[#d8b46a]/20">
+                <span className="text-[10px] font-bold font-mono tracking-widest text-[#d8b46a] uppercase">
+                  إعدادات البدء السريع
+                </span>
+                <h3 className="text-lg font-bold text-[#f8f4e8] mt-0.5">
+                  تهيئة الدفتر المالي الشخصي
+                </h3>
+                <p className="text-xs text-[#d7d0c2] mt-1">
+                  أدخل اسم المالك والعملة المحلية للبدء في تدوين العمليات فوراً بدقة الهللة.
+                </p>
+              </div>
+
+              {errorMsg && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-950/70 border border-rose-500/50 text-xs text-rose-200 font-medium">
+                  {errorMsg}
+                </div>
+              )}
+
+              <form id="firstSetupForm" onSubmit={handleSubmit} className="space-y-4">
+                {/* 1. Owner Name Field */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#f8f4e8] flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-[#d8b46a]" />
+                    <span>اسم المالك الواحد:</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={ownerNameInput}
+                    onChange={(e) => setOwnerNameInput(e.target.value)}
+                    placeholder="مثال: راكان، أبو فهد، مؤسسة البركة..."
+                    className="w-full h-11 px-3.5 rounded-xl bg-[#061816]/90 border border-[#d8b46a]/40 focus:border-[#d8b46a] text-xs text-[#f8f4e8] placeholder:text-slate-500 font-semibold focus:outline-none focus:ring-2 focus:ring-[#d8b46a]/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] transition-all"
+                    required
+                  />
+                  <p className="text-[10px] text-[#d7d0c2]">
+                    الاسم الرسمي الذي يظهر في ترويسات كشوف الحساب والتقارير المالية.
+                  </p>
+                </div>
+
+                {/* 2. Single Local Currency Dropdown (Requirement 5.5) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#f8f4e8] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Coins className="w-4 h-4 text-[#e8d7a8]" />
+                      <span>العملة المحلية الموحدة:</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-[#d8b46a]">
+                      مبدأ العملة الواحدة (منزلتين عشريتين)
+                    </span>
+                  </label>
+                  
+                  <div className="relative">
+                    <select
+                      value={selectedCurrencyCode}
+                      onChange={(e) => setSelectedCurrencyCode(e.target.value)}
+                      className="w-full h-11 px-3.5 pr-3.5 rounded-xl bg-[#061816]/95 border border-[#d8b46a]/45 focus:border-[#d8b46a] text-xs font-semibold text-[#f8f4e8] focus:outline-none focus:ring-2 focus:ring-[#d8b46a]/30 shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] cursor-pointer transition-all"
+                      style={{ colorScheme: 'dark' }}
+                    >
+                      {SUPPORTED_CURRENCIES.map((c) => (
+                        <option
+                          key={c.code}
+                          value={c.code}
+                          className="bg-[#081b19] text-[#f8f4e8] py-1.5"
+                        >
+                          {c.name} — {c.code} — ({c.symbol})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-[#d7d0c2]">
+                    العملة المختارة: <span className="font-bold text-[#e8d7a8]">{selectedCurrency.name}</span> بحساب الهللات والكسور بأعداد صحيحة تمنع فروق التقريب.
+                  </p>
+                </div>
+
+                {/* 3. Compact Optional Local PIN (Requirement 5.7) */}
+                <div className="p-3.5 rounded-2xl bg-[#061816]/80 border border-[#d8b46a]/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-[#d8b46a]" />
+                      <span className="text-xs font-bold text-[#f8f4e8]">
+                        قفل الواجهة برقم PIN محلي (اختياري)
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enablePin}
+                        onChange={(e) => setEnablePin(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d8b46a]"></div>
+                    </label>
+                  </div>
+
+                  {enablePin ? (
+                    <div className="space-y-2 pt-2 border-t border-[#d8b46a]/20">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="password"
+                          value={pinInput}
+                          onChange={(e) => setPinInput(e.target.value)}
+                          placeholder="رمز المرور (4-8 أرقام)"
+                          maxLength={8}
+                          className="w-full h-9 px-3 rounded-xl bg-[#041210] border border-[#d8b46a]/40 text-xs font-mono text-center tracking-widest text-[#f8f4e8] focus:border-[#d8b46a] focus:outline-none"
+                          required={enablePin}
+                        />
+                        <input
+                          type="password"
+                          value={confirmPinInput}
+                          onChange={(e) => setConfirmPinInput(e.target.value)}
+                          placeholder="تأكيد الرمز"
+                          maxLength={8}
+                          className="w-full h-9 px-3 rounded-xl bg-[#041210] border border-[#d8b46a]/40 text-xs font-mono text-center tracking-widest text-[#f8f4e8] focus:border-[#d8b46a] focus:outline-none"
+                          required={enablePin}
+                        />
+                      </div>
+                      <p className="text-[10px] text-[#d7d0c2]">
+                        يُقفل التطبيق تلقائياً عند طلب القفل لمنع المتطفلين من الاطلاع على الأرصدة.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400">
+                      يمكنك تفعيل رمز المرور في أي وقت لاحقاً من شاشة الإعدادات.
+                    </p>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Primary Action Button: Beso 3D Glass CTA (Requirement 5.8) */}
+            <div className="pt-5 mt-4 border-t border-[#d8b46a]/20">
+              <button
+                type="submit"
+                form="firstSetupForm"
+                disabled={isSubmitting}
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#b56ce8] via-[#73208c] to-[#3b0a4d] hover:from-[#c378f5] hover:to-[#4e0f66] active:scale-[0.99] border-1.5 border-[#e8c67d] text-[#fffdfa] text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-all shadow-[inset_0_2px_1px_rgba(255,255,255,0.85),inset_0_-2.5px_5px_rgba(0,0,0,0.6),0_8px_25px_rgba(0,0,0,0.6),0_0_24px_rgba(181,108,232,0.45)] disabled:opacity-50"
+              >
+                <span>بدء استخدام راكان بلانس</span>
+                <ArrowLeft className="w-4 h-4 text-[#e8d7a8]" />
+              </button>
+            </div>
           </div>
-        </form>
+
+        </div>
       </div>
     </div>
   );

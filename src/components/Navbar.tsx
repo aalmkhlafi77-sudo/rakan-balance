@@ -6,8 +6,9 @@
 
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { Menu, PlusCircle, AlertCircle, ArrowLeftRight } from 'lucide-react';
+import { Menu, PlusCircle, AlertCircle, ArrowLeftRight, LogOut } from 'lucide-react';
 import { TabView } from './Sidebar.tsx';
+import { useOwnerAccess } from './OwnerAccessGate.tsx';
 
 interface NavbarProps {
   currentTab: TabView;
@@ -22,7 +23,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenQuickTransaction,
   onOpenInterAccountTransfer,
 }) => {
-  const { settings, activeScope, switchScope } = useApp();
+  const { settings, activeScope, switchScope, returnToWelcomeScreen } = useApp();
+  const ownerAccess = useOwnerAccess();
 
   const tabTitles: Record<TabView, string> = {
     dashboard: 'لوحة التحكم المالية',
@@ -35,7 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     dues: 'الاستحقاقات والسداد والتذكيرات',
     backup: 'النسخ الاحتياطي والاستعادة الآمنة',
     tests: 'فحص القواعد والمعادلات المالية (N0 Tests)',
-    settings: 'الإعدادات ومواصفات تصدير Dart',
+    settings: 'الإعدادات العامة',
   };
 
   return (
@@ -80,13 +82,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               {tabTitles[currentTab]}
             </h1>
             <p className="text-[11px] text-slate-500 hidden sm:block">
-              المالك: <span className="font-medium text-slate-700 dark:text-slate-300">{settings.ownerName}</span> · العملة: <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">SAR</span>
+              المالك: <span className="font-medium text-slate-700 dark:text-slate-300">{settings.ownerName}</span> · العملة: <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{settings.currencyCode}</span>
             </p>
           </div>
         </div>
 
-        {/* Right: Quick Action Buttons */}
+        {/* Right: Quick Action Buttons & Guest exit */}
         <div className="flex items-center gap-2">
+          {ownerAccess.status !== 'owner' && (
+            <button
+              type="button"
+              onClick={returnToWelcomeScreen}
+              title="العودة إلى شاشة البداية"
+              className="hidden sm:flex py-1.5 px-3 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium items-center gap-1.5 transition-all cursor-pointer shadow-xs active:translate-y-0.5"
+            >
+              <LogOut className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>شاشة البداية</span>
+            </button>
+          )}
           {onOpenInterAccountTransfer && (
             <button
               type="button"

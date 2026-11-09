@@ -26,6 +26,7 @@ import {
   Lock,
   Sun,
   Moon,
+  LogOut,
 } from 'lucide-react';
 
 export type TabView =
@@ -60,6 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     lockApp,
     hasPinSet,
     toggleTheme,
+    returnToWelcomeScreen,
   } = useApp();
 
   const navItems = [
@@ -73,8 +75,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dues' as TabView, label: 'الاستحقاقات والتذكيرات', icon: CalendarClock },
     { id: 'backup' as TabView, label: 'النسخ والاستعادة', icon: HardDriveDownload },
     { id: 'tests' as TabView, label: 'فحص القواعد المالية', icon: CheckCircle2 },
-    { id: 'settings' as TabView, label: 'الإعدادات ومواصفات Dart', icon: Settings },
+    { id: 'settings' as TabView, label: 'الإعدادات العامة', icon: Settings },
   ];
+
+  const visibleNavItems = navItems.filter((item) => {
+    // Hide developer/test-runner tab from guest mode
+    if (item.id === 'tests' && ownerAccess.status !== 'owner') {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <>
@@ -113,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-1 space-y-1 overflow-y-auto">
-          {navItems.filter((item) => ownerAccess.status !== 'owner' || !['tests'].includes(item.id)).map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
@@ -143,23 +153,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Footer Actions: Owner login (server auth), Currency, Theme & Lock */}
+        {/* Footer Actions: Owner login (server auth), Currency, Theme & Lock, Guest Exit */}
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-          {ownerAccess.status === 'owner' && (
-            <div className="space-y-2">
+          {ownerAccess.status === 'owner' ? (
+            <div className="space-y-1.5">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 text-center">مساحة المالك الخاصة</p>
               <button type="button" onClick={() => void ownerAccess.logout()} aria-label="تسجيل خروج المالك"
-                className="w-full min-h-10 rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 text-xs font-bold">
+                className="w-full min-h-9 rounded-xl border border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-bold transition-colors cursor-pointer">
                 تسجيل الخروج
               </button>
             </div>
+          ) : (
+            <div className="space-y-1.5">
+              <button type="button" onClick={ownerAccess.openLogin} aria-label="دخول المالك الخاص"
+                className="w-full min-h-9 rounded-xl border border-emerald-600/50 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold transition-colors cursor-pointer">
+                دخول المالك الخاص
+              </button>
+              <button
+                type="button"
+                onClick={returnToWelcomeScreen}
+                aria-label="العودة إلى شاشة البداية"
+                title="العودة إلى شاشة البداية دون حذف أي بيانات مسجلة"
+                className="w-full min-h-8 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:translate-y-0.5"
+              >
+                <LogOut className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>العودة إلى شاشة البداية</span>
+              </button>
+            </div>
           )}
-          {ownerAccess.status === 'visitor' && (
-            <button type="button" onClick={ownerAccess.openLogin} aria-label="دخول المالك الخاص"
-              className="w-full min-h-10 rounded-xl border border-emerald-600/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 text-xs font-bold">
-              دخول المالك الخاص
-            </button>
-          )}
+
           {/* Currency locked info */}
           <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/40">
             <span>العملة الموحدة</span>
@@ -205,3 +227,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
+
