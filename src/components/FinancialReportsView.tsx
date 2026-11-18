@@ -14,8 +14,15 @@ import {
   generatePeriodSummaryReport,
   ReportFilterOptions,
 } from '../domain/financial_reports.ts';
+import { generateHierarchicalAccountsReport } from '../domain/hierarchical_accounts.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
-import { exportAccountsReportToExcel, exportCategoriesReportToExcel, exportDebtorsCreditorsReportToExcel, exportPeriodReportToExcel } from '../services/excel_export.ts';
+import {
+  exportAccountsReportToExcel,
+  exportCategoriesReportToExcel,
+  exportComprehensiveAccountsReportToExcel,
+  exportDebtorsCreditorsReportToExcel,
+  exportPeriodReportToExcel,
+} from '../services/excel_export.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
 import {
   BarChart3,
@@ -23,6 +30,7 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  FolderTree,
   Layers,
   Printer,
   Search,
@@ -33,7 +41,7 @@ import {
   ArrowUpDown,
 } from 'lucide-react';
 
-export type ReportSubTab = 'accounts' | 'categories' | 'period' | 'debtors_creditors';
+export type ReportSubTab = 'accounts' | 'hierarchical' | 'categories' | 'period' | 'debtors_creditors';
 
 interface FinancialReportsViewProps {
   onSelectAccountForStatement?: (accountId: string) => void;
@@ -111,6 +119,12 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
     [accounts, transactions, categories, filterOptions]
   );
 
+  // 1b. Hierarchical Accounts Report Data
+  const hierarchicalReport = useMemo(
+    () => generateHierarchicalAccountsReport(accounts, transactions, categories, filterOptions),
+    [accounts, transactions, categories, filterOptions]
+  );
+
   // 2. Category Summary Report Data
   const categoriesReport = useMemo(
     () => generateCategorySummaryReport(accounts, transactions, categories),
@@ -132,10 +146,33 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
   // Export Trigger: Excel
   const handleExportExcel = () => {
     if (subTab === 'accounts') {
-      exportAccountsReportToExcel(accountsReport.rows, currencySymbol, {
-        totalReceivable: accountsReport.totalReceivableMinor,
-        totalPayable: accountsReport.totalPayableMinor,
-        netBalance: accountsReport.netBalanceMinor,
+      exportAccountsReportToExcel(
+        accountsReport.rows,
+        currencySymbol,
+        {
+          totalReceivable: accountsReport.totalReceivableMinor,
+          totalPayable: accountsReport.totalPayableMinor,
+          netBalance: accountsReport.netBalanceMinor,
+        },
+        {
+          accounts,
+          transactions,
+          categories,
+          currencyName: settings.currencyName,
+          ownerName: settings.ownerName,
+          filterOptions,
+        }
+      );
+    } else if (subTab === 'hierarchical') {
+      exportComprehensiveAccountsReportToExcel({
+        accounts,
+        transactions,
+        categories,
+        currencySymbol,
+        currencyName: settings.currencyName,
+        ownerName: settings.ownerName,
+        filterOptions,
+        reportTitle: 'تقرير الحسابات الرئيسية والفروع (الشجرة المالية)',
       });
     } else if (subTab === 'categories') {
       exportCategoriesReportToExcel(categoriesReport.rows, currencySymbol, {
@@ -191,6 +228,38 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
           formatCurrency(r.totalOwedToMinor, { symbol: currencySymbol }),
           formatCurrency(r.currentBalanceMinor, { symbol: currencySymbol }),
           r.balanceType === 'receivable' ? 'لك' : r.balanceType === 'payable' ? 'عليك' : 'متزن',
+        ]),
+      });
+    } else if (subTab === 'hierarchical') {
+      generatePdfReport({
+        reportTitle: 'تقرير الحسابات الرئيسية والفروع (الشجرة المالية)',
+        subtitle: `الحسابات الرئيسية: ${hierarchicalReport.rootAccountsCount} | الفرعية: ${hierarchicalReport.branchAccountsCount}`,
+        ownerName: settings.ownerName,
+        currencySymbol,
+        filterInfo: periodPreset !== 'all' || fromDate || toDate ? `الفترة: ${fromDate || 'البداية'} إلى ${toDate || 'اليوم'}` : 'جميع الحركات',
+        metrics: [
+          { title: 'إجمالي لك المباشر (بدون تكرار)', value: formatCurrency(hierarchicalReport.totalDirectReceivableMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+          { title: 'إجمالي عليك المباشر (بدون تكرار)', value: formatCurrency(hierarchicalReport.totalDirectPayableMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+          { title: 'صافي المركز المباشر', value: formatCurrency(hierarchicalReport.netDirectBalanceMinor, { symbol: currencySymbol }), colorClass: 'blue' },
+          { title: 'إجمالي الحسابات', value: `${hierarchicalReport.totalAccountsCount} (${hierarchicalReport.rootAccountsCount} رئيسي)`, colorClass: 'slate' },
+        ],
+        columns: [
+          { header: 'الحساب', align: 'right' },
+          { header: 'التصنيف', align: 'right' },
+          { header: 'المستوى', align: 'center' },
+          { header: 'التابعون', align: 'center' },
+          { header: `الرصيد المباشر (${currencySymbol})`, align: 'right' },
+          { header: `الرصيد المجمع (${currencySymbol})`, align: 'right' },
+          { header: 'نوع المجمع', align: 'center' },
+        ],
+        rows: hierarchicalReport.rows.map((r) => [
+          `${'— '.repeat(r.level)}${r.account.name}`,
+          r.categoryName,
+          r.level,
+          r.descendantCount,
+          formatCurrency(r.directBalanceMinor, { symbol: currencySymbol }),
+          formatCurrency(r.consolidatedBalanceMinor, { symbol: currencySymbol }),
+          r.consolidatedBalanceType === 'receivable' ? 'لك' : r.consolidatedBalanceType === 'payable' ? 'عليك' : 'متزن',
         ]),
       });
     } else if (subTab === 'categories') {
@@ -338,6 +407,19 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
         >
           <Users className="w-4 h-4" />
           <span>أرصدة الحسابات</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab('hierarchical')}
+          className={`flex-1 min-w-[165px] py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            subTab === 'hierarchical'
+              ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+          }`}
+        >
+          <FolderTree className="w-4 h-4" />
+          <span>الحسابات الرئيسية والفروع</span>
         </button>
 
         <button
@@ -621,6 +703,209 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
                               ? 'لك (مدين)'
                               : row.balanceType === 'payable'
                               ? 'عليك (دائن)'
+                              : 'متزن'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 1b: Hierarchical Accounts & Consolidated Branches Report */}
+      {subTab === 'hierarchical' && (
+        <div className="space-y-4">
+          {/* Summary Metric Cards (Strict Non-Double-Counted Direct Totals) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-emerald-50/80 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/60">
+              <div className="flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300 font-semibold mb-1">
+                <span>إجمالي لك المباشر</span>
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100">
+                {formatCurrency(hierarchicalReport.totalDirectReceivableMinor, { symbol: currencySymbol })}
+              </div>
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1">
+                أرصدة مباشرة موجبة بدون تكرار للأب والفرع
+              </div>
+            </div>
+
+            <div className="bg-rose-50/80 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-200 dark:border-rose-800/60">
+              <div className="flex items-center justify-between text-xs text-rose-800 dark:text-rose-300 font-semibold mb-1">
+                <span>إجمالي عليك المباشر</span>
+                <TrendingDown className="w-4 h-4 text-rose-600" />
+              </div>
+              <div className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100">
+                {formatCurrency(hierarchicalReport.totalDirectPayableMinor, { symbol: currencySymbol })}
+              </div>
+              <div className="text-[10px] text-rose-700 dark:text-rose-400 mt-1">
+                التزامات مباشرة سالبة بدون تكرار
+              </div>
+            </div>
+
+            <div className="bg-blue-50/80 dark:bg-blue-950/40 p-4 rounded-2xl border border-blue-200 dark:border-blue-800/60">
+              <div className="flex items-center justify-between text-xs text-blue-800 dark:text-blue-300 font-semibold mb-1">
+                <span>صافي المركز المباشر</span>
+                <BarChart3 className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100">
+                {formatCurrency(hierarchicalReport.netDirectBalanceMinor, { symbol: currencySymbol })}
+              </div>
+              <div className="text-[10px] text-blue-700 dark:text-blue-400 mt-1">
+                صافي المركز المالي الحقيقي للدفتر
+              </div>
+            </div>
+
+            <div className="bg-slate-100 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60">
+              <div className="flex items-center justify-between text-xs text-slate-700 dark:text-slate-300 font-semibold mb-1">
+                <span>هيكل الشجرة المحاسبية</span>
+                <FolderTree className="w-4 h-4 text-slate-500" />
+              </div>
+              <div className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-1">
+                {hierarchicalReport.totalAccountsCount} حساب
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                رئيسي: {hierarchicalReport.rootAccountsCount} | تابع: {hierarchicalReport.branchAccountsCount}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 text-[11px] text-slate-600 dark:text-slate-300">
+            <strong>عرض تحليلي (Calculated View):</strong> يوضح عمود «الرصيد المجمع» إجمالي رصيد الحساب مع كافة فروعه وأحفاده حتى التاريخ المحدد، بينما تعتمد الإجماليات العامة أعلاه على «الرصيد المباشر» فقط لمنع أي احتساب مزدوج.
+          </div>
+
+          {/* Hierarchical Tree Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                جدول الحسابات الرئيسية والفروع (الرصيد المباشر والمجمع)
+              </h3>
+              <span className="text-xs text-slate-500 font-mono">
+                {hierarchicalReport.rows.length} حساب
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">الحساب</th>
+                    <th className="py-3 px-3">التصنيف</th>
+                    <th className="py-3 px-3">الأب</th>
+                    <th className="py-3 px-3 text-center">المستوى</th>
+                    <th className="py-3 px-3 text-center">التابعون</th>
+                    <th className="py-3 px-3">الافتتاحي المباشر</th>
+                    <th className="py-3 px-3">عليه المباشر</th>
+                    <th className="py-3 px-3">له المباشر</th>
+                    <th className="py-3 px-3">الرصيد المباشر</th>
+                    <th className="py-3 px-3">الرصيد المجمع</th>
+                    <th className="py-3 px-3 text-center">نوع الرصيد</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {hierarchicalReport.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="py-8 text-center text-slate-400">
+                        لا توجد حسابات تطابق خيارات التصفية المختارة.
+                      </td>
+                    </tr>
+                  ) : (
+                    hierarchicalReport.rows.map((row) => (
+                      <tr
+                        key={row.account.id}
+                        onClick={() => onSelectAccountForStatement?.(row.account.id)}
+                        className={`cursor-pointer transition-colors ${
+                          row.isParent
+                            ? 'bg-emerald-50/30 dark:bg-emerald-950/15 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/30'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
+                          <div
+                            className="flex items-center gap-2"
+                            style={{ paddingRight: `${Math.min(row.level, 6) * 16}px` }}
+                          >
+                            {row.level > 0 && (
+                              <span className="text-slate-400 font-mono text-[11px]">└</span>
+                            )}
+                            <span className={row.isParent ? 'font-bold' : ''}>{row.account.name}</span>
+                            {row.isParent && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                                رئيسي
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-slate-500">{row.categoryName}</td>
+                        <td className="py-3 px-3 text-slate-500">{row.parentName || '—'}</td>
+                        <td className="py-3 px-3 text-center font-mono text-slate-500">{row.level}</td>
+                        <td className="py-3 px-3 text-center font-mono">
+                          {row.descendantCount > 0 ? (
+                            <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                              {row.descendantCount}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">0</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-400">
+                          {formatCurrency(row.directOpeningMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(row.directOwedByMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-rose-600 dark:text-rose-400">
+                          {formatCurrency(row.directOwedToMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono font-semibold">
+                          <span
+                            className={
+                              row.directBalanceMinor > 0
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : row.directBalanceMinor < 0
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : 'text-slate-400'
+                            }
+                          >
+                            {formatCurrency(row.directBalanceMinor, { symbol: currencySymbol })}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-mono font-bold">
+                          <span
+                            className={
+                              row.consolidatedBalanceMinor > 0
+                                ? 'text-emerald-700 dark:text-emerald-300'
+                                : row.consolidatedBalanceMinor < 0
+                                ? 'text-rose-700 dark:text-rose-300'
+                                : 'text-slate-400'
+                            }
+                          >
+                            {formatCurrency(row.consolidatedBalanceMinor, { symbol: currencySymbol })}
+                          </span>
+                          {row.isParent && (
+                            <span className="mr-1.5 text-[9px] font-sans px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                              مجمع
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              row.consolidatedBalanceType === 'receivable'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : row.consolidatedBalanceType === 'payable'
+                                ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            {row.consolidatedBalanceType === 'receivable'
+                              ? 'لك'
+                              : row.consolidatedBalanceType === 'payable'
+                              ? 'عليك'
                               : 'متزن'}
                           </span>
                         </td>

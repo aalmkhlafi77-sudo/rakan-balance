@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { AccountModel } from '../domain/types.ts';
 import { formatCurrency, fromMinorUnits, toMinorUnits } from '../domain/money.ts';
 import { checkTreeCycle } from '../domain/balance_calculator.ts';
+import { createHierarchyIndex } from '../domain/hierarchical_accounts.ts';
 import { matchesPublicAccountSearch } from '../domain/account_privacy.ts';
 import {
   Users,
@@ -45,6 +46,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 }) => {
   const {
     accounts,
+    transactions,
     categories,
     addAccount,
     updateAccount,
@@ -93,15 +95,26 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     });
   }, [accounts, statusFilter, selectedCategory, searchQuery]);
 
+  // Pre-indexed hierarchy map for O(N + M) consolidated balances & descendant counts
+  const hierarchyIndex = useMemo(
+    () => createHierarchyIndex(accounts, transactions),
+    [accounts, transactions]
+  );
+
   // Root accounts & Children mapping for tree view
+  const filteredIdSet = useMemo(
+    () => new Set(filteredAccounts.map((a) => a.id)),
+    [filteredAccounts]
+  );
+
   const rootAccounts = useMemo(() => {
-    return filteredAccounts.filter((a) => !a.parentId);
-  }, [filteredAccounts]);
+    return filteredAccounts.filter((a) => !a.parentId || !filteredIdSet.has(a.parentId));
+  }, [filteredAccounts, filteredIdSet]);
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string, AccountModel[]>();
     for (const acc of filteredAccounts) {
-      if (acc.parentId) {
+      if (acc.parentId && acc.parentId !== acc.id) {
         const list = map.get(acc.parentId) || [];
         list.push(acc);
         map.set(acc.parentId, list);
@@ -199,18 +212,34 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setIsAddCatOpen(false);
   };
 
-  // Render Account Card / Row
-  const renderAccountRow = (acc: AccountModel, isChild = false) => {
-    const balance = getAccountBalance(acc.id);
+  // Render Account Card / Row (supports arbitrary tree depth with cycle guard)
+  const renderAccountRow = (acc: AccountModel, depth = 0, visited = new Set<string>()) => {
+    if (visited.has(acc.id)) return null;
+    const nextVisited = new Set(visited);
+    nextVisited.add(acc.id);
+
+    const isChild = depth > 0 || Boolean(acc.parentId);
+    const directBalance = hierarchyIndex.getDirectBalance(acc.id);
+    const descendantIds = hierarchyIndex.getDescendantIds(acc.id);
+    const hasChildren = descendantIds.length > 0;
+    const consolidatedBalance = hasChildren
+      ? hierarchyIndex.getConsolidatedBalance(acc.id)
+      : directBalance;
     const category = categories.find((c) => c.id === acc.categoryId);
     const children = childrenByParent.get(acc.id) || [];
+    const descendantsLabel =
+      descendantIds.length === 1
+        ? '1 حساب تابع'
+        : descendantIds.length >= 2 && descendantIds.length <= 10
+        ? `${descendantIds.length} حسابات تابعة`
+        : `${descendantIds.length} حساباً تابعاً`;
 
     return (
       <div key={acc.id} className="space-y-2">
         <div
           className={`p-4 rounded-xl border transition-all ${
             isChild
-              ? 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800 mr-5'
+              ? 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-800 mr-3 sm:mr-5'
               : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-xs'
           }`}
         >
@@ -221,7 +250,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 <CornerDownLeft className="w-4 h-4 text-slate-400 mt-1 shrink-0 rotate-90" />
               )}
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                     {acc.name}
                   </h4>
@@ -230,9 +259,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       مؤرشف
                     </span>
                   )}
+                  {hasChildren && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60">
+                      {descendantsLabel}
+                    </span>
+                  )}
                   {isChild && (
                     <span className="text-[10px] text-slate-400 font-mono">
-                      (فرعي)
+                      (فرعي{depth > 1 ? ` · مستوى ${depth}` : ''})
                     </span>
                   )}
                 </div>
@@ -262,27 +296,62 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
             {/* Financial Balance & Action Buttons */}
             <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800/80">
-              {/* Balance */}
-              <div className="text-right sm:text-left font-mono">
-                <div
-                  className={`text-sm font-bold tabular-nums ${
-                    balance > 0
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : balance < 0
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
-                  {formatCurrency(balance, { showSign: true })}
+              {/* Balance: Consolidated (primary) + Direct (secondary) for parents; Direct only for leaves */}
+              {hasChildren ? (
+                <div className="text-right sm:text-left font-mono">
+                  <div className="flex items-center sm:justify-end gap-1.5 mb-0.5">
+                    <span className="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      رصيد مجمع
+                    </span>
+                    <span
+                      className={`text-sm font-extrabold tabular-nums ${
+                        consolidatedBalance > 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : consolidatedBalance < 0
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {formatCurrency(consolidatedBalance, { showSign: true })}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
+                    الرصيد المباشر:{' '}
+                    <span
+                      className={`font-mono font-semibold tabular-nums ${
+                        directBalance > 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : directBalance < 0
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {formatCurrency(directBalance, { showSign: true })}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-400 font-sans">
-                  {balance > 0 ? 'مستحق لك' : balance < 0 ? 'التزام عليك' : 'متوازن'}
+              ) : (
+                <div className="text-right sm:text-left font-mono">
+                  <div
+                    className={`text-sm font-bold tabular-nums ${
+                      directBalance > 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : directBalance < 0
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {formatCurrency(directBalance, { showSign: true })}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-sans">
+                    {directBalance > 0 ? 'مستحق لك' : directBalance < 0 ? 'التزام عليك' : 'متوازن'}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex items-center gap-1">
-                {acc.status === 'active' && balance > 0 && onOpenInterAccountTransfer && (
+                {acc.status === 'active' && directBalance > 0 && onOpenInterAccountTransfer && (
                   <button
                     type="button"
                     onClick={() => onOpenInterAccountTransfer(acc.id)}
@@ -368,10 +437,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           </div>
         </div>
 
-        {/* Render Children (in tree mode) */}
+        {/* Render Children (in tree mode, arbitrary depth) */}
         {viewMode === 'tree' && children.length > 0 && (
-          <div className="space-y-2 pr-4 border-r-2 border-slate-200 dark:border-slate-800 mr-2">
-            {children.map((child) => renderAccountRow(child, true))}
+          <div className="space-y-2 pr-3 sm:pr-4 border-r-2 border-slate-200 dark:border-slate-800 mr-2">
+            {children.map((child) => renderAccountRow(child, depth + 1, nextVisited))}
           </div>
         )}
       </div>
@@ -533,11 +602,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         </div>
       ) : viewMode === 'tree' ? (
         <div className="space-y-3">
-          {rootAccounts.map((acc) => renderAccountRow(acc, false))}
+          {rootAccounts.map((acc) => renderAccountRow(acc, 0))}
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredAccounts.map((acc) => renderAccountRow(acc, Boolean(acc.parentId)))}
+          {filteredAccounts.map((acc) => renderAccountRow(acc, hierarchyIndex.getDepth(acc.id)))}
         </div>
       )}
 
@@ -739,7 +808,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             </div>
 
             {/* Quick Financial Overview */}
-            <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-xs font-mono">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-xs font-mono">
               <div>
                 <span className="text-slate-500 font-sans block text-[11px]">الرصيد الافتتاحي:</span>
                 <span className="font-bold text-slate-700 dark:text-slate-300">
@@ -760,6 +829,24 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   {formatCurrency(getAccountBalance(viewingDetailsAccount.id), { showSign: true })}
                 </span>
               </div>
+              {hierarchyIndex.isParent(viewingDetailsAccount.id) && (
+                <div>
+                  <span className="text-slate-500 font-sans block text-[11px]">
+                    الرصيد المجمع ({hierarchyIndex.getDescendantIds(viewingDetailsAccount.id).length} تابع):
+                  </span>
+                  <span
+                    className={`font-bold ${
+                      hierarchyIndex.getConsolidatedBalance(viewingDetailsAccount.id) > 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : hierarchyIndex.getConsolidatedBalance(viewingDetailsAccount.id) < 0
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    {formatCurrency(hierarchyIndex.getConsolidatedBalance(viewingDetailsAccount.id), { showSign: true })}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Private Account Notes Section */}

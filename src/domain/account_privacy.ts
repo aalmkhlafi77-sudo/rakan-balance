@@ -52,3 +52,61 @@ export function buildStatementCSV(
   csv += `رصيد آخر المدة: ${(statement.closingBalanceMinor / 100).toFixed(2)}\n`;
   return csv;
 }
+
+export function buildConsolidatedStatementCSV(
+  account: AccountModel,
+  allAccounts: AccountModel[],
+  consolidated: {
+    openingConsolidatedBalanceMinor: number;
+    closingConsolidatedBalanceMinor: number;
+    totalOwedByMinor: number;
+    totalOwedToMinor: number;
+    descendantCount: number;
+    rows: Array<{
+      transaction: {
+        entryType: 'owedByAccount' | 'owedToAccount';
+        amountMinor: number;
+        date: string;
+        description: string;
+        transferId?: string;
+        transferRole?: 'source' | 'destination';
+        counterpartyAccountId?: string;
+      };
+      sourceAccountName: string;
+      hierarchicalPath: string;
+      runningConsolidatedBalanceMinor: number;
+    }>;
+  },
+  fromDate?: string,
+  toDate?: string
+): string {
+  let csv = '\uFEFF';
+  csv += `كشف حساب مجمع: ${account.name} (يشمل ${consolidated.descendantCount} فروع وتوابع)\n`;
+  csv += `الفترة: ${fromDate || 'البداية'} إلى ${toDate || 'اليوم'}\n`;
+  csv += `رصيد أول المدة المجمع: ${(consolidated.openingConsolidatedBalanceMinor / 100).toFixed(2)}\n\n`;
+  csv += 'م,التاريخ,الحساب المصدر,المسار الهرمي,البيان,عليه (لك),له (عليك),الرصيد المجمع بعد الحركة\n';
+
+  consolidated.rows.forEach((row, index) => {
+    const owedBy = row.transaction.entryType === 'owedByAccount';
+    const owedByAmount = owedBy ? (row.transaction.amountMinor / 100).toFixed(2) : '0.00';
+    const owedToAmount = !owedBy ? (row.transaction.amountMinor / 100).toFixed(2) : '0.00';
+    const balance = (row.runningConsolidatedBalanceMinor / 100).toFixed(2);
+    let description = row.transaction.description;
+    if (row.transaction.transferId && row.transaction.counterpartyAccountId) {
+      const counterpart = allAccounts.find((item) => item.id === row.transaction.counterpartyAccountId);
+      if (counterpart) {
+        description += ` (${row.transaction.transferRole === 'source' ? 'نقل مديونية إلى: ' : 'مديونية محولة من: '}${counterpart.name})`;
+      }
+    }
+    const qSource = `"${row.sourceAccountName.replace(/"/g, '""')}"`;
+    const qPath = `"${row.hierarchicalPath.replace(/"/g, '""')}"`;
+    const qDesc = `"${description.replace(/"/g, '""')}"`;
+    csv += `${index + 1},${row.transaction.date},${qSource},${qPath},${qDesc},${owedByAmount},${owedToAmount},${balance}\n`;
+  });
+
+  csv += `\nإجمالي عليه المجمع خلال الفترة: ${(consolidated.totalOwedByMinor / 100).toFixed(2)}\n`;
+  csv += `إجمالي له المجمع خلال الفترة: ${(consolidated.totalOwedToMinor / 100).toFixed(2)}\n`;
+  csv += `رصيد آخر المدة المجمع: ${(consolidated.closingConsolidatedBalanceMinor / 100).toFixed(2)}\n`;
+  return csv;
+}
+

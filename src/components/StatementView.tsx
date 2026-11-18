@@ -8,9 +8,14 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { calculateAccountStatement } from '../domain/balance_calculator.ts';
-import { buildStatementCSV } from '../domain/account_privacy.ts';
+import {
+  calculateConsolidatedStatement,
+  createHierarchyIndex,
+} from '../domain/hierarchical_accounts.ts';
+import { buildConsolidatedStatementCSV, buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
+import { exportSingleParentAccountToExcel } from '../services/excel_export.ts';
 import { createStatementPdf } from '../services/statement_pdf_file.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
@@ -18,6 +23,7 @@ import { buildStatementShareMessage } from '../services/whatsapp_share_service.t
 import { AttachmentModel, TransactionModel } from '../domain/types.ts';
 import {
   FileSpreadsheet,
+  FolderTree,
   Printer,
   Download,
   Calendar,
@@ -41,13 +47,14 @@ export const StatementView: React.FC<StatementViewProps> = ({
   onEditTransaction,
   onEditInterAccountTransfer,
 }) => {
-  const { accounts, transactions, attachments, settings } = useApp();
+  const { accounts, categories, transactions, attachments, settings } = useApp();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
     initialAccountId || (accounts[0]?.id || '')
   );
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
+  const [statementMode, setStatementMode] = useState<'direct' | 'consolidated'>('direct');
 
   // Attachment Preview Modal
   const [previewAttachmentsList, setPreviewAttachmentsList] = useState<AttachmentModel[]>([]);
@@ -57,6 +64,19 @@ export const StatementView: React.FC<StatementViewProps> = ({
   const [statementShareOpen, setStatementShareOpen] = useState<boolean>(false);
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  const hierarchyIndex = useMemo(
+    () => createHierarchyIndex(accounts, transactions),
+    [accounts, transactions]
+  );
+
+  const descendantIds = useMemo(
+    () => (selectedAccount ? hierarchyIndex.getDescendantIds(selectedAccount.id) : []),
+    [selectedAccount, hierarchyIndex]
+  );
+
+  const isSelectedParent = descendantIds.length > 0;
+  const effectiveMode: 'direct' | 'consolidated' = isSelectedParent ? statementMode : 'direct';
 
   const handleRowClick = (tx: TransactionModel) => {
     if (tx.transferId) {
@@ -88,8 +108,8 @@ export const StatementView: React.FC<StatementViewProps> = ({
     }
   };
 
-  // Compute Statement
-  const statement = useMemo(() => {
+  // Compute Direct Statement
+  const directStatement = useMemo(() => {
     if (!selectedAccount) {
       return {
         openingBalanceMinor: 0,
@@ -102,35 +122,108 @@ export const StatementView: React.FC<StatementViewProps> = ({
     return calculateAccountStatement(selectedAccount, transactions, fromDate || undefined, toDate || undefined);
   }, [selectedAccount, transactions, fromDate, toDate]);
 
+  // Compute Consolidated Statement (when parent account & consolidated mode active)
+  const consolidatedStatement = useMemo(() => {
+    if (!selectedAccount || effectiveMode !== 'consolidated') return null;
+    return calculateConsolidatedStatement(
+      selectedAccount.id,
+      accounts,
+      transactions,
+      fromDate || undefined,
+      toDate || undefined
+    );
+  }, [selectedAccount, effectiveMode, accounts, transactions, fromDate, toDate]);
+
+  const activeSummary = useMemo(() => {
+    if (effectiveMode === 'consolidated' && consolidatedStatement) {
+      return {
+        openingBalanceMinor: consolidatedStatement.openingConsolidatedBalanceMinor,
+        closingBalanceMinor: consolidatedStatement.closingConsolidatedBalanceMinor,
+        totalOwedByMinor: consolidatedStatement.totalOwedByMinor,
+        totalOwedToMinor: consolidatedStatement.totalOwedToMinor,
+        rowsCount: consolidatedStatement.rows.length,
+      };
+    }
+    return {
+      openingBalanceMinor: directStatement.openingBalanceMinor,
+      closingBalanceMinor: directStatement.closingBalanceMinor,
+      totalOwedByMinor: directStatement.totalOwedByMinor,
+      totalOwedToMinor: directStatement.totalOwedToMinor,
+      rowsCount: directStatement.rows.length,
+    };
+  }, [effectiveMode, consolidatedStatement, directStatement]);
+
+  // Normalized rows for rendering both modes cleanly
+  const displayRows = useMemo(() => {
+    if (effectiveMode === 'consolidated' && consolidatedStatement) {
+      return consolidatedStatement.rows.map((r) => ({
+        transaction: r.transaction,
+        runningBalanceMinor: r.runningConsolidatedBalanceMinor,
+        sourceAccountName: r.sourceAccountName,
+        hierarchicalPath: r.hierarchicalPath,
+      }));
+    }
+    return directStatement.rows.map((r) => ({
+      transaction: r.transaction,
+      runningBalanceMinor: r.runningBalanceMinor,
+      sourceAccountName: selectedAccount?.name || '',
+      hierarchicalPath: selectedAccount?.name || '',
+    }));
+  }, [effectiveMode, consolidatedStatement, directStatement, selectedAccount]);
+
   // CSV Export with UTF-8 BOM
   const exportCSV = () => {
     if (!selectedAccount) return;
 
-    const csvContent = buildStatementCSV(selectedAccount, accounts, statement, fromDate, toDate);
+    const csvContent =
+      effectiveMode === 'consolidated' && consolidatedStatement
+        ? buildConsolidatedStatementCSV(selectedAccount, accounts, consolidatedStatement, fromDate, toDate)
+        : buildStatementCSV(selectedAccount, accounts, directStatement, fromDate, toDate);
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `statement_${selectedAccount.name}_${new Date().toISOString().split('T')[0]}.csv`;
+    const suffix = effectiveMode === 'consolidated' ? '_consolidated' : '';
+    link.download = `statement_${selectedAccount.name}${suffix}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
+  // Excel Export (Multi-sheet Single Parent Consolidated or Account Workbook)
+  const exportExcel = () => {
+    if (!selectedAccount) return;
+    exportSingleParentAccountToExcel({
+      accountId: selectedAccount.id,
+      accounts,
+      transactions,
+      categories,
+      currencySymbol: settings.currencySymbol,
+      currencyName: settings.currencyName,
+      ownerName: settings.ownerName,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+    });
+  };
+
   const createPdfForShare = () => {
     if (!selectedAccount) throw new Error('يرجى تحديد الحساب أولاً.');
+    const titlePrefix = effectiveMode === 'consolidated' ? `كشف مجمع: ${selectedAccount.name}` : selectedAccount.name;
     return createStatementPdf({
-      accountName: selectedAccount.name,
+      accountName: titlePrefix,
       ownerName: settings.ownerName,
       periodLabel: `الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`,
       currencySymbol: settings.currencySymbol,
-      openingBalance: formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
-      totalOwedBy: `+${formatMinorAmount(statement.totalOwedByMinor)} ${settings.currencySymbol}`,
-      totalOwedTo: `-${formatMinorAmount(statement.totalOwedToMinor)} ${settings.currencySymbol}`,
-      closingBalance: formatCurrency(statement.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
-      rows: statement.rows.map(row => ({
+      openingBalance: formatCurrency(activeSummary.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      totalOwedBy: `+${formatMinorAmount(activeSummary.totalOwedByMinor)} ${settings.currencySymbol}`,
+      totalOwedTo: `-${formatMinorAmount(activeSummary.totalOwedToMinor)} ${settings.currencySymbol}`,
+      closingBalance: formatCurrency(activeSummary.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+      rows: displayRows.map((row) => ({
         date: row.transaction.date,
-        description: row.transaction.description,
+        description:
+          effectiveMode === 'consolidated'
+            ? `[${row.sourceAccountName}] ${row.transaction.description}`
+            : row.transaction.description,
         owedBy: row.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(row.transaction.amountMinor)}` : '—',
         owedTo: row.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(row.transaction.amountMinor)}` : '—',
         runningBalance: formatCurrency(row.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
@@ -141,49 +234,77 @@ export const StatementView: React.FC<StatementViewProps> = ({
   const handlePrint = () => {
     if (!selectedAccount) return;
 
+    const isConsolidated = effectiveMode === 'consolidated' && consolidatedStatement;
+
     generatePdfReport({
-      reportTitle: `كشف حساب: ${selectedAccount.name}`,
-      subtitle: `الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`,
+      reportTitle: isConsolidated
+        ? `كشف حساب مجمع: ${selectedAccount.name}`
+        : `كشف حساب: ${selectedAccount.name}`,
+      subtitle: isConsolidated
+        ? `يشمل الحساب الرئيسي + ${consolidatedStatement.descendantCount} فروع وتوابع · الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`
+        : `الفترة من ${fromDate || 'بداية التعامل'} إلى ${toDate || 'تاريخ اليوم'}`,
       ownerName: settings.ownerName,
       currencySymbol: settings.currencySymbol,
       metrics: [
         {
-          title: 'رصيد أول المدة',
-          value: formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+          title: isConsolidated ? 'رصيد أول المدة المجمع' : 'رصيد أول المدة',
+          value: formatCurrency(activeSummary.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
           colorClass: 'slate',
         },
         {
           title: 'إجمالي عليه (خلال الفترة)',
-          value: `+${formatMinorAmount(statement.totalOwedByMinor)} ${settings.currencySymbol}`,
+          value: `+${formatMinorAmount(activeSummary.totalOwedByMinor)} ${settings.currencySymbol}`,
           colorClass: 'emerald',
         },
         {
           title: 'إجمالي له (خلال الفترة)',
-          value: `-${formatMinorAmount(statement.totalOwedToMinor)} ${settings.currencySymbol}`,
+          value: `-${formatMinorAmount(activeSummary.totalOwedToMinor)} ${settings.currencySymbol}`,
           colorClass: 'rose',
         },
         {
-          title: 'رصيد آخر المدة (الختامي)',
-          value: formatCurrency(statement.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+          title: isConsolidated ? 'الرصيد الختامي المجمع' : 'رصيد آخر المدة (الختامي)',
+          value: formatCurrency(activeSummary.closingBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
           colorClass: 'blue',
         },
       ],
-      columns: [
-        { header: '#', align: 'center' },
-        { header: 'التاريخ', align: 'center' },
-        { header: 'البيان والوصف', align: 'right' },
-        { header: 'عليه (+ لك)', align: 'right' },
-        { header: 'له (- عليك)', align: 'right' },
-        { header: 'الرصيد المتتابع', align: 'right' },
-      ],
-      rows: statement.rows.map((r, idx) => [
-        idx + 1,
-        r.transaction.date,
-        r.transaction.description + (r.transaction.notes ? ` (${r.transaction.notes})` : ''),
-        r.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(r.transaction.amountMinor)}` : '—',
-        r.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(r.transaction.amountMinor)}` : '—',
-        formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
-      ]),
+      columns: isConsolidated
+        ? [
+            { header: '#', align: 'center' },
+            { header: 'التاريخ', align: 'center' },
+            { header: 'الحساب المصدر / المسار', align: 'right' },
+            { header: 'البيان والوصف', align: 'right' },
+            { header: 'عليه (+ لك)', align: 'right' },
+            { header: 'له (- عليك)', align: 'right' },
+            { header: 'الرصيد المجمع', align: 'right' },
+          ]
+        : [
+            { header: '#', align: 'center' },
+            { header: 'التاريخ', align: 'center' },
+            { header: 'البيان والوصف', align: 'right' },
+            { header: 'عليه (+ لك)', align: 'right' },
+            { header: 'له (- عليك)', align: 'right' },
+            { header: 'الرصيد المتتابع', align: 'right' },
+          ],
+      rows: displayRows.map((r, idx) =>
+        isConsolidated
+          ? [
+              idx + 1,
+              r.transaction.date,
+              `${r.sourceAccountName}${r.hierarchicalPath !== r.sourceAccountName ? ` (${r.hierarchicalPath})` : ''}`,
+              r.transaction.description + (r.transaction.notes ? ` (${r.transaction.notes})` : ''),
+              r.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+              r.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+              formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+            ]
+          : [
+              idx + 1,
+              r.transaction.date,
+              r.transaction.description + (r.transaction.notes ? ` (${r.transaction.notes})` : ''),
+              r.transaction.entryType === 'owedByAccount' ? `+${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+              r.transaction.entryType === 'owedToAccount' ? `-${formatMinorAmount(r.transaction.amountMinor)}` : '—',
+              formatCurrency(r.runningBalanceMinor, { showSign: true, symbol: settings.currencySymbol }),
+            ]
+      ),
     });
   };
 
@@ -200,7 +321,7 @@ export const StatementView: React.FC<StatementViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setStatementShareOpen(true)}
@@ -214,8 +335,18 @@ export const StatementView: React.FC<StatementViewProps> = ({
           </button>
           <button
             type="button"
+            onClick={exportExcel}
+            disabled={!selectedAccount}
+            className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-medium text-white flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+            title="تصدير كشف الحساب بصيغة Excel متعددة الصفحات"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>تصدير Excel</span>
+          </button>
+          <button
+            type="button"
             onClick={exportCSV}
-            disabled={!selectedAccount || statement.rows.length === 0}
+            disabled={!selectedAccount || activeSummary.rowsCount === 0}
             className="py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <Download className="w-4 h-4 text-slate-500" />
@@ -287,30 +418,60 @@ export const StatementView: React.FC<StatementViewProps> = ({
           </div>
         </div>
 
-        {/* Quick Presets */}
-        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
-          <span>اختصار الفترة:</span>
-          <button
-            type="button"
-            onClick={() => applyPreset('all')}
-            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer font-medium"
-          >
-            كامل المدة
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('thisMonth')}
-            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer font-medium"
-          >
-            هذا الشهر
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('last30Days')}
-            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer font-medium"
-          >
-            آخر 30 يوماً
-          </button>
+        {/* Quick Presets & Consolidated Mode Switch (for Parent Accounts) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <span>اختصار الفترة:</span>
+            <button
+              type="button"
+              onClick={() => applyPreset('all')}
+              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer font-medium"
+            >
+              كامل المدة
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset('thisMonth')}
+              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer font-medium"
+            >
+              هذا الشهر
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset('last30Days')}
+              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer font-medium"
+            >
+              آخر 30 يوماً
+            </button>
+          </div>
+
+          {isSelectedParent && (
+            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setStatementMode('direct')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  effectiveMode === 'direct'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+                }`}
+              >
+                كشف مباشر
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatementMode('consolidated')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  effectiveMode === 'consolidated'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
+                }`}
+              >
+                <FolderTree className="w-3.5 h-3.5" />
+                <span>كشف مجمع ({descendantIds.length} فروع)</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -322,8 +483,17 @@ export const StatementView: React.FC<StatementViewProps> = ({
             <div className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold mb-1">
               راكان بلانس | RAKAN BALANCE
             </div>
-            <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
-              كشف حساب: {selectedAccount?.name || '—'}
+            <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 flex flex-wrap items-center gap-2">
+              <span>
+                {effectiveMode === 'consolidated'
+                  ? `كشف حساب مجمع: ${selectedAccount?.name || '—'}`
+                  : `كشف حساب: ${selectedAccount?.name || '—'}`}
+              </span>
+              {effectiveMode === 'consolidated' && consolidatedStatement && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                  الحساب + {consolidatedStatement.descendantCount} فروع وتوابع
+                </span>
+              )}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
               الفترة: {fromDate || 'بداية التعامل'} إلى {toDate || 'تاريخ اليوم'} · العملة: {settings.currencyName || 'ريال سعودي'} ({settings.currencyCode})
@@ -342,17 +512,19 @@ export const StatementView: React.FC<StatementViewProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {/* 1. Opening Balance */}
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
-            <div className="text-[11px] text-slate-500 mb-1">رصيد أول المدة</div>
+            <div className="text-[11px] text-slate-500 mb-1">
+              {effectiveMode === 'consolidated' ? 'رصيد أول المدة المجمع' : 'رصيد أول المدة'}
+            </div>
             <div
               className={`text-base font-extrabold font-mono tabular-nums ${
-                statement.openingBalanceMinor > 0
+                activeSummary.openingBalanceMinor > 0
                   ? 'text-emerald-600 dark:text-emerald-400'
-                  : statement.openingBalanceMinor < 0
+                  : activeSummary.openingBalanceMinor < 0
                   ? 'text-rose-600 dark:text-rose-400'
                   : 'text-slate-700 dark:text-slate-300'
               }`}
             >
-              {formatCurrency(statement.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
+              {formatCurrency(activeSummary.openingBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
             </div>
           </div>
 
@@ -360,7 +532,7 @@ export const StatementView: React.FC<StatementViewProps> = ({
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
             <div className="text-[11px] text-slate-500 mb-1">إجمالي عليه (خلال الفترة)</div>
             <div className="text-base font-extrabold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-              +{formatMinorAmount(statement.totalOwedByMinor)} {settings.currencySymbol}
+              +{formatMinorAmount(activeSummary.totalOwedByMinor)} {settings.currencySymbol}
             </div>
           </div>
 
@@ -368,35 +540,58 @@ export const StatementView: React.FC<StatementViewProps> = ({
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800">
             <div className="text-[11px] text-slate-500 mb-1">إجمالي له (خلال الفترة)</div>
             <div className="text-base font-extrabold font-mono tabular-nums text-rose-600 dark:text-rose-400">
-              -{formatMinorAmount(statement.totalOwedToMinor)} {settings.currencySymbol}
+              -{formatMinorAmount(activeSummary.totalOwedToMinor)} {settings.currencySymbol}
             </div>
           </div>
 
           {/* 4. Closing Balance */}
           <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
             <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-              رصيد آخر المدة (الختامي)
+              {effectiveMode === 'consolidated' ? 'رصيد آخر المدة المجمع' : 'رصيد آخر المدة (الختامي)'}
             </div>
             <div
               className={`text-base font-extrabold font-mono tabular-nums ${
-                statement.closingBalanceMinor > 0
+                activeSummary.closingBalanceMinor > 0
                   ? 'text-emerald-600 dark:text-emerald-400'
-                  : statement.closingBalanceMinor < 0
+                  : activeSummary.closingBalanceMinor < 0
                   ? 'text-rose-600 dark:text-rose-400'
                   : 'text-slate-700 dark:text-slate-300'
               }`}
             >
-              {formatCurrency(statement.closingBalanceMinor, { showSign: true })}
+              {formatCurrency(activeSummary.closingBalanceMinor, { showSign: true })}
             </div>
           </div>
         </div>
 
+        {/* Consolidated Mode Analytical Breakdown Strip */}
+        {effectiveMode === 'consolidated' && consolidatedStatement && (
+          <div className="mb-5 p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/50 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-4">
+              <span>
+                الرصيد المباشر للحساب الرئيسي:{' '}
+                <strong className="font-mono tabular-nums">
+                  {formatCurrency(consolidatedStatement.directBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </span>
+              <span>
+                مجموع أرصدة الفروع والتوابع ({consolidatedStatement.descendantCount}):{' '}
+                <strong className="font-mono tabular-nums">
+                  {formatCurrency(consolidatedStatement.descendantsDirectSumMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </span>
+            </div>
+            <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+              كشف تحليلي مجمع (لا ينشئ قيوداً مكررة)
+            </span>
+          </div>
+        )}
+
         {/* Sequential Movements Table */}
-        {statement.rows.length === 0 ? (
+        {displayRows.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
             لا توجد حركات مسجلة لهذا الحساب خلال الفترة المحددة.
             <div className="mt-1 font-mono">
-              رصيد آخر المدة مطابق لرصيد أول المدة: {formatCurrency(statement.openingBalanceMinor)}
+              رصيد آخر المدة مطابق لرصيد أول المدة: {formatCurrency(activeSummary.openingBalanceMinor)}
             </div>
           </div>
         ) : (
@@ -405,10 +600,12 @@ export const StatementView: React.FC<StatementViewProps> = ({
             {/* Mobile statement uses full-width descriptions and separate totals. Desktop table/print remain unchanged. */}
             <div className="md:hidden space-y-3" data-testid="mobile-statement-list">
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3 flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">رصيد أول المدة</span>
-                <span className="text-xs font-mono tabular-nums font-bold" dir="ltr">{formatCurrency(statement.openingBalanceMinor, { showSign: true })}</span>
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  {effectiveMode === 'consolidated' ? 'رصيد أول المدة المجمع' : 'رصيد أول المدة'}
+                </span>
+                <span className="text-xs font-mono tabular-nums font-bold" dir="ltr">{formatCurrency(activeSummary.openingBalanceMinor, { showSign: true })}</span>
               </div>
-              {statement.rows.map((row, idx) => {
+              {displayRows.map((row, idx) => {
                 const tx = row.transaction;
                 const isOwedBy = tx.entryType === 'owedByAccount';
                 const rowFiles = attachments.filter((att) => tx.attachmentIds?.includes(att.id));
@@ -421,6 +618,14 @@ export const StatementView: React.FC<StatementViewProps> = ({
                       <span className="text-[11px] text-slate-400">حركة #{idx + 1}</span>
                       <time dir="ltr" className="font-mono text-xs text-slate-500">{tx.date}</time>
                     </div>
+                    {effectiveMode === 'consolidated' && (
+                      <div className="text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 space-y-0.5">
+                        <div className="font-bold">الحساب: {row.sourceAccountName}</div>
+                        {row.hierarchicalPath !== row.sourceAccountName && (
+                          <div className="text-[10px] text-slate-500">{row.hierarchicalPath}</div>
+                        )}
+                      </div>
+                    )}
                     <button type="button" onClick={() => handleRowClick(tx)}
                       className="block w-full min-w-0 text-right text-sm font-semibold leading-7 text-slate-900 dark:text-slate-100 break-words whitespace-normal [overflow-wrap:anywhere]">
                       {tx.description}
@@ -437,7 +642,9 @@ export const StatementView: React.FC<StatementViewProps> = ({
                         </bdi>
                       </div>
                       <div className="text-left">
-                        <span className="block text-[10px] text-slate-500 mb-1">الرصيد بعد الحركة</span>
+                        <span className="block text-[10px] text-slate-500 mb-1">
+                          {effectiveMode === 'consolidated' ? 'الرصيد المجمع بعد الحركة' : 'الرصيد بعد الحركة'}
+                        </span>
                         <bdi dir="ltr" className={`font-mono tabular-nums text-sm font-bold ${row.runningBalanceMinor > 0 ? 'text-emerald-600 dark:text-emerald-400' : row.runningBalanceMinor < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
                           {formatCurrency(row.runningBalanceMinor, { showSign: true })}
                         </bdi>
@@ -461,10 +668,15 @@ export const StatementView: React.FC<StatementViewProps> = ({
                 <tr>
                   <th className="py-2.5 px-3 text-center w-12">#</th>
                   <th className="py-2.5 px-3">التاريخ</th>
+                  {effectiveMode === 'consolidated' && (
+                    <th className="py-2.5 px-3">الحساب المصدر / المسار</th>
+                  )}
                   <th className="py-2.5 px-3">البيان والوصف</th>
                   <th className="py-2.5 px-3 text-left">عليه (+ لك)</th>
                   <th className="py-2.5 px-3 text-left">له (- عليك)</th>
-                  <th className="py-2.5 px-3 text-left">الرصيد بعد الحركة</th>
+                  <th className="py-2.5 px-3 text-left">
+                    {effectiveMode === 'consolidated' ? 'الرصيد المجمع بعد الحركة' : 'الرصيد بعد الحركة'}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -472,16 +684,21 @@ export const StatementView: React.FC<StatementViewProps> = ({
                 <tr className="bg-slate-50/50 dark:bg-slate-800/20 italic text-slate-500">
                   <td className="py-2.5 px-3 text-center font-mono">—</td>
                   <td className="py-2.5 px-3 font-mono">{fromDate || 'بداية التعامل'}</td>
-                  <td className="py-2.5 px-3 font-medium">رصيد أول المدة</td>
+                  {effectiveMode === 'consolidated' && (
+                    <td className="py-2.5 px-3 font-medium">الشجرة كاملة</td>
+                  )}
+                  <td className="py-2.5 px-3 font-medium">
+                    {effectiveMode === 'consolidated' ? 'رصيد أول المدة المجمع' : 'رصيد أول المدة'}
+                  </td>
                   <td className="py-2.5 px-3 text-left font-mono">—</td>
                   <td className="py-2.5 px-3 text-left font-mono">—</td>
                   <td className="py-2.5 px-3 text-left font-mono font-bold tabular-nums">
-                    {formatCurrency(statement.openingBalanceMinor, { showSign: true })}
+                    {formatCurrency(activeSummary.openingBalanceMinor, { showSign: true })}
                   </td>
                 </tr>
 
                 {/* Movements Rows */}
-                {statement.rows.map((row, idx) => {
+                {displayRows.map((row, idx) => {
                   const isOwedBy = row.transaction.entryType === 'owedByAccount';
                   return (
                     <tr
@@ -504,6 +721,18 @@ export const StatementView: React.FC<StatementViewProps> = ({
                       <td className="py-2.5 px-3 font-mono text-slate-500 whitespace-nowrap">
                         {row.transaction.date}
                       </td>
+                      {effectiveMode === 'consolidated' && (
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">
+                            {row.sourceAccountName}
+                          </div>
+                          {row.hierarchicalPath !== row.sourceAccountName && (
+                            <div className="text-[10px] text-slate-400">
+                              {row.hierarchicalPath}
+                            </div>
+                          )}
+                        </td>
+                      )}
                       <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 font-medium">
                         {(() => {
                           const isTransfer = Boolean(row.transaction.transferId);
@@ -614,13 +843,19 @@ export const StatementView: React.FC<StatementViewProps> = ({
           accountName={selectedAccount.name}
           accountPhone={selectedAccount.phone}
           messageText={buildStatementShareMessage(
-            selectedAccount.name,
+            effectiveMode === 'consolidated'
+              ? `${selectedAccount.name} (كشف مجمع)`
+              : selectedAccount.name,
             fromDate,
             toDate,
-            statement,
+            activeSummary,
             settings.currencySymbol
           )}
-          title={`مشاركة كشف حساب: ${selectedAccount.name}`}
+          title={
+            effectiveMode === 'consolidated'
+              ? `مشاركة كشف الحساب المجمع: ${selectedAccount.name}`
+              : `مشاركة كشف حساب: ${selectedAccount.name}`
+          }
           onCreatePdf={createPdfForShare}
         />
       )}
