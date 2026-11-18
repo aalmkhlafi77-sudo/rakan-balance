@@ -16,13 +16,19 @@ import {
   ReportScope,
   validateReportScopeDates,
 } from '../domain/financial_reports.ts';
-import { generateHierarchicalAccountsReport } from '../domain/hierarchical_accounts.ts';
+import {
+  generateHierarchicalAccountsReport,
+  generateParentAccountPeriodReport,
+  getSelectableParentAccounts,
+  ParentAccountReportMode,
+} from '../domain/hierarchical_accounts.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import {
   exportAccountsReportToExcel,
   exportCategoriesReportToExcel,
   exportComprehensiveAccountsReportToExcel,
   exportDebtorsCreditorsReportToExcel,
+  exportParentAccountPeriodReportToExcel,
   exportPeriodReportToExcel,
 } from '../services/excel_export.ts';
 import {
@@ -30,6 +36,7 @@ import {
   buildCategoriesReportPdfConfig,
   buildDebtorsCreditorsReportPdfConfig,
   buildHierarchicalReportPdfConfig,
+  buildParentAccountPeriodPdfConfig,
   buildPeriodReportPdfConfig,
   generatePdfReport,
 } from '../services/pdf_export.ts';
@@ -42,6 +49,7 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  FolderKanban,
   FolderTree,
   Layers,
   Printer,
@@ -52,7 +60,13 @@ import {
   Users,
 } from 'lucide-react';
 
-export type ReportSubTab = 'accounts' | 'hierarchical' | 'categories' | 'period' | 'debtors_creditors';
+export type ReportSubTab =
+  | 'accounts'
+  | 'hierarchical'
+  | 'parent_branch'
+  | 'categories'
+  | 'period'
+  | 'debtors_creditors';
 
 interface FinancialReportsViewProps {
   onSelectAccountForStatement?: (accountId: string) => void;
@@ -74,10 +88,15 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'active' | 'archived'>('active');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Independent Parent Account & Branches Period Report Controls (#1, #3, #22, #23)
+  const [selectedParentId, setSelectedParentId] = useState<string>('');
+  const [parentReportMode, setParentReportMode] = useState<ParentAccountReportMode>('detailed');
+  const [parentManualRefreshTick, setParentManualRefreshTick] = useState<number>(0);
+
   // Honest Per-Report Filter Capabilities (#8 & #23)
   const supportsCutoffOnly = subTab === 'debtors_creditors';
   const supportsDateRange = !supportsCutoffOnly;
-  const supportsSearch = subTab !== 'categories';
+  const supportsSearch = subTab !== 'categories' && subTab !== 'parent_branch';
 
   const handlePresetChange = (preset: string) => {
     setPeriodPreset(preset);
@@ -168,6 +187,53 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
     () => generateDebtorsCreditorsReport(accounts, transactions, categories, filterOptions),
     [accounts, transactions, categories, filterOptions]
   );
+
+  // Selectable parent accounts (strictly accounts with children/descendants)
+  const selectableParentAccounts = useMemo(
+    () => getSelectableParentAccounts(accounts, selectedStatus),
+    [accounts, selectedStatus]
+  );
+
+  // Complete input readiness check for Parent Account Report (#23: no half-completed states)
+  const isParentSelectionValid = useMemo(() => {
+    if (!selectedParentId) return false;
+    return selectableParentAccounts.some((item) => item.account.id === selectedParentId);
+  }, [selectedParentId, selectableParentAccounts]);
+
+  const isParentPeriodComplete = useMemo(() => {
+    if (!dateValidation.valid) return false;
+    if (periodPreset === 'custom' && !fromDate && !toDate && parentManualRefreshTick === 0) {
+      return false;
+    }
+    return true;
+  }, [dateValidation.valid, periodPreset, fromDate, toDate, parentManualRefreshTick]);
+
+  const parentAccountReport = useMemo(() => {
+    if (!isParentSelectionValid || !isParentPeriodComplete) return null;
+    return generateParentAccountPeriodReport(
+      accounts,
+      transactions,
+      categories,
+      selectedParentId,
+      {
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        status: selectedStatus,
+        mode: parentReportMode,
+      }
+    );
+  }, [
+    isParentSelectionValid,
+    isParentPeriodComplete,
+    accounts,
+    transactions,
+    categories,
+    selectedParentId,
+    fromDate,
+    toDate,
+    selectedStatus,
+    parentReportMode,
+  ]);
 
   // Reset ONLY filters applicable to current tab (#22)
   const hasActiveFilterForTab = useMemo(() => {
@@ -275,9 +341,12 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
     debtorsCreditorsReport,
   ]);
 
-  // Export Trigger: Excel (uses exact Screen Report Model — Section 16)
+  const canExportCurrentTab =
+    dateValidation.valid && (subTab !== 'parent_branch' || Boolean(parentAccountReport && parentAccountReport.rootAccount));
+
+  // Export Trigger: Excel (uses exact Screen Report Model — Section 16 & #17)
   const handleExportExcel = () => {
-    if (!dateValidation.valid) return;
+    if (!canExportCurrentTab) return;
 
     if (subTab === 'accounts') {
       exportAccountsReportToExcel(accountsReport, currencySymbol, {
@@ -296,6 +365,11 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
         report: hierarchicalReport,
         reportTitle: 'تقرير الحسابات الرئيسية والفروع (الشجرة المالية)',
       });
+    } else if (subTab === 'parent_branch' && parentAccountReport) {
+      exportParentAccountPeriodReportToExcel(parentAccountReport, currencySymbol, {
+        ownerName: settings.ownerName,
+        currencyName: settings.currencyName,
+      });
     } else if (subTab === 'categories') {
       exportCategoriesReportToExcel(categoriesReport, currencySymbol);
     } else if (subTab === 'period') {
@@ -305,15 +379,17 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
     }
   };
 
-  // Export Trigger: PDF / Print (uses exact Screen Report Model — Section 18)
+  // Export Trigger: PDF / Print (uses exact Screen Report Model — Section 18 & #19)
   const handleExportPdfOrPrint = () => {
-    if (!dateValidation.valid) return;
+    if (!canExportCurrentTab) return;
 
     const pdfMeta = { ownerName: settings.ownerName, currencySymbol };
     if (subTab === 'accounts') {
       generatePdfReport(buildAccountsReportPdfConfig(accountsReport, pdfMeta));
     } else if (subTab === 'hierarchical') {
       generatePdfReport(buildHierarchicalReportPdfConfig(hierarchicalReport, pdfMeta));
+    } else if (subTab === 'parent_branch' && parentAccountReport) {
+      generatePdfReport(buildParentAccountPeriodPdfConfig(parentAccountReport, pdfMeta));
     } else if (subTab === 'categories') {
       generatePdfReport(buildCategoriesReportPdfConfig(categoriesReport, pdfMeta));
     } else if (subTab === 'period') {
@@ -340,7 +416,7 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
-            disabled={!dateValidation.valid}
+            disabled={!canExportCurrentTab}
             onClick={handleExportPdfOrPrint}
             className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border border-slate-200 dark:border-slate-700"
             title="طباعة أو حفظ بصيغة PDF"
@@ -351,7 +427,7 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
 
           <button
             type="button"
-            disabled={!dateValidation.valid}
+            disabled={!canExportCurrentTab}
             onClick={handleExportExcel}
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-600/30 cursor-pointer"
             title={subTab === 'hierarchical' ? 'تصدير التقرير الشامل المجمع Excel (.xlsx)' : 'تصدير التقرير الحالي Excel (.xlsx)'}
@@ -388,6 +464,19 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
         >
           <FolderTree className="w-4 h-4" />
           <span>الحسابات الرئيسية والفروع</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab('parent_branch')}
+          className={`flex-1 min-w-[140px] py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            subTab === 'parent_branch'
+              ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+          }`}
+        >
+          <FolderKanban className="w-4 h-4" />
+          <span>تقرير حساب رئيسي</span>
         </button>
 
         <button
@@ -431,6 +520,7 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
       </div>
 
       {/* Filter Control Bar — Honest per-tab supported controls (#8, #22, #23) */}
+      {subTab !== 'parent_branch' ? (
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
         <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
           <div className="flex items-center gap-1.5">
@@ -584,6 +674,159 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
           </div>
         )}
       </div>
+      ) : (
+      /* Dedicated Controls Panel for Independent Parent Account & Branches Report (#1, #2, #3, #22, #23) */
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+        <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+          <div className="flex items-center gap-1.5">
+            <FolderKanban className="w-4 h-4 text-emerald-600" />
+            <span>إعداد تقرير الحساب الرئيسي والفروع</span>
+          </div>
+          {(selectedParentId || fromDate || toDate || selectedStatus !== 'active') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedParentId('');
+                setPeriodPreset('all');
+                setFromDate('');
+                setToDate('');
+                setSelectedStatus('active');
+                setParentReportMode('detailed');
+                setParentManualRefreshTick(0);
+              }}
+              className="text-[11px] text-rose-600 hover:underline cursor-pointer"
+            >
+              إعادة ضبط التقرير
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs items-end">
+          {/* 1. Root/Parent Account Selector (Parents with children ONLY) */}
+          <div className="lg:col-span-2">
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">الحساب الرئيسي</label>
+            <select
+              value={selectedParentId}
+              onChange={(e) => {
+                setSelectedParentId(e.target.value);
+                setParentManualRefreshTick((n) => n + 1);
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">-- اختر الحساب الرئيسي --</option>
+              {selectableParentAccounts.map((item) => (
+                <option key={item.account.id} value={item.account.id}>
+                  {item.hierarchicalPath} ({item.totalDescendantsCount} تابع)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 2. Period Preset Selector */}
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">الفترة</label>
+            <select
+              value={periodPreset}
+              onChange={(e) => {
+                handlePresetChange(e.target.value);
+                if (e.target.value !== 'custom') {
+                  setParentManualRefreshTick((n) => n + 1);
+                }
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="all">كل الفترات</option>
+              <option value="this_month">الشهر الحالي</option>
+              <option value="last_month">الشهر السابق</option>
+              <option value="this_quarter">الربع الحالي</option>
+              <option value="this_year">السنة الحالية</option>
+              <option value="custom">فترة مخصصة</option>
+            </select>
+          </div>
+
+          {/* Custom Date Inputs */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-medium text-slate-500 mb-1">من تاريخ</label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setPeriodPreset('custom');
+                  setFromDate(e.target.value);
+                }}
+                className="w-full py-2 px-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-slate-500 mb-1">إلى تاريخ</label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setPeriodPreset('custom');
+                  setToDate(e.target.value);
+                }}
+                className="w-full py-2 px-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono text-slate-900 dark:text-slate-100"
+              />
+            </div>
+          </div>
+
+          {/* 3. Report Mode Segmented Toggle: ملخص / تفصيلي */}
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 mb-1">وضع التقرير</label>
+            <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setParentReportMode('summary')}
+                className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  parentReportMode === 'summary'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                ملخص
+              </button>
+              <button
+                type="button"
+                onClick={() => setParentReportMode('detailed')}
+                className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  parentReportMode === 'detailed'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                تفصيلي
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Account Status + Explicit Display Trigger */}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] font-medium text-slate-500 mb-1">الحالة</label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value as 'all' | 'active' | 'archived')}
+                className="w-full py-2 px-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+              >
+                <option value="active">نشطة</option>
+                <option value="all">الكل</option>
+                <option value="archived">مؤرشفة</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!isParentSelectionValid || !dateValidation.valid}
+              onClick={() => setParentManualRefreshTick((n) => n + 1)}
+              className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shrink-0 transition-all cursor-pointer"
+            >
+              عرض التقرير
+            </button>
+          </div>
+        </div>
+      </div>
+      )}
 
       {/* Date Validation Error Banner (#9) */}
       {!dateValidation.valid && (
@@ -1235,6 +1478,224 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
               </div>
             </div>
           </section>
+        </div>
+      )}
+
+      {/* SUB-TAB 2B: Independent Parent Account & Branches Period Report (تقرير الحساب الرئيسي والفروع) */}
+      {dateValidation.valid && subTab === 'parent_branch' && (
+        <div className="space-y-5">
+          {!isParentSelectionValid ? (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 text-center space-y-2">
+              <FolderKanban className="w-8 h-8 text-emerald-600 mx-auto opacity-80" />
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                {selectableParentAccounts.length === 0
+                  ? 'لا توجد حسابات رئيسية لديها فروع ضمن نطاق الحالة المحدد.'
+                  : 'اختر حسابًا رئيسيًا لعرض التقرير.'}
+              </p>
+              <p className="text-xs text-slate-500">
+                تظهر في القائمة أعلاه فقط الحسابات التي تملك أبناءً أو أحفادًا لتسهيل المراجعة الهرمية.
+              </p>
+            </div>
+          ) : !parentAccountReport || !parentAccountReport.rootAccount ? (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 text-center space-y-2">
+              <Calendar className="w-7 h-7 text-amber-600 mx-auto" />
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                حدد تاريخ البداية أو النهاية ثم اضغط على «عرض التقرير» لعرض النتائج.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Top 5 Summary Cards (#14) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="bg-slate-100 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60">
+                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    رصيد أول الفترة
+                  </div>
+                  <div className="text-lg font-bold font-mono text-slate-900 dark:text-slate-100 mt-1">
+                    {formatCurrency(parentAccountReport.summary.openingAtPeriodMinor, { symbol: currencySymbol })}
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50/80 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/60">
+                  <div className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+                    إجمالي عليه
+                  </div>
+                  <div className="text-lg font-bold font-mono text-emerald-700 dark:text-emerald-400 mt-1">
+                    {formatCurrency(parentAccountReport.summary.owedByMinor, { symbol: currencySymbol })}
+                  </div>
+                </div>
+
+                <div className="bg-rose-50/80 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-200 dark:border-rose-800/60">
+                  <div className="text-[11px] font-semibold text-rose-800 dark:text-rose-300">
+                    إجمالي له
+                  </div>
+                  <div className="text-lg font-bold font-mono text-rose-700 dark:text-rose-400 mt-1">
+                    {formatCurrency(parentAccountReport.summary.owedToMinor, { symbol: currencySymbol })}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50/80 dark:bg-blue-950/40 p-4 rounded-2xl border border-blue-200 dark:border-blue-800/60">
+                  <div className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">
+                    رصيد آخر الفترة
+                  </div>
+                  <div className="text-lg font-bold font-mono text-slate-900 dark:text-slate-100 mt-1">
+                    {formatCurrency(parentAccountReport.summary.closingBalanceMinor, { symbol: currencySymbol })}
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    عدد الحسابات التابعة الفعالة
+                  </div>
+                  <div className="text-lg font-bold font-mono text-slate-900 dark:text-slate-100 mt-1">
+                    {parentAccountReport.summary.activeBranchesCount} حساب
+                  </div>
+                </div>
+              </div>
+
+              {/* Exact 9-Column Table (#4, #6, #7, #13, #15, #16) */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                      تقرير الحساب الرئيسي والفروع: {parentAccountReport.rootAccount.name} ({parentAccountReport.mode === 'summary' ? 'ملخص' : 'تفصيلي'})
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      رصيد أول الفترة + عليه خلال الفترة - له خلال الفترة = رصيد آخر الفترة · صافي حركة الفترة:{' '}
+                      <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                        {formatCurrency(parentAccountReport.summary.netMovementMinor, { symbol: currencySymbol })}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    {parentAccountReport.excludedDormantCount > 0 && (
+                      <span>حسابات فرعية خاملة مستبعدة: {parentAccountReport.excludedDormantCount}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 font-medium border-b border-slate-200 dark:border-slate-800">
+                      <tr>
+                        <th className="py-3 px-4">الحساب</th>
+                        <th className="py-3 px-3">نوع الحساب</th>
+                        <th className="py-3 px-3">التصنيف</th>
+                        <th className="py-3 px-3">رصيد أول الفترة</th>
+                        <th className="py-3 px-3">عليه خلال الفترة</th>
+                        <th className="py-3 px-3">له خلال الفترة</th>
+                        <th className="py-3 px-3">صافي حركة الفترة</th>
+                        <th className="py-3 px-3">رصيد آخر الفترة</th>
+                        <th className="py-3 px-3 text-center">نوع الرصيد</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {parentAccountReport.allRows.map((row) => {
+                        const isSummary = row.rowKind === 'consolidated_summary';
+                        const isDirectRoot = row.rowKind === 'direct_root';
+                        return (
+                          <tr
+                            key={row.id}
+                            onClick={() => onSelectAccountForStatement?.(row.account.id)}
+                            className={`cursor-pointer transition-colors ${
+                              isSummary
+                                ? 'bg-emerald-50/70 dark:bg-emerald-950/30 font-bold border-b-2 border-emerald-200/70 dark:border-emerald-800/50 hover:bg-emerald-100/60 dark:hover:bg-emerald-950/45'
+                                : isDirectRoot
+                                ? 'bg-amber-50/50 dark:bg-amber-950/20 hover:bg-amber-100/40'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                            }`}
+                          >
+                            <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                              <div
+                                className="flex items-center gap-1.5"
+                                style={{ paddingRight: `${Math.min(row.level, 6) * 18}px` }}
+                              >
+                                {row.level > 0 && (
+                                  <span className="text-slate-400 font-mono text-[11px]">└─</span>
+                                )}
+                                <span className={isSummary || row.hasSubBranches ? 'font-bold' : 'font-medium'}>
+                                  {row.displayName}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-300 text-[11px]">
+                              {row.accountTypeLabel}
+                            </td>
+                            <td className="py-3 px-3 text-slate-500">{row.categoryName}</td>
+                            <td className="py-3 px-3 font-mono text-slate-700 dark:text-slate-300">
+                              {formatCurrency(row.openingAtPeriodMinor, { symbol: currencySymbol })}
+                            </td>
+                            <td className="py-3 px-3 font-mono text-emerald-600 dark:text-emerald-400">
+                              {formatCurrency(row.owedByMinor, { symbol: currencySymbol })}
+                            </td>
+                            <td className="py-3 px-3 font-mono text-rose-600 dark:text-rose-400">
+                              {formatCurrency(row.owedToMinor, { symbol: currencySymbol })}
+                            </td>
+                            <td className="py-3 px-3 font-mono text-blue-600 dark:text-blue-400">
+                              {formatCurrency(row.netMovementMinor, { symbol: currencySymbol })}
+                            </td>
+                            <td className="py-3 px-3 font-mono font-bold">
+                              <span
+                                className={
+                                  row.closingBalanceMinor > 0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : row.closingBalanceMinor < 0
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : 'text-slate-500'
+                                }
+                              >
+                                {formatCurrency(row.closingBalanceMinor, { symbol: currencySymbol })}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-center text-[11px] font-semibold">
+                              <span
+                                className={
+                                  row.balanceType === 'receivable'
+                                    ? 'text-emerald-700 dark:text-emerald-300'
+                                    : row.balanceType === 'payable'
+                                    ? 'text-rose-700 dark:text-rose-300'
+                                    : row.balanceType === 'settled'
+                                    ? 'text-blue-700 dark:text-blue-300'
+                                    : 'text-slate-500'
+                                }
+                              >
+                                {row.balanceTypeLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-slate-100 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-slate-100 border-t-2 border-slate-200 dark:border-slate-700">
+                      <tr>
+                        <td className="py-3 px-4" colSpan={3}>
+                          الإجمالي المجمع للحساب الرئيسي وفروعه (دون تكرار)
+                        </td>
+                        <td className="py-3 px-3 font-mono">
+                          {formatCurrency(parentAccountReport.summary.openingAtPeriodMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(parentAccountReport.summary.owedByMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-rose-600 dark:text-rose-400">
+                          {formatCurrency(parentAccountReport.summary.owedToMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-blue-600 dark:text-blue-400">
+                          {formatCurrency(parentAccountReport.summary.netMovementMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 font-mono">
+                          {formatCurrency(parentAccountReport.summary.closingBalanceMinor, { symbol: currencySymbol })}
+                        </td>
+                        <td className="py-3 px-3 text-center text-[11px]">
+                          {parentAccountReport.summary.balanceTypeLabel}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

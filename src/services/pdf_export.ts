@@ -334,7 +334,10 @@ import type {
   NormalizedReportScope,
   PeriodSummaryReport,
 } from '../domain/financial_reports.ts';
-import type { HierarchicalAccountsReport } from '../domain/hierarchical_accounts.ts';
+import type {
+  HierarchicalAccountsReport,
+  ParentAccountPeriodReport,
+} from '../domain/hierarchical_accounts.ts';
 import { formatCurrency } from '../domain/money.ts';
 
 function formatScopeSummaryLine(scope: NormalizedReportScope): string {
@@ -549,3 +552,50 @@ export function buildDebtorsCreditorsReportPdfConfig(
     ],
   };
 }
+
+export function buildParentAccountPeriodPdfConfig(
+  report: ParentAccountPeriodReport,
+  options: { ownerName: string; currencySymbol: string }
+): PrintableReportConfig {
+  const { ownerName, currencySymbol } = options;
+  const rootName = report.rootAccount?.name || 'حساب رئيسي';
+  const modeLabel = report.mode === 'summary' ? 'ملخص' : 'تفصيلي';
+  const s = report.summary;
+
+  return {
+    reportTitle: `تقرير الحساب الرئيسي والفروع — ${rootName}`,
+    subtitle: `الوضع: ${modeLabel} | الحسابات التابعة الفعالة: ${s.activeBranchesCount} | المستبعدة (خاملة): ${report.excludedDormantCount}`,
+    ownerName,
+    currencySymbol,
+    filterInfo: formatScopeSummaryLine(report.appliedScope),
+    metrics: [
+      { title: 'رصيد أول الفترة', value: formatCurrency(s.openingAtPeriodMinor, { symbol: currencySymbol }), colorClass: 'slate' },
+      { title: 'إجمالي عليه', value: formatCurrency(s.owedByMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'إجمالي له', value: formatCurrency(s.owedToMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+      { title: 'رصيد آخر الفترة', value: formatCurrency(s.closingBalanceMinor, { symbol: currencySymbol }), colorClass: 'blue' },
+    ],
+    columns: [
+      { header: 'الحساب', align: 'right' },
+      { header: 'نوع الحساب', align: 'center' },
+      { header: 'التصنيف', align: 'right' },
+      { header: `رصيد أول الفترة (${currencySymbol})`, align: 'right' },
+      { header: `عليه خلال الفترة (${currencySymbol})`, align: 'right' },
+      { header: `له خلال الفترة (${currencySymbol})`, align: 'right' },
+      { header: `صافي حركة الفترة (${currencySymbol})`, align: 'right' },
+      { header: `رصيد آخر الفترة (${currencySymbol})`, align: 'right' },
+      { header: 'نوع الرصيد', align: 'center' },
+    ],
+    rows: report.allRows.map((r) => [
+      `${r.level > 0 ? `${'— '.repeat(r.level)}` : ''}${r.displayName}`,
+      r.accountTypeLabel,
+      r.categoryName,
+      formatCurrency(r.openingAtPeriodMinor, { symbol: currencySymbol }),
+      formatCurrency(r.owedByMinor, { symbol: currencySymbol }),
+      formatCurrency(r.owedToMinor, { symbol: currencySymbol }),
+      formatCurrency(r.netMovementMinor, { symbol: currencySymbol }),
+      formatCurrency(r.closingBalanceMinor, { symbol: currencySymbol }),
+      r.balanceTypeLabel,
+    ]),
+  };
+}
+

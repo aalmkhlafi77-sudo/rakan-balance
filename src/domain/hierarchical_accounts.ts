@@ -208,6 +208,72 @@ export interface HierarchicalAccountsReport {
   movements: ReportPeriodMovementRow[];
 }
 
+export type ParentAccountReportMode = 'summary' | 'detailed';
+
+export interface SelectableParentAccount {
+  account: AccountModel;
+  directChildrenCount: number;
+  totalDescendantsCount: number;
+  hierarchicalPath: string;
+}
+
+export interface ParentAccountPeriodRow {
+  id: string;
+  account: AccountModel;
+  rowKind: 'consolidated_summary' | 'direct_root' | 'branch';
+  displayName: string;
+  accountTypeLabel: 'رئيسي مجمع' | 'مباشر على الرئيسي' | 'فرعي رئيسي' | 'فرعي';
+  categoryName: string;
+  level: number;
+  parentName: string | null;
+  hierarchicalPath: string;
+  openingAtPeriodMinor: number;
+  owedByMinor: number;
+  owedToMinor: number;
+  netMovementMinor: number;
+  closingBalanceMinor: number;
+  periodTransactionCount: number;
+  balanceType: 'receivable' | 'payable' | 'settled' | 'balanced';
+  balanceTypeLabel: 'لك' | 'عليك' | 'تمت التسوية' | 'متزن';
+  hasSubBranches: boolean;
+  descendantCount: number;
+}
+
+export interface ParentAccountPeriodSummary {
+  openingAtPeriodMinor: number;
+  owedByMinor: number;
+  owedToMinor: number;
+  netMovementMinor: number;
+  closingBalanceMinor: number;
+  periodTransactionCount: number;
+  balanceType: 'receivable' | 'payable' | 'settled' | 'balanced';
+  balanceTypeLabel: 'لك' | 'عليك' | 'تمت التسوية' | 'متزن';
+  directChildrenCount: number;
+  activeBranchesCount: number;
+  totalDescendantsInScopeCount: number;
+  hasDirectRootActivity: boolean;
+}
+
+export interface ParentAccountPeriodReportOptions extends ReportFilterOptions {
+  mode?: ParentAccountReportMode;
+}
+
+export interface ParentAccountPeriodReport {
+  validationError?: string;
+  rootAccount: AccountModel | null;
+  appliedScope: NormalizedReportScope;
+  mode: ParentAccountReportMode;
+  summary: ParentAccountPeriodSummary;
+  directRootMetrics: AccountPeriodMetrics | null;
+  summaryRow: ParentAccountPeriodRow | null;
+  directRootRow: ParentAccountPeriodRow | null;
+  branchRows: ParentAccountPeriodRow[];
+  detailRows: ParentAccountPeriodRow[];
+  allRows: ParentAccountPeriodRow[];
+  movements: ReportPeriodMovementRow[];
+  excludedDormantCount: number;
+}
+
 export interface HierarchyIndex {
   accounts: AccountModel[];
   accountMap: Map<string, AccountModel>;
@@ -1249,4 +1315,350 @@ export function generateHierarchicalAccountsReport(
     movements,
   };
 }
+
+function classifyParentReportBalance(
+  balanceMinor: number,
+  periodTransactionCount: number
+): {
+  balanceType: 'receivable' | 'payable' | 'settled' | 'balanced';
+  balanceTypeLabel: 'لك' | 'عليك' | 'تمت التسوية' | 'متزن';
+} {
+  if (balanceMinor > 0) {
+    return { balanceType: 'receivable', balanceTypeLabel: 'لك' };
+  }
+  if (balanceMinor < 0) {
+    return { balanceType: 'payable', balanceTypeLabel: 'عليك' };
+  }
+  if (periodTransactionCount > 0) {
+    return { balanceType: 'settled', balanceTypeLabel: 'تمت التسوية' };
+  }
+  return { balanceType: 'balanced', balanceTypeLabel: 'متزن' };
+}
+
+/**
+ * Returns ONLY accounts that actually have at least one child/descendant
+ * within the requested status scope (leaf accounts without children are excluded).
+ */
+export function getSelectableParentAccounts(
+  accounts: AccountModel[],
+  statusScope: HierarchyStatusScope = 'all'
+): SelectableParentAccount[] {
+  const scoped = filterAccountsByStatusScope(accounts, statusScope);
+  const fullMap = new Map<string, AccountModel>(accounts.map((a) => [a.id, a]));
+  const index = createHierarchyIndex(scoped, []);
+  const treeOrdered = flattenAccountsInTreeOrder(scoped);
+
+  const result: SelectableParentAccount[] = [];
+  for (const node of treeOrdered) {
+    const directChildren = index.getDirectChildren(node.account.id);
+    if (directChildren.length === 0) continue;
+    const descendants = index.getDescendantIds(node.account.id);
+    result.push({
+      account: node.account,
+      directChildrenCount: directChildren.length,
+      totalDescendantsCount: descendants.length,
+      hierarchicalPath: formatAccountPath(node.account.id, fullMap) || node.account.name,
+    });
+  }
+  return result;
+}
+
+/**
+ * Generates Independent Parent Account & Branches Period Report (تقرير الحساب الرئيسي والفروع).
+ * Single Source of Truth shared identically across Screen UI, Excel (.xlsx), and PDF:
+ * - Consolidated Summary Row = direct root + all scoped relevant descendants (each counted ONCE).
+ * - Preserves & surfaces direct activity on the Parent account via dedicated `directRootRow`
+ *   when the parent itself has opening/closing != 0 or movements > 0.
+ * - Multi-level arbitrary depth DFS ordering (level 1, 2, 3, ...) with cycle guard.
+ * - Excludes Zero Dormant leaves (`0 / 0 tx / 0`), while keeping zero-direct parent/intermediate
+ *   branches that have at least one relevant active descendant underneath.
+ */
+export function generateParentAccountPeriodReport(
+  accounts: AccountModel[],
+  transactions: TransactionModel[],
+  categories: CategoryModel[],
+  parentAccountId: string,
+  options: ParentAccountPeriodReportOptions = {}
+): ParentAccountPeriodReport {
+  const scope = normalizeReportScope(options, 'all');
+  const mode: ParentAccountReportMode = options.mode === 'summary' ? 'summary' : 'detailed';
+  const validation = validateReportScopeDates(scope);
+
+  const emptySummary: ParentAccountPeriodSummary = {
+    openingAtPeriodMinor: 0,
+    owedByMinor: 0,
+    owedToMinor: 0,
+    netMovementMinor: 0,
+    closingBalanceMinor: 0,
+    periodTransactionCount: 0,
+    balanceType: 'balanced',
+    balanceTypeLabel: 'متزن',
+    directChildrenCount: 0,
+    activeBranchesCount: 0,
+    totalDescendantsInScopeCount: 0,
+    hasDirectRootActivity: false,
+  };
+
+  if (!validation.valid) {
+    return {
+      validationError: validation.errorMessage,
+      rootAccount: null,
+      appliedScope: scope,
+      mode,
+      summary: emptySummary,
+      directRootMetrics: null,
+      summaryRow: null,
+      directRootRow: null,
+      branchRows: [],
+      detailRows: [],
+      allRows: [],
+      movements: [],
+      excludedDormantCount: 0,
+    };
+  }
+
+  const scopedAccounts = filterAccountsByStatusScope(accounts, scope.status);
+  const fullAccountMap = new Map<string, AccountModel>(accounts.map((a) => [a.id, a]));
+  const scopedAccountMap = new Map<string, AccountModel>(scopedAccounts.map((a) => [a.id, a]));
+  const categoryMap = new Map<string, string>(categories.map((c) => [c.id, c.name]));
+
+  const rootAccount = scopedAccountMap.get(parentAccountId) || fullAccountMap.get(parentAccountId) || null;
+  if (!rootAccount || !scopedAccountMap.has(rootAccount.id)) {
+    return {
+      rootAccount: null,
+      appliedScope: scope,
+      mode,
+      summary: emptySummary,
+      directRootMetrics: null,
+      summaryRow: null,
+      directRootRow: null,
+      branchRows: [],
+      detailRows: [],
+      allRows: [],
+      movements: [],
+      excludedDormantCount: 0,
+    };
+  }
+
+  const index = createHierarchyIndex(scopedAccounts, transactions, scope.toDate);
+  const subtreeIdsInScope = index.getSubtreeIds(rootAccount.id);
+
+  // Precompute direct period metrics ONCE per account in subtree
+  const metricsMap = new Map<string, AccountPeriodMetrics>();
+  for (const id of subtreeIdsInScope) {
+    const acc = scopedAccountMap.get(id);
+    if (!acc) continue;
+    const accTxs = index.transactionsByAccount.get(id) || [];
+    metricsMap.set(id, computeAccountPeriodMetrics(acc, accTxs, scope.fromDate, scope.toDate));
+  }
+
+  // Determine relevance across descendant subtrees (keep node iff itself OR any descendant passes isReportRelevantAccount)
+  const relevantBranchIdSet = new Set<string>();
+  let excludedDormantCount = 0;
+  const allDescendantIds = index.getDescendantIds(rootAccount.id);
+
+  for (const descId of allDescendantIds) {
+    const subIds = index.getSubtreeIds(descId);
+    const hasRelevant = subIds.some((id) => {
+      const m = metricsMap.get(id);
+      return m ? isReportRelevantAccount(m) : false;
+    });
+    if (hasRelevant) {
+      relevantBranchIdSet.add(descId);
+    } else {
+      excludedDormantCount++;
+    }
+  }
+
+  // Traverse descendants in DFS hierarchical order starting under rootAccount at relative level 1
+  const branchRows: ParentAccountPeriodRow[] = [];
+  const visited = new Set<string>([rootAccount.id]);
+
+  const walkBranches = (parentId: string, level: number) => {
+    const children = index.getDirectChildren(parentId);
+    for (const child of children) {
+      if (visited.has(child.id)) continue;
+      visited.add(child.id);
+
+      if (relevantBranchIdSet.has(child.id)) {
+        const direct = metricsMap.get(child.id)!;
+        const subDescendants = index
+          .getDescendantIds(child.id)
+          .filter((id) => relevantBranchIdSet.has(id));
+        const hasSubBranches = subDescendants.length > 0;
+        const { balanceType, balanceTypeLabel } = classifyParentReportBalance(
+          direct.closingBalanceMinor,
+          direct.periodTransactionCount
+        );
+        const parentAcc = child.parentId ? fullAccountMap.get(child.parentId) : undefined;
+
+        branchRows.push({
+          id: child.id,
+          account: child,
+          rowKind: 'branch',
+          displayName: child.name,
+          accountTypeLabel: hasSubBranches ? 'فرعي رئيسي' : 'فرعي',
+          categoryName: categoryMap.get(child.categoryId) || 'غير مصنف',
+          level,
+          parentName: parentAcc ? parentAcc.name : null,
+          hierarchicalPath: formatAccountPath(child.id, fullAccountMap) || child.name,
+          openingAtPeriodMinor: direct.openingAtPeriodMinor,
+          owedByMinor: direct.directOwedByMinor,
+          owedToMinor: direct.directOwedToMinor,
+          netMovementMinor: direct.directNetMovementMinor,
+          closingBalanceMinor: direct.closingBalanceMinor,
+          periodTransactionCount: direct.periodTransactionCount,
+          balanceType,
+          balanceTypeLabel,
+          hasSubBranches,
+          descendantCount: subDescendants.length,
+        });
+      }
+
+      walkBranches(child.id, level + 1);
+    }
+  };
+
+  walkBranches(rootAccount.id, 1);
+
+  const directRootMetrics = metricsMap.get(rootAccount.id)!;
+  const hasDirectRootActivity = isReportRelevantAccount(directRootMetrics);
+  const rootCatName = categoryMap.get(rootAccount.categoryId) || 'غير مصنف';
+  const rootPath = formatAccountPath(rootAccount.id, fullAccountMap) || rootAccount.name;
+
+  let directRootRow: ParentAccountPeriodRow | null = null;
+  if (hasDirectRootActivity) {
+    const directBalCls = classifyParentReportBalance(
+      directRootMetrics.closingBalanceMinor,
+      directRootMetrics.periodTransactionCount
+    );
+    directRootRow = {
+      id: `${rootAccount.id}__direct`,
+      account: rootAccount,
+      rowKind: 'direct_root',
+      displayName: `مباشر على الحساب الرئيسي — ${rootAccount.name}`,
+      accountTypeLabel: 'مباشر على الرئيسي',
+      categoryName: rootCatName,
+      level: 1,
+      parentName: rootAccount.name,
+      hierarchicalPath: `${rootPath} (مباشر)`,
+      openingAtPeriodMinor: directRootMetrics.openingAtPeriodMinor,
+      owedByMinor: directRootMetrics.directOwedByMinor,
+      owedToMinor: directRootMetrics.directOwedToMinor,
+      netMovementMinor: directRootMetrics.directNetMovementMinor,
+      closingBalanceMinor: directRootMetrics.closingBalanceMinor,
+      periodTransactionCount: directRootMetrics.periodTransactionCount,
+      balanceType: directBalCls.balanceType,
+      balanceTypeLabel: directBalCls.balanceTypeLabel,
+      hasSubBranches: false,
+      descendantCount: 0,
+    };
+  }
+
+  const detailRows: ParentAccountPeriodRow[] = directRootRow
+    ? [directRootRow, ...branchRows]
+    : [...branchRows];
+
+  // Consolidated Totals = directRootMetrics + every relevant descendant direct metrics ONCE (NO Double Counting)
+  let totalOpening = directRootMetrics.openingAtPeriodMinor;
+  let totalOwedBy = directRootMetrics.directOwedByMinor;
+  let totalOwedTo = directRootMetrics.directOwedToMinor;
+  let totalTxCount = directRootMetrics.periodTransactionCount;
+
+  for (const b of branchRows) {
+    totalOpening += b.openingAtPeriodMinor;
+    totalOwedBy += b.owedByMinor;
+    totalOwedTo += b.owedToMinor;
+    totalTxCount += b.periodTransactionCount;
+  }
+
+  const totalNetMovement = totalOwedBy - totalOwedTo;
+  const totalClosing = totalOpening + totalNetMovement;
+  const summaryCls = classifyParentReportBalance(totalClosing, totalTxCount);
+  const relevantDirectChildrenCount = index
+    .getDirectChildren(rootAccount.id)
+    .filter((c) => relevantBranchIdSet.has(c.id)).length;
+
+  const summary: ParentAccountPeriodSummary = {
+    openingAtPeriodMinor: totalOpening,
+    owedByMinor: totalOwedBy,
+    owedToMinor: totalOwedTo,
+    netMovementMinor: totalNetMovement,
+    closingBalanceMinor: totalClosing,
+    periodTransactionCount: totalTxCount,
+    balanceType: summaryCls.balanceType,
+    balanceTypeLabel: summaryCls.balanceTypeLabel,
+    directChildrenCount: relevantDirectChildrenCount,
+    activeBranchesCount: branchRows.length,
+    totalDescendantsInScopeCount: allDescendantIds.length,
+    hasDirectRootActivity,
+  };
+
+  const summaryRow: ParentAccountPeriodRow = {
+    id: rootAccount.id,
+    account: rootAccount,
+    rowKind: 'consolidated_summary',
+    displayName: rootAccount.name,
+    accountTypeLabel: 'رئيسي مجمع',
+    categoryName: rootCatName,
+    level: 0,
+    parentName: rootAccount.parentId ? fullAccountMap.get(rootAccount.parentId)?.name || null : null,
+    hierarchicalPath: rootPath,
+    openingAtPeriodMinor: totalOpening,
+    owedByMinor: totalOwedBy,
+    owedToMinor: totalOwedTo,
+    netMovementMinor: totalNetMovement,
+    closingBalanceMinor: totalClosing,
+    periodTransactionCount: totalTxCount,
+    balanceType: summaryCls.balanceType,
+    balanceTypeLabel: summaryCls.balanceTypeLabel,
+    hasSubBranches: branchRows.length > 0,
+    descendantCount: branchRows.length,
+  };
+
+  // Movements across the selected root + its relevant scoped branches
+  const activeSubtreeIds = new Set<string>([rootAccount.id, ...relevantBranchIdSet]);
+  const periodTxs = transactions
+    .filter((t) => {
+      if (!activeSubtreeIds.has(t.accountId)) return false;
+      if (scope.fromDate && t.date < scope.fromDate) return false;
+      if (scope.toDate && t.date > scope.toDate) return false;
+      return true;
+    })
+    .sort(compareTransactions);
+
+  let cumulativeRunningMinor = totalOpening;
+  const movements: ReportPeriodMovementRow[] = periodTxs.map((t) => {
+    const signedAmountMinor = getSignedTransactionMinor(t.entryType, t.amountMinor);
+    cumulativeRunningMinor += signedAmountMinor;
+    const acc = fullAccountMap.get(t.accountId);
+    const hierarchicalPath = formatAccountPath(t.accountId, fullAccountMap) || acc?.name || 'حساب غير معروف';
+    return {
+      transaction: t,
+      accountName: acc?.name || 'حساب غير معروف',
+      hierarchicalPath,
+      signedAmountMinor,
+      cumulativeRunningMinor,
+    };
+  });
+
+  const allRows: ParentAccountPeriodRow[] =
+    mode === 'summary' ? [summaryRow] : [summaryRow, ...detailRows];
+
+  return {
+    rootAccount,
+    appliedScope: scope,
+    mode,
+    summary,
+    directRootMetrics,
+    summaryRow,
+    directRootRow,
+    branchRows,
+    detailRows,
+    allRows,
+    movements,
+    excludedDormantCount,
+  };
+}
+
 

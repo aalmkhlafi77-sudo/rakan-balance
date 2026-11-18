@@ -24,6 +24,7 @@ import {
   generateHierarchicalAccountsReport,
   HierarchicalAccountsReport,
   HierarchyStatusScope,
+  ParentAccountPeriodReport,
 } from '../domain/hierarchical_accounts.ts';
 
 /**
@@ -1766,3 +1767,233 @@ export async function exportDebtorsCreditorsReportToExcel(
   const workbook = createDebtorsCreditorsWorkbook(report, currencySymbol);
   await downloadWorkbook(workbook, 'Rakan_Balance_Debtors_Creditors');
 }
+
+/**
+ * Builds the 2-to-3 sheet Parent Account & Branches Period Workbook (ExcelJS)
+ * strictly from the Single Source of Truth `ParentAccountPeriodReport` model:
+ * 1. ملخص الحساب الرئيسي (Dashboard KPIs: root name, period, opening, owedBy, owedTo, net, closing, direct & branch counts)
+ * 2. أرصدة الفروع (Summary row bold + indented branches at arbitrary depth + non-double-counted Totals)
+ * 3. الحركات (Created ONLY if period movements exist inside the subtree)
+ */
+export function createParentAccountPeriodWorkbook(
+  report: ParentAccountPeriodReport,
+  currencySymbol: string,
+  meta?: { ownerName?: string; currencyName?: string }
+): ExcelJS.Workbook {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'RAKAN BALANCE';
+  workbook.created = new Date();
+
+  const rootName = report.rootAccount?.name || 'حساب رئيسي';
+  const scope = report.appliedScope;
+  const periodLabel =
+    scope.fromDate || scope.toDate
+      ? `من ${scope.fromDate || 'البداية'} إلى ${scope.toDate || 'اليوم'}`
+      : 'جميع الفترات';
+  const statusLabel = getStatusScopeLabel(scope.status);
+  const modeLabel = report.mode === 'summary' ? 'ملخص' : 'تفصيلي';
+  const owner = meta?.ownerName || 'المالك';
+  const currencyLabel = meta?.currencyName ? `${meta.currencyName} (${currencySymbol})` : currencySymbol;
+  const exportDateStr = new Date().toISOString().slice(0, 10);
+  const metaLine = `RAKAN BALANCE  |  المالك: ${owner}  |  العملة: ${currencyLabel}  |  الحساب الرئيسي: ${rootName}  |  الفترة: ${periodLabel}  |  الوضع: ${modeLabel}  |  الحالة: ${statusLabel}  |  التصدير: ${exportDateStr}`;
+
+  const s = report.summary;
+
+  // =========================================================================
+  // SHEET 1: ملخص الحساب الرئيسي
+  // =========================================================================
+  const summarySheet = workbook.addWorksheet('ملخص الحساب الرئيسي');
+  const sumCols: TableColumnSpec[] = [
+    { header: 'البند', align: 'right', type: 'text', minWidth: 28 },
+    { header: 'القيمة', align: 'left', type: 'currency', semanticColor: true, minWidth: 22 },
+    { header: 'الوحدة', align: 'center', type: 'text', minWidth: 16 },
+    { header: 'التوضيح المالي', align: 'right', type: 'text', minWidth: 42 },
+  ];
+  applyBannerAndMeta(summarySheet, 4, `RAKAN BALANCE — تقرير الحساب الرئيسي والفروع: ${rootName}`, metaLine);
+  const sumHeader = summarySheet.getRow(4);
+  sumHeader.values = sumCols.map((c) => sanitizeCellString(c.header));
+  styleTableHeaderRow(sumHeader, 4);
+
+  const summaryItems: Array<{
+    kind: 'section' | 'metric';
+    title?: string;
+    accent?: 'emerald' | 'gold';
+    label?: string;
+    value?: string | number;
+    unit?: string;
+    note?: string;
+    type?: TableColumnSpec['type'];
+    semantic?: boolean;
+    consolidated?: boolean;
+  }> = [
+    { kind: 'section', title: '1. بيانات التقرير والحساب الرئيسي', accent: 'gold' },
+    { kind: 'metric', label: 'اسم الحساب الرئيسي', value: rootName, unit: 'حساب رئيسي', note: `المسار: ${report.summaryRow?.hierarchicalPath || rootName}`, type: 'text' },
+    { kind: 'metric', label: 'الفترة', value: periodLabel, unit: 'نطاق التاريخ', note: `وضع العرض: ${modeLabel} | حالة الحسابات: ${statusLabel}`, type: 'text' },
+
+    { kind: 'section', title: '2. الإجماليات المالية المجمعة للشجرة', accent: 'emerald' },
+    { kind: 'metric', label: 'رصيد أول الفترة', value: s.openingAtPeriodMinor / 100, unit: currencySymbol, note: 'الافتتاحي الأصلي + حركات ما قبل البداية للشجرة', type: 'currency', semantic: true },
+    { kind: 'metric', label: 'عليه', value: s.owedByMinor / 100, unit: currencySymbol, note: 'مجموع حركات عليه للشجرة خلال الفترة', type: 'currency', semantic: true },
+    { kind: 'metric', label: 'له', value: s.owedToMinor / 100, unit: currencySymbol, note: 'مجموع حركات له للشجرة خلال الفترة', type: 'currency' },
+    { kind: 'metric', label: 'صافي الحركة', value: s.netMovementMinor / 100, unit: currencySymbol, note: 'عليه - له خلال الفترة', type: 'currency', semantic: true },
+    { kind: 'metric', label: 'رصيد آخر الفترة', value: s.closingBalanceMinor / 100, unit: currencySymbol, note: `الحالة الختامية: ${s.balanceTypeLabel}`, type: 'currency', consolidated: true },
+
+    { kind: 'section', title: '3. هيكل الفروع والتابعين', accent: 'emerald' },
+    { kind: 'metric', label: 'عدد الفروع', value: s.directChildrenCount, unit: 'فرع مباشر', note: 'الأبناء المباشرون الفعالون تحت الحساب الرئيسي', type: 'integer' },
+    { kind: 'metric', label: 'عدد الحسابات التابعة', value: s.activeBranchesCount, unit: 'حساب تابع', note: `كافة الفروع والأحفاد الفعالين (مستبعدة خاملة: ${report.excludedDormantCount})`, type: 'integer' },
+  ];
+
+  let curRow = 4;
+  let mIdx = 0;
+  for (const item of summaryItems) {
+    curRow++;
+    const row = summarySheet.getRow(curRow);
+    if (item.kind === 'section') {
+      styleSectionHeaderRow(row, 4, item.title || '', item.accent ?? 'emerald');
+    } else {
+      row.height = 21;
+      row.values = [
+        sanitizeCellString(item.label || ''),
+        sanitizeCellString(item.value ?? ''),
+        sanitizeCellString(item.unit || ''),
+        sanitizeCellString(item.note || ''),
+      ];
+      for (let c = 1; c <= 4; c++) {
+        const spec: TableColumnSpec =
+          c === 2
+            ? {
+                header: 'القيمة',
+                align: typeof item.value === 'number' ? 'left' : 'right',
+                type: item.type,
+                semanticColor: item.semantic,
+                consolidatedAccent: item.consolidated,
+              }
+            : sumCols[c - 1];
+        styleDataCell(row.getCell(c), spec, mIdx);
+      }
+      mIdx++;
+    }
+  }
+  finalizeSheetLayout(summarySheet, 4, curRow, sumCols, false);
+
+  // =========================================================================
+  // SHEET 2: أرصدة الفروع
+  // =========================================================================
+  const branchCols: TableColumnSpec[] = [
+    { header: 'الحساب', align: 'right', type: 'text', minWidth: 28 },
+    { header: 'المستوى', align: 'center', type: 'integer', minWidth: 11 },
+    { header: 'التصنيف', align: 'right', type: 'text', minWidth: 16 },
+    { header: `رصيد أول الفترة (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 17 },
+    { header: `عليه (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+    { header: `له (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+    { header: `صافي الحركة (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 16 },
+    { header: `رصيد آخر الفترة (${currencySymbol})`, align: 'left', type: 'currency', consolidatedAccent: true, minWidth: 18 },
+    { header: 'نوع الرصيد', align: 'center', type: 'text', minWidth: 15 },
+  ];
+
+  const branchSheetRows = report.allRows.map((r) => ({
+    values: [
+      r.displayName,
+      r.level,
+      r.categoryName,
+      r.openingAtPeriodMinor / 100,
+      r.owedByMinor / 100,
+      r.owedToMinor / 100,
+      r.netMovementMinor / 100,
+      r.closingBalanceMinor / 100,
+      r.balanceTypeLabel,
+    ],
+    isParent: r.rowKind === 'consolidated_summary' || r.hasSubBranches,
+    indentCol0: r.level * 2,
+  }));
+
+  createStyledTableSheet(
+    workbook,
+    'أرصدة الفروع',
+    `تقرير الحساب الرئيسي والفروع — ${rootName} (${modeLabel})`,
+    metaLine,
+    branchCols,
+    branchSheetRows,
+    [
+      'الإجمالي المجمع للشجرة (بدون تكرار)',
+      '',
+      `${s.activeBranchesCount} تابع`,
+      s.openingAtPeriodMinor / 100,
+      s.owedByMinor / 100,
+      s.owedToMinor / 100,
+      s.netMovementMinor / 100,
+      s.closingBalanceMinor / 100,
+      s.balanceTypeLabel,
+    ],
+    true
+  );
+
+  // =========================================================================
+  // SHEET 3: الحركات (Added ONLY if movements exist)
+  // =========================================================================
+  if (report.movements.length > 0) {
+    const movCols: TableColumnSpec[] = [
+      { header: 'التاريخ', align: 'center', type: 'date', minWidth: 13 },
+      { header: 'الحساب', align: 'right', type: 'text', minWidth: 22 },
+      { header: 'المسار الهرمي', align: 'right', type: 'text', minWidth: 28 },
+      { header: 'البيان', align: 'right', type: 'text', minWidth: 28 },
+      { header: `عليه (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+      { header: `له (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+      { header: `الأثر (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 16 },
+      { header: `الرصيد الجاري المجمع (${currencySymbol})`, align: 'left', type: 'currency', consolidatedAccent: true, minWidth: 20 },
+    ];
+
+    const movRows = report.movements.map((m) => {
+      const t = m.transaction;
+      const isOwedBy = t.entryType === 'owedByAccount';
+      return {
+        values: [
+          t.date,
+          m.accountName,
+          m.hierarchicalPath,
+          t.description,
+          isOwedBy ? t.amountMinor / 100 : 0,
+          !isOwedBy ? t.amountMinor / 100 : 0,
+          m.signedAmountMinor / 100,
+          m.cumulativeRunningMinor / 100,
+        ],
+      };
+    });
+
+    const lastRun = report.movements[report.movements.length - 1]?.cumulativeRunningMinor ?? s.closingBalanceMinor;
+    createStyledTableSheet(
+      workbook,
+      'الحركات',
+      `حركات شجرة الحساب الرئيسي — ${rootName}`,
+      metaLine,
+      movCols,
+      movRows,
+      [
+        'الإجمالي',
+        `${report.movements.length} حركة`,
+        '',
+        '',
+        s.owedByMinor / 100,
+        s.owedToMinor / 100,
+        s.netMovementMinor / 100,
+        lastRun / 100,
+      ],
+      true
+    );
+  }
+
+  return workbook;
+}
+
+/**
+ * Exports Parent Account & Branches Period Report to Excel (.xlsx)
+ */
+export async function exportParentAccountPeriodReportToExcel(
+  report: ParentAccountPeriodReport,
+  currencySymbol: string,
+  meta?: { ownerName?: string; currencyName?: string }
+): Promise<void> {
+  const workbook = createParentAccountPeriodWorkbook(report, currencySymbol, meta);
+  const rootName = report.rootAccount?.name || 'ParentAccount';
+  await downloadWorkbook(workbook, `Rakan_Balance_Parent_${rootName}`);
+}
+

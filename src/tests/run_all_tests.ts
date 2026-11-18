@@ -18,6 +18,7 @@ import { runWebDuesTestSuite } from './web_dues_spec.ts';
 import { runWebWhatsAppShareTestSuite } from './web_whatsapp_share_spec.ts';
 import { runHierarchicalAccountsTestSuite } from './hierarchical_accounts_spec.ts';
 import { runReportFiltersTestSuite } from './report_filters_spec.ts';
+import { runParentAccountReportTestSuite } from './parent_account_report_spec.ts';
 import {
   createIsolatedTestStorage,
   DB_NAME,
@@ -254,6 +255,18 @@ async function main(): Promise<number> {
     console.log('-'.repeat(80));
     console.log(`REPORT FILTERS SUMMARY: ${reportFiltersResults.passedCount} PASSED, ${reportFiltersResults.failedCount} FAILED (Total: ${reportFiltersResults.results.length})`);
 
+    // 9d. Execute Independent Parent Account & Branches Period Report Suite (PARENT-01..PARENT-12)
+    console.log('\n' + '='.repeat(80));
+    console.log('   RAKAN BALANCE — PARENT ACCOUNT & BRANCHES REPORT SUITE (PARENT-01..12)   ');
+    console.log('='.repeat(80));
+    const parentReportResults = await runParentAccountReportTestSuite();
+    for (const r of parentReportResults.results) {
+      console.log(`[${r.passed ? 'PASS' : 'FAIL'}] ${r.id}: ${r.name}`);
+      console.log(`       ${r.message}`);
+    }
+    console.log('-'.repeat(80));
+    console.log(`PARENT ACCOUNT REPORT SUMMARY: ${parentReportResults.passedCount} PASSED, ${parentReportResults.failedCount} FAILED (Total: ${parentReportResults.results.length})`);
+
     // 10. Verify zero touch / zero pollution on simulated user environment
     const [accsAfter, catsAfter, txsAfter, attsAfter, notesAfter, demoNotesAfter] =
       await Promise.all([
@@ -298,17 +311,18 @@ async function main(): Promise<number> {
     const totalWebShare = webShareResults.passedCount + webShareResults.failedCount;
     const totalHier = hierResults.passedCount + hierResults.failedCount;
     const totalReportFilters = reportFiltersResults.passedCount + reportFiltersResults.failedCount;
-    console.log(`\nTEST SUMMARY: Invariants (${passedCount}/${results.length}) | Golden Fixtures (${goldenResults.passedCount}/${goldenResults.results.length}) | Web Import (${webImportResults.passed}/${webImportResults.passed + webImportResults.failed}) | Web Currency & Setup (${webCurrencyResults.passedCount}/${totalWebCurrency}) | Web Reports (${webReportsResults.passedCount}/${totalWebReports}) | Web Attachments (${webAttachmentsResults.passedCount}/${totalWebAttachments}) | Web Dues (${webDuesResults.passedCount}/${totalWebDues}) | WhatsApp Share (${webShareResults.passedCount}/${totalWebShare}) | Hierarchical & Excel (${hierResults.passedCount}/${totalHier}) | Report Filters (${reportFiltersResults.passedCount}/${totalReportFilters})`);
+    const totalParentReport = parentReportResults.passedCount + parentReportResults.failedCount;
+    console.log(`\nTEST SUMMARY: Invariants (${passedCount}/${results.length}) | Golden Fixtures (${goldenResults.passedCount}/${goldenResults.results.length}) | Web Import (${webImportResults.passed}/${webImportResults.passed + webImportResults.failed}) | Web Currency & Setup (${webCurrencyResults.passedCount}/${totalWebCurrency}) | Web Reports (${webReportsResults.passedCount}/${totalWebReports}) | Web Attachments (${webAttachmentsResults.passedCount}/${totalWebAttachments}) | Web Dues (${webDuesResults.passedCount}/${totalWebDues}) | WhatsApp Share (${webShareResults.passedCount}/${totalWebShare}) | Hierarchical & Excel (${hierResults.passedCount}/${totalHier}) | Report Filters (${reportFiltersResults.passedCount}/${totalReportFilters}) | Parent Report (${parentReportResults.passedCount}/${totalParentReport})`);
     console.log(`Time elapsed: ${elapsedMs}ms`);
 
     if (!fingerprintsMatch || !demoNotePreserved || !realAccountPreserved || !realTxPreserved) {
       console.error('\nSECURITY CRITICAL ERROR: The test suite modified user environment data!');
       exitCode = 1;
-    } else if (failedCount > 0 || goldenResults.failedCount > 0 || webImportResults.failed > 0 || webCurrencyResults.failedCount > 0 || webReportsResults.failedCount > 0 || webAttachmentsResults.failedCount > 0 || webDuesResults.failedCount > 0 || webShareResults.failedCount > 0 || hierResults.failedCount > 0 || reportFiltersResults.failedCount > 0) {
-      console.error(`\nFAILED: Invariant failures: ${failedCount}, Golden failures: ${goldenResults.failedCount}, Web Import failures: ${webImportResults.failed}, Web Currency failures: ${webCurrencyResults.failedCount}, Web Reports failures: ${webReportsResults.failedCount}, Web Attachments failures: ${webAttachmentsResults.failedCount}, Web Dues failures: ${webDuesResults.failedCount}, WhatsApp Share failures: ${webShareResults.failedCount}, Hierarchical & Excel failures: ${hierResults.failedCount}, Report Filter failures: ${reportFiltersResults.failedCount}.`);
+    } else if (failedCount > 0 || goldenResults.failedCount > 0 || webImportResults.failed > 0 || webCurrencyResults.failedCount > 0 || webReportsResults.failedCount > 0 || webAttachmentsResults.failedCount > 0 || webDuesResults.failedCount > 0 || webShareResults.failedCount > 0 || hierResults.failedCount > 0 || reportFiltersResults.failedCount > 0 || parentReportResults.failedCount > 0) {
+      console.error(`\nFAILED: Invariant failures: ${failedCount}, Golden failures: ${goldenResults.failedCount}, Web Import failures: ${webImportResults.failed}, Web Currency failures: ${webCurrencyResults.failedCount}, Web Reports failures: ${webReportsResults.failedCount}, Web Attachments failures: ${webAttachmentsResults.failedCount}, Web Dues failures: ${webDuesResults.failedCount}, WhatsApp Share failures: ${webShareResults.failedCount}, Hierarchical & Excel failures: ${hierResults.failedCount}, Report Filter failures: ${reportFiltersResults.failedCount}, Parent Report failures: ${parentReportResults.failedCount}.`);
       exitCode = 1;
     } else {
-      console.log(`\nSUCCESS: All ${results.length} invariant tests, all ${goldenResults.results.length} golden fixtures, all ${webImportResults.passed} web import tests, all ${webCurrencyResults.passedCount} web currency tests, all ${webReportsResults.passedCount} web report tests, all ${webAttachmentsResults.passedCount} web attachment tests, all ${webDuesResults.passedCount} web dues tests, all ${webShareResults.passedCount} WhatsApp share tests, all ${hierResults.passedCount} hierarchical & Excel tests, AND all ${reportFiltersResults.passedCount} report filter tests passed & 100% data isolation verified.`);
+      console.log(`\nSUCCESS: All ${results.length} invariant tests, all ${goldenResults.results.length} golden fixtures, all ${webImportResults.passed} web import tests, all ${webCurrencyResults.passedCount} web currency tests, all ${webReportsResults.passedCount} web report tests, all ${webAttachmentsResults.passedCount} web attachment tests, all ${webDuesResults.passedCount} web dues tests, all ${webShareResults.passedCount} WhatsApp share tests, all ${hierResults.passedCount} hierarchical & Excel tests, all ${reportFiltersResults.passedCount} report filter tests, AND all ${parentReportResults.passedCount} parent account report tests passed & 100% data isolation verified.`);
       exitCode = 0;
     }
   } finally {
