@@ -12,7 +12,17 @@
 
 import { AccountModel, CategoryModel, TransactionModel } from './types.ts';
 import { compareTransactions, getSignedTransactionMinor } from './balance_calculator.ts';
-import { calculateHistoricalBalanceAt, ReportFilterOptions } from './financial_reports.ts';
+import {
+  AccountPeriodMetrics,
+  calculateHistoricalBalanceAt,
+  computeAccountPeriodMetrics,
+  isReportRelevantAccount,
+  matchesPublicSearchTerms,
+  NormalizedReportScope,
+  normalizeReportScope,
+  ReportFilterOptions,
+  validateReportScopeDates,
+} from './financial_reports.ts';
 
 export type HierarchyStatusScope = 'all' | 'active' | 'archived';
 
@@ -75,6 +85,8 @@ export interface HierarchicalAccountsReportRow {
   level: number;
   hierarchicalPath: string;
   isParent: boolean;
+  isTrueRoot: boolean;
+  hasExcludedParent: boolean;
   directChildrenCount: number;
   descendantCount: number;
   originalOpeningBalanceMinor: number;
@@ -95,6 +107,8 @@ export interface HierarchicalAccountsReportRow {
   lastTransactionAmountMinor: number | null;
   directBalanceType: 'receivable' | 'payable' | 'balanced';
   consolidatedBalanceType: 'receivable' | 'payable' | 'balanced';
+  isSearchMatch?: boolean;
+  isSearchContextOnly?: boolean;
 }
 
 export interface RootAccountSummary {
@@ -162,11 +176,15 @@ export interface FinancialAnalysisSummary {
   top10Creditors: HierarchicalAccountsReportRow[];
   top10RootsByConsolidated: RootAccountSummary[];
   balancedAccounts: HierarchicalAccountsReportRow[];
-  zeroMovementAccounts: HierarchicalAccountsReportRow[];
+  zeroMovementAccounts: HierarchicalAccountsReportRow[]; // Zero movement BUT non-zero balance (dormant 0/0/0 excluded)
+  settledAccounts: HierarchicalAccountsReportRow[]; // periodTransactionCount > 0 AND directBalanceMinor === 0
 }
 
 export interface HierarchicalAccountsReport {
+  validationError?: string;
+  appliedScope: NormalizedReportScope;
   rows: HierarchicalAccountsReportRow[];
+  allScopedRows: HierarchicalAccountsReportRow[];
   totalDirectReceivableMinor: number; // Direct only — NO double counting
   totalDirectPayableMinor: number; // Direct only — NO double counting
   netDirectBalanceMinor: number; // Direct only — NO double counting
@@ -179,6 +197,9 @@ export interface HierarchicalAccountsReport {
   branchAccountsCount: number;
   parentAccountsCount: number;
   totalAccountsCount: number;
+  totalScopedAccountsCount: number;
+  excludedDormantCount: number;
+  searchMatchCount: number;
   executiveSummary: HierarchicalExecutiveSummary;
   periodOperations: PeriodOperationsSummary;
   balancesSummary: BalancesAnalyticsSummary;
@@ -801,25 +822,20 @@ function classifyBalanceType(balanceMinor: number): 'receivable' | 'payable' | '
   return 'balanced';
 }
 
-interface DirectAccountPeriodComputed {
-  originalOpeningBalanceMinor: number;
-  openingAtPeriodMinor: number;
-  directOwedByMinor: number;
-  directOwedToMinor: number;
-  directNetMovementMinor: number;
-  directBalanceMinor: number;
-  periodTransactionCount: number;
-  lastTransactionDate: string | null;
-  lastTransactionAmountMinor: number | null;
-}
-
 /**
  * Generates Hierarchical Accounts & Executive Financial Report (الحسابات الرئيسية والفروع).
- * Enforces strict scope consistency:
- * - HierarchyIndex and consolidated calculations use status-scoped accounts so archived branches
- *   NEVER enter consolidated balances when status === 'active'.
- * - True openingAtPeriodMinor = openingBalanceMinor + Σ signed movements before options.fromDate.
- * - Direct totals never double count parent + child balances.
+ * Enforces strict scope, zero-dormant exclusion, and search isolation:
+ * - Date Guard: returns validationError when fromDate > toDate.
+ * - Financial Scope FIRST: filters accounts by BOTH status AND categoryId before building
+ *   HierarchyIndex so archived or cross-category descendants NEVER invisibly contribute to
+ *   consolidated balances.
+ * - Active Child under Excluded Parent: retains full hierarchicalPath & parentName, and sets
+ *   isTrueRoot = false (never miscounted as a root account).
+ * - Central Zero-Dormant Helper (`isReportRelevantAccount`): keeps any account with
+ *   opening != 0 OR closing != 0 OR periodTx > 0, plus any parent whose scoped subtree has at
+ *   least one relevant node; hides completely dormant trees (0/0/0 throughout).
+ * - Search Within Results: preserves matching nodes AND their scoped ancestors without changing
+ *   any financial total, count, root summary, or movement summary.
  */
 export function generateHierarchicalAccountsReport(
   accounts: AccountModel[],
@@ -827,75 +843,125 @@ export function generateHierarchicalAccountsReport(
   categories: CategoryModel[],
   options: ReportFilterOptions = {}
 ): HierarchicalAccountsReport {
-  const categoryMap = new Map<string, string>(categories.map((c) => [c.id, c.name]));
-  const fullAccountMap = new Map<string, AccountModel>(accounts.map((a) => [a.id, a]));
-  const statusScope: HierarchyStatusScope = options.status ?? 'all';
+  const scope = normalizeReportScope(options, 'all');
+  const validation = validateReportScopeDates(scope);
 
-  // Scope accounts by status FIRST so archived accounts never leak into consolidated calculations when status === 'active'
-  const scopedAccounts = filterAccountsByStatusScope(accounts, statusScope);
-  const index = createHierarchyIndex(scopedAccounts, transactions, options.toDate);
-  const treeNodes = flattenAccountsInTreeOrder(scopedAccounts);
-
-  // Precompute direct period metrics for EVERY account in scopedAccounts
-  const directMetricsMap = new Map<string, DirectAccountPeriodComputed>();
-  for (const acc of scopedAccounts) {
-    const accTxs = index.transactionsByAccount.get(acc.id) || [];
-    let prePeriodDelta = 0;
-    let directOwedByMinor = 0;
-    let directOwedToMinor = 0;
-    let periodTransactionCount = 0;
-    let lastTx: TransactionModel | null = null;
-
-    for (const t of accTxs) {
-      if (options.toDate && t.date > options.toDate) continue;
-
-      if (!lastTx || compareTransactions(lastTx, t) < 0) {
-        lastTx = t;
-      }
-
-      if (options.fromDate && t.date < options.fromDate) {
-        prePeriodDelta += getSignedTransactionMinor(t.entryType, t.amountMinor);
-      } else {
-        periodTransactionCount++;
-        if (t.entryType === 'owedByAccount') {
-          directOwedByMinor += t.amountMinor;
-        } else {
-          directOwedToMinor += t.amountMinor;
-        }
-      }
-    }
-
-    const originalOpeningBalanceMinor = acc.openingBalanceMinor;
-    const openingAtPeriodMinor = originalOpeningBalanceMinor + prePeriodDelta;
-    const directNetMovementMinor = directOwedByMinor - directOwedToMinor;
-    const directBalanceMinor = openingAtPeriodMinor + directNetMovementMinor;
-
-    directMetricsMap.set(acc.id, {
-      originalOpeningBalanceMinor,
-      openingAtPeriodMinor,
-      directOwedByMinor,
-      directOwedToMinor,
-      directNetMovementMinor,
-      directBalanceMinor,
-      periodTransactionCount,
-      lastTransactionDate: lastTx ? lastTx.date : null,
-      lastTransactionAmountMinor: lastTx ? lastTx.amountMinor : null,
-    });
+  if (!validation.valid) {
+    return {
+      validationError: validation.errorMessage,
+      appliedScope: scope,
+      rows: [],
+      allScopedRows: [],
+      totalDirectReceivableMinor: 0,
+      totalDirectPayableMinor: 0,
+      netDirectBalanceMinor: 0,
+      totalOpeningAtPeriodMinor: 0,
+      totalPeriodOwedByMinor: 0,
+      totalPeriodOwedToMinor: 0,
+      totalPeriodNetMovementMinor: 0,
+      totalClosingDirectBalanceMinor: 0,
+      rootAccountsCount: 0,
+      branchAccountsCount: 0,
+      parentAccountsCount: 0,
+      totalAccountsCount: 0,
+      totalScopedAccountsCount: 0,
+      excludedDormantCount: 0,
+      searchMatchCount: 0,
+      executiveSummary: {
+        totalDirectReceivableMinor: 0,
+        totalDirectPayableMinor: 0,
+        netDirectBalanceMinor: 0,
+        totalOpeningAtPeriodMinor: 0,
+        totalPeriodOwedByMinor: 0,
+        totalPeriodOwedToMinor: 0,
+        totalPeriodNetMovementMinor: 0,
+        totalClosingDirectBalanceMinor: 0,
+        accountsCount: 0,
+        rootAccountsCount: 0,
+        branchAccountsCount: 0,
+        accountsWithActivityCount: 0,
+      },
+      periodOperations: {
+        transactionsCount: 0,
+        totalOwedByMinor: 0,
+        totalOwedToMinor: 0,
+        periodNetChangeMinor: 0,
+        largestTransactionMinor: 0,
+        largestTransactionDescription: null,
+        largestTransactionAccountName: null,
+        averageTransactionMinor: 0,
+        accountsWithActivityCount: 0,
+      },
+      balancesSummary: {
+        receivableAccountsCount: 0,
+        payableAccountsCount: 0,
+        balancedAccountsCount: 0,
+        top5Debtors: [],
+        top5Creditors: [],
+        top5RootsByConsolidated: [],
+      },
+      rootSummaries: [],
+      financialAnalysis: {
+        top10Debtors: [],
+        top10Creditors: [],
+        top10RootsByConsolidated: [],
+        balancedAccounts: [],
+        zeroMovementAccounts: [],
+        settledAccounts: [],
+      },
+      movements: [],
+    };
   }
 
-  // Filter displayed rows according to category and public search query (never search notes)
-  const searchLower = options.searchQuery ? options.searchQuery.trim().toLowerCase() : '';
-  const filteredNodes = treeNodes.filter(({ account }) => {
-    if (options.categoryId && options.categoryId !== 'all' && account.categoryId !== options.categoryId) {
-      return false;
+  const categoryMap = new Map<string, string>(categories.map((c) => [c.id, c.name]));
+  const knownCategoryIds = new Set<string>(categories.map((c) => c.id));
+  const fullAccountMap = new Map<string, AccountModel>(accounts.map((a) => [a.id, a]));
+
+  // Financial Scope: filter by BOTH status AND categoryId BEFORE HierarchyIndex construction
+  // so no excluded child can invisibly inflate consolidated totals.
+  const financialScopedAccounts = filterAccountsByStatusScope(accounts, scope.status).filter((acc) => {
+    if (!scope.categoryId || scope.categoryId === 'all') return true;
+    if (scope.categoryId === 'uncategorized') {
+      return !knownCategoryIds.has(acc.categoryId);
     }
-    if (searchLower) {
-      const nameMatch = account.name.toLowerCase().includes(searchLower);
-      const phoneMatch = Boolean(account.phone && account.phone.toLowerCase().includes(searchLower));
-      if (!nameMatch && !phoneMatch) return false;
-    }
-    return true;
+    return acc.categoryId === scope.categoryId;
   });
+
+  const scopedAccountMap = new Map<string, AccountModel>(
+    financialScopedAccounts.map((a) => [a.id, a])
+  );
+  const index = createHierarchyIndex(financialScopedAccounts, transactions, scope.toDate);
+  const treeNodes = flattenAccountsInTreeOrder(financialScopedAccounts);
+
+  // Precompute direct period metrics via shared central calculator
+  const directMetricsMap = new Map<string, AccountPeriodMetrics>();
+  for (const acc of financialScopedAccounts) {
+    const accTxs = index.transactionsByAccount.get(acc.id) || [];
+    directMetricsMap.set(
+      acc.id,
+      computeAccountPeriodMetrics(acc, accTxs, scope.fromDate, scope.toDate)
+    );
+  }
+
+  // Mandatory Zero-Dormant + Parent Subtree Rule (#1 & #2):
+  // An account stays in the report iff it OR any descendant in the scoped subtree passes isReportRelevantAccount().
+  const relevantIdSet = new Set<string>();
+  let excludedDormantCount = 0;
+
+  for (const node of treeNodes) {
+    const subtreeIds = index.getSubtreeIds(node.account.id);
+    const hasRelevantInSubtree = subtreeIds.some((subId) => {
+      const m = directMetricsMap.get(subId);
+      return m ? isReportRelevantAccount(m) : false;
+    });
+    if (hasRelevantInSubtree) {
+      relevantIdSet.add(node.account.id);
+    } else {
+      excludedDormantCount++;
+    }
+  }
+
+  const relevantTreeNodes = treeNodes.filter((n) => relevantIdSet.has(n.account.id));
 
   let totalDirectReceivableMinor = 0;
   let totalDirectPayableMinor = 0;
@@ -910,10 +976,14 @@ export function generateHierarchicalAccountsReport(
   let payableAccountsCount = 0;
   let balancedAccountsCount = 0;
 
-  const rows: HierarchicalAccountsReportRow[] = filteredNodes.map((node) => {
+  const allScopedRows: HierarchicalAccountsReportRow[] = relevantTreeNodes.map((node) => {
     const acc = node.account;
     const direct = directMetricsMap.get(acc.id)!;
-    const subtreeIds = index.getSubtreeIds(acc.id);
+    const subtreeIds = index.getSubtreeIds(acc.id).filter((id) => relevantIdSet.has(id));
+    const descendantIds = index.getDescendantIds(acc.id).filter((id) => relevantIdSet.has(id));
+    const directChildrenCount = index
+      .getDirectChildren(acc.id)
+      .filter((child) => relevantIdSet.has(child.id)).length;
 
     let consolidatedOpeningAtPeriodMinor = 0;
     let consolidatedOwedByMinor = 0;
@@ -929,15 +999,18 @@ export function generateHierarchicalAccountsReport(
     const consolidatedNetMovementMinor = consolidatedOwedByMinor - consolidatedOwedToMinor;
     const consolidatedBalanceMinor = consolidatedOpeningAtPeriodMinor + consolidatedNetMovementMinor;
 
-    const directChildrenCount = index.getDirectChildren(acc.id).length;
-    const descendantCount = index.getDescendantIds(acc.id).length;
+    const descendantCount = descendantIds.length;
     const isParent = descendantCount > 0;
+    const isTrueRoot = !acc.parentId;
+    const hasExcludedParent = Boolean(
+      acc.parentId && fullAccountMap.has(acc.parentId) && !scopedAccountMap.has(acc.parentId)
+    );
 
-    if (direct.directBalanceMinor > 0) {
-      totalDirectReceivableMinor += direct.directBalanceMinor;
+    if (direct.closingBalanceMinor > 0) {
+      totalDirectReceivableMinor += direct.closingBalanceMinor;
       receivableAccountsCount++;
-    } else if (direct.directBalanceMinor < 0) {
-      totalDirectPayableMinor += Math.abs(direct.directBalanceMinor);
+    } else if (direct.closingBalanceMinor < 0) {
+      totalDirectPayableMinor += Math.abs(direct.closingBalanceMinor);
       payableAccountsCount++;
     } else {
       balancedAccountsCount++;
@@ -950,7 +1023,7 @@ export function generateHierarchicalAccountsReport(
       accountsWithActivityCount++;
     }
 
-    if (!acc.parentId) {
+    if (isTrueRoot) {
       rootAccountsCount++;
     } else {
       branchAccountsCount++;
@@ -969,6 +1042,8 @@ export function generateHierarchicalAccountsReport(
       level: node.level,
       hierarchicalPath: fullHierarchicalPath,
       isParent,
+      isTrueRoot,
+      hasExcludedParent,
       directChildrenCount,
       descendantCount,
       originalOpeningBalanceMinor: direct.originalOpeningBalanceMinor,
@@ -977,17 +1052,17 @@ export function generateHierarchicalAccountsReport(
       directOwedByMinor: direct.directOwedByMinor,
       directOwedToMinor: direct.directOwedToMinor,
       directNetMovementMinor: direct.directNetMovementMinor,
-      directBalanceMinor: direct.directBalanceMinor,
+      directBalanceMinor: direct.closingBalanceMinor,
       consolidatedOpeningAtPeriodMinor,
       consolidatedOwedByMinor,
       consolidatedOwedToMinor,
       consolidatedNetMovementMinor,
-      consolidatedChildrenOnlyMinor: consolidatedBalanceMinor - direct.directBalanceMinor,
+      consolidatedChildrenOnlyMinor: consolidatedBalanceMinor - direct.closingBalanceMinor,
       consolidatedBalanceMinor,
       periodTransactionCount: direct.periodTransactionCount,
       lastTransactionDate: direct.lastTransactionDate,
       lastTransactionAmountMinor: direct.lastTransactionAmountMinor,
-      directBalanceType: classifyBalanceType(direct.directBalanceMinor),
+      directBalanceType: classifyBalanceType(direct.closingBalanceMinor),
       consolidatedBalanceType: classifyBalanceType(consolidatedBalanceMinor),
     };
   });
@@ -996,13 +1071,13 @@ export function generateHierarchicalAccountsReport(
   const totalPeriodNetMovementMinor = totalPeriodOwedByMinor - totalPeriodOwedToMinor;
   const totalClosingDirectBalanceMinor = totalOpeningAtPeriodMinor + totalPeriodNetMovementMinor;
 
-  // Build period movements for included rows
-  const includedIds = new Set(rows.map((r) => r.account.id));
+  // Build period movements across all financial-scoped relevant accounts (unaffected by searchQuery)
+  const scopedRelevantIds = new Set(allScopedRows.map((r) => r.account.id));
   const sortedPeriodTxs = transactions
     .filter((t) => {
-      if (!includedIds.has(t.accountId)) return false;
-      if (options.fromDate && t.date < options.fromDate) return false;
-      if (options.toDate && t.date > options.toDate) return false;
+      if (!scopedRelevantIds.has(t.accountId)) return false;
+      if (scope.fromDate && t.date < scope.fromDate) return false;
+      if (scope.toDate && t.date > scope.toDate) return false;
       return true;
     })
     .sort(compareTransactions);
@@ -1029,10 +1104,10 @@ export function generateHierarchicalAccountsReport(
     };
   });
 
-  // Root Accounts Summary (true roots !parentId, or top-level in filtered rows if search isolated branches)
-  const trueRootRows = rows.filter((r) => !r.account.parentId);
-  const rootSourceRows = trueRootRows.length > 0 ? trueRootRows : rows.filter((r) => !r.account.parentId || !includedIds.has(r.account.parentId));
-  const rootSummaries: RootAccountSummary[] = rootSourceRows.map((r) => ({
+  // Root Accounts Summary: ONLY true root accounts (!parentId) — branches under excluded parents
+  // NEVER impersonate roots (Section 7).
+  const trueRootRows = allScopedRows.filter((r) => r.isTrueRoot);
+  const rootSummaries: RootAccountSummary[] = trueRootRows.map((r) => ({
     account: r.account,
     categoryName: r.categoryName,
     hierarchicalPath: r.hierarchicalPath,
@@ -1048,22 +1123,72 @@ export function generateHierarchicalAccountsReport(
     consolidatedBalanceType: r.consolidatedBalanceType,
   }));
 
-  const positiveSorted = rows
+  const positiveSorted = allScopedRows
     .filter((r) => r.directBalanceMinor > 0)
     .sort((a, b) => b.directBalanceMinor - a.directBalanceMinor);
-  const negativeSorted = rows
+  const negativeSorted = allScopedRows
     .filter((r) => r.directBalanceMinor < 0)
     .sort((a, b) => a.directBalanceMinor - b.directBalanceMinor);
   const rootsByAbsConsolidated = [...rootSummaries].sort(
     (a, b) => Math.abs(b.consolidatedBalanceMinor) - Math.abs(a.consolidatedBalanceMinor)
   );
-  const balancedAccounts = rows.filter((r) => r.directBalanceMinor === 0);
-  const zeroMovementAccounts = rows.filter((r) => r.periodTransactionCount === 0);
+  const balancedAccounts = allScopedRows.filter((r) => r.directBalanceMinor === 0);
+  // Section 13: Zero-movement analysis ONLY includes accounts holding a non-zero opening or closing balance
+  const zeroMovementAccounts = allScopedRows.filter(
+    (r) =>
+      r.periodTransactionCount === 0 &&
+      (r.openingAtPeriodMinor !== 0 || r.directBalanceMinor !== 0)
+  );
+  // Section 14: Accounts that had movements during the period and settled to 0
+  const settledAccounts = allScopedRows.filter(
+    (r) => r.periodTransactionCount > 0 && r.directBalanceMinor === 0
+  );
 
-  const largestAccount = largestTx ? fullAccountMap.get((largestTx as TransactionModel).accountId) : undefined;
+  // Hierarchical Display Search (#4 & #5): Search Within Results keeping matching accounts + ancestors
+  const searchTrimmed = options.searchQuery ? options.searchQuery.trim() : '';
+  let visibleRows = allScopedRows;
+  let searchMatchCount = allScopedRows.length;
+
+  if (searchTrimmed !== '') {
+    const matchedIds = new Set<string>();
+    const visibleWithAncestorsIds = new Set<string>();
+
+    for (const r of allScopedRows) {
+      if (matchesPublicSearchTerms(r.account, searchTrimmed)) {
+        matchedIds.add(r.account.id);
+        visibleWithAncestorsIds.add(r.account.id);
+
+        // Walk up ancestors within scopedRelevantIds (cycle-guarded)
+        const visitedUp = new Set<string>([r.account.id]);
+        let pId = r.account.parentId;
+        while (pId && !visitedUp.has(pId)) {
+          visitedUp.add(pId);
+          if (scopedRelevantIds.has(pId)) {
+            visibleWithAncestorsIds.add(pId);
+          }
+          pId = fullAccountMap.get(pId)?.parentId ?? null;
+        }
+      }
+    }
+
+    searchMatchCount = matchedIds.size;
+    visibleRows = allScopedRows
+      .filter((r) => visibleWithAncestorsIds.has(r.account.id))
+      .map((r) => ({
+        ...r,
+        isSearchMatch: matchedIds.has(r.account.id),
+        isSearchContextOnly: !matchedIds.has(r.account.id),
+      }));
+  }
+
+  const largestAccount = largestTx
+    ? fullAccountMap.get((largestTx as TransactionModel).accountId)
+    : undefined;
 
   return {
-    rows,
+    appliedScope: scope,
+    rows: visibleRows,
+    allScopedRows,
     totalDirectReceivableMinor,
     totalDirectPayableMinor,
     netDirectBalanceMinor,
@@ -1075,7 +1200,10 @@ export function generateHierarchicalAccountsReport(
     rootAccountsCount,
     branchAccountsCount,
     parentAccountsCount,
-    totalAccountsCount: rows.length,
+    totalAccountsCount: allScopedRows.length,
+    totalScopedAccountsCount: allScopedRows.length,
+    excludedDormantCount,
+    searchMatchCount,
     executiveSummary: {
       totalDirectReceivableMinor,
       totalDirectPayableMinor,
@@ -1085,7 +1213,7 @@ export function generateHierarchicalAccountsReport(
       totalPeriodOwedToMinor,
       totalPeriodNetMovementMinor,
       totalClosingDirectBalanceMinor,
-      accountsCount: rows.length,
+      accountsCount: allScopedRows.length,
       rootAccountsCount,
       branchAccountsCount,
       accountsWithActivityCount,
@@ -1116,6 +1244,7 @@ export function generateHierarchicalAccountsReport(
       top10RootsByConsolidated: rootsByAbsConsolidated.slice(0, 10),
       balancedAccounts,
       zeroMovementAccounts,
+      settledAccounts,
     },
     movements,
   };

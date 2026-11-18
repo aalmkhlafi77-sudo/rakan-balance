@@ -326,3 +326,226 @@ export function generatePdfReport(config: PrintableReportConfig): void {
     setTimeout(triggerIframePrint, 500);
   }
 }
+
+import type {
+  AccountsBalanceReport,
+  CategorySummaryReport,
+  DebtorsCreditorsReport,
+  NormalizedReportScope,
+  PeriodSummaryReport,
+} from '../domain/financial_reports.ts';
+import type { HierarchicalAccountsReport } from '../domain/hierarchical_accounts.ts';
+import { formatCurrency } from '../domain/money.ts';
+
+function formatScopeSummaryLine(scope: NormalizedReportScope): string {
+  const periodStr =
+    scope.fromDate || scope.toDate
+      ? `الفترة: ${scope.fromDate || 'البداية'} إلى ${scope.toDate || 'اليوم'}`
+      : 'الفترة: جميع الفترات';
+  const statusStr =
+    scope.status === 'active'
+      ? 'الحالة: نشطة'
+      : scope.status === 'archived'
+      ? 'الحالة: مؤرشفة'
+      : 'الحالة: الكل';
+  return `${periodStr}  |  ${statusStr}`;
+}
+
+export function buildAccountsReportPdfConfig(
+  report: AccountsBalanceReport,
+  options: { ownerName: string; currencySymbol: string }
+): PrintableReportConfig {
+  const { ownerName, currencySymbol } = options;
+  return {
+    reportTitle: 'تقرير أرصدة الحسابات والأطراف',
+    subtitle: `الحسابات المشمولة: ${report.totalScopedAccountsCount} | المستبعدة (خاملة): ${report.excludedDormantCount}`,
+    ownerName,
+    currencySymbol,
+    filterInfo: formatScopeSummaryLine(report.appliedScope),
+    metrics: [
+      { title: 'إجمالي لك', value: formatCurrency(report.totalReceivableMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'إجمالي عليك', value: formatCurrency(report.totalPayableMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+      { title: 'الصافي', value: formatCurrency(report.netBalanceMinor, { symbol: currencySymbol }), colorClass: 'blue' },
+      { title: 'عدد الحسابات ذات الصلة', value: String(report.totalScopedAccountsCount), colorClass: 'slate' },
+    ],
+    columns: [
+      { header: 'الحساب', align: 'right' },
+      { header: 'التصنيف', align: 'right' },
+      { header: `رصيد أول الفترة (${currencySymbol})`, align: 'right' },
+      { header: `عليه (${currencySymbol})`, align: 'right' },
+      { header: `له (${currencySymbol})`, align: 'right' },
+      { header: `صافي الحركة (${currencySymbol})`, align: 'right' },
+      { header: `رصيد آخر الفترة (${currencySymbol})`, align: 'right' },
+      { header: 'الحالة', align: 'center' },
+    ],
+    rows: report.rows.map((r) => [
+      r.hierarchicalPath !== r.account.name ? `${r.account.name} (${r.hierarchicalPath})` : r.account.name,
+      r.categoryName,
+      formatCurrency(r.openingAtPeriodMinor, { symbol: currencySymbol }),
+      formatCurrency(r.totalOwedByMinor, { symbol: currencySymbol }),
+      formatCurrency(r.totalOwedToMinor, { symbol: currencySymbol }),
+      formatCurrency(r.netMovementMinor, { symbol: currencySymbol }),
+      formatCurrency(r.currentBalanceMinor, { symbol: currencySymbol }),
+      r.balanceType === 'receivable' ? 'لك' : r.balanceType === 'payable' ? 'عليك' : 'متزن',
+    ]),
+  };
+}
+
+export function buildHierarchicalReportPdfConfig(
+  report: HierarchicalAccountsReport,
+  options: { ownerName: string; currencySymbol: string }
+): PrintableReportConfig {
+  const { ownerName, currencySymbol } = options;
+  return {
+    reportTitle: 'التقرير التنفيذي للحسابات الرئيسية والفروع',
+    subtitle: `الحسابات الفعالة: ${report.totalScopedAccountsCount} | المستبعدة (خاملة): ${report.excludedDormantCount}`,
+    ownerName,
+    currencySymbol,
+    filterInfo: formatScopeSummaryLine(report.appliedScope),
+    metrics: [
+      { title: 'إجمالي لك (مباشر)', value: formatCurrency(report.totalDirectReceivableMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'إجمالي عليك (مباشر)', value: formatCurrency(report.totalDirectPayableMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+      { title: 'رصيد أول الفترة', value: formatCurrency(report.totalOpeningAtPeriodMinor, { symbol: currencySymbol }), colorClass: 'slate' },
+      { title: 'رصيد آخر الفترة', value: formatCurrency(report.totalClosingDirectBalanceMinor, { symbol: currencySymbol }), colorClass: 'blue' },
+    ],
+    columns: [
+      { header: 'الحساب', align: 'right' },
+      { header: 'المسار / المستوى', align: 'right' },
+      { header: `رصيد أول الفترة (${currencySymbol})`, align: 'right' },
+      { header: `عليه (${currencySymbol})`, align: 'right' },
+      { header: `له (${currencySymbol})`, align: 'right' },
+      { header: `صافي الحركة (${currencySymbol})`, align: 'right' },
+      { header: `الرصيد المباشر (${currencySymbol})`, align: 'right' },
+      { header: `رصيد التابعين (${currencySymbol})`, align: 'right' },
+      { header: `الرصيد المجمع (${currencySymbol})`, align: 'right' },
+      { header: 'الحالة', align: 'center' },
+    ],
+    rows: report.rows.map((r) => [
+      `${'— '.repeat(r.level)}${r.account.name}`,
+      `${r.hierarchicalPath} (م${r.level})`,
+      formatCurrency(r.openingAtPeriodMinor, { symbol: currencySymbol }),
+      formatCurrency(r.directOwedByMinor, { symbol: currencySymbol }),
+      formatCurrency(r.directOwedToMinor, { symbol: currencySymbol }),
+      formatCurrency(r.directNetMovementMinor, { symbol: currencySymbol }),
+      formatCurrency(r.directBalanceMinor, { symbol: currencySymbol }),
+      formatCurrency(r.consolidatedChildrenOnlyMinor, { symbol: currencySymbol }),
+      formatCurrency(r.consolidatedBalanceMinor, { symbol: currencySymbol }),
+      r.account.status === 'active' ? 'نشط' : 'مؤرشف',
+    ]),
+  };
+}
+
+export function buildCategoriesReportPdfConfig(
+  report: CategorySummaryReport,
+  options: { ownerName: string; currencySymbol: string }
+): PrintableReportConfig {
+  const { ownerName, currencySymbol } = options;
+  return {
+    reportTitle: 'تقرير توزيع الأرصدة حسب التصنيفات',
+    subtitle: `عدد التصنيفات: ${report.rows.length} | الحسابات المشمولة: ${report.includedAccountsCount} | المستبعدة: ${report.excludedDormantCount}`,
+    ownerName,
+    currencySymbol,
+    filterInfo: formatScopeSummaryLine(report.appliedScope),
+    metrics: [
+      { title: 'إجمالي لك بالتصنيفات', value: formatCurrency(report.grandTotalReceivableMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'إجمالي عليك بالتصنيفات', value: formatCurrency(report.grandTotalPayableMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+      { title: 'الصافي العام', value: formatCurrency(report.grandNetBalanceMinor, { symbol: currencySymbol }), colorClass: 'blue' },
+      { title: 'الحسابات المشمولة', value: String(report.includedAccountsCount), colorClass: 'slate' },
+    ],
+    columns: [
+      { header: 'اسم التصنيف', align: 'right' },
+      { header: 'عدد الحسابات المشمولة', align: 'center' },
+      { header: `إجمالي لك (${currencySymbol})`, align: 'right' },
+      { header: `إجمالي عليك (${currencySymbol})`, align: 'right' },
+      { header: `الصافي (${currencySymbol})`, align: 'right' },
+    ],
+    rows: report.rows.map((r) => [
+      r.category.name,
+      r.accountsCount,
+      formatCurrency(r.totalReceivableMinor, { symbol: currencySymbol }),
+      formatCurrency(r.totalPayableMinor, { symbol: currencySymbol }),
+      formatCurrency(r.netBalanceMinor, { symbol: currencySymbol }),
+    ]),
+  };
+}
+
+export function buildPeriodReportPdfConfig(
+  report: PeriodSummaryReport,
+  options: { ownerName: string; currencySymbol: string }
+): PrintableReportConfig {
+  const { ownerName, currencySymbol } = options;
+  return {
+    reportTitle: 'تقرير حركة الحسابات التفصيلي للفترة',
+    subtitle: `عدد الحركات المالي: ${report.transactionsCount} | الحسابات المشمولة: ${report.includedAccountsCount}`,
+    ownerName,
+    currencySymbol,
+    filterInfo: formatScopeSummaryLine(report.appliedScope),
+    metrics: [
+      { title: 'الرصيد الافتتاحي السابق', value: formatCurrency(report.openingBalanceMinor, { symbol: currencySymbol }), colorClass: 'slate' },
+      { title: 'إجمالي عليه بالفترة', value: formatCurrency(report.totalOwedByMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'إجمالي له بالفترة', value: formatCurrency(report.totalOwedToMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+      { title: 'الرصيد الختامي الإجمالي', value: formatCurrency(report.closingBalanceMinor, { symbol: currencySymbol }), colorClass: 'blue' },
+    ],
+    columns: [
+      { header: 'التاريخ', align: 'center' },
+      { header: 'الحساب', align: 'right' },
+      { header: 'التصنيف', align: 'right' },
+      { header: 'نوع الحركة', align: 'center' },
+      { header: 'البيان', align: 'right' },
+      { header: `المبلغ (${currencySymbol})`, align: 'right' },
+    ],
+    rows: report.rows.map((r) => [
+      r.transaction.date,
+      r.accountName,
+      r.categoryName,
+      r.transaction.entryType === 'owedByAccount' ? 'عليه' : 'له',
+      r.transaction.description,
+      formatCurrency(r.transaction.amountMinor, { symbol: currencySymbol }),
+    ]),
+  };
+}
+
+export function buildDebtorsCreditorsReportPdfConfig(
+  report: DebtorsCreditorsReport,
+  options: { ownerName: string; currencySymbol: string }
+): PrintableReportConfig {
+  const { ownerName, currencySymbol } = options;
+  return {
+    reportTitle: 'تقرير تحليل الأطراف والتركز المالي (لك / عليك)',
+    subtitle: `عدد المدينين: ${report.totalDebtorsCount} | عدد الدائنين: ${report.totalCreditorsCount}`,
+    ownerName,
+    currencySymbol,
+    filterInfo: report.appliedScope.toDate
+      ? `حتى تاريخ: ${report.appliedScope.toDate} | ${report.appliedScope.status === 'active' ? 'نشطة' : report.appliedScope.status === 'archived' ? 'مؤرشفة' : 'الكل'}`
+      : `كامل التاريخ | ${report.appliedScope.status === 'active' ? 'نشطة' : report.appliedScope.status === 'archived' ? 'مؤرشفة' : 'الكل'}`,
+    metrics: [
+      { title: 'إجمالي حقوقك (لك)', value: formatCurrency(report.totalDebtorsMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'أعلى مدين', value: report.topDebtorName || 'لا يوجد', subtext: formatCurrency(report.topDebtorAmountMinor, { symbol: currencySymbol }), colorClass: 'emerald' },
+      { title: 'إجمالي التزاماتك (عليك)', value: formatCurrency(report.totalCreditorsMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+      { title: 'أعلى دائن', value: report.topCreditorName || 'لا يوجد', subtext: formatCurrency(report.topCreditorAmountMinor, { symbol: currencySymbol }), colorClass: 'rose' },
+    ],
+    columns: [
+      { header: 'اسم الحساب', align: 'right' },
+      { header: 'التصنيف', align: 'right' },
+      { header: 'النوع', align: 'center' },
+      { header: `المبلغ (${currencySymbol})`, align: 'right' },
+      { header: 'نسبة التركز', align: 'center' },
+    ],
+    rows: [
+      ...report.debtors.map((d) => [
+        d.account.name,
+        d.categoryName,
+        'مدين (لك)',
+        formatCurrency(d.balanceMinor, { symbol: currencySymbol }),
+        `${d.sharePercentage.toFixed(1)}%`,
+      ]),
+      ...report.creditors.map((c) => [
+        c.account.name,
+        c.categoryName,
+        'دائن (عليك)',
+        formatCurrency(c.absBalanceMinor, { symbol: currencySymbol }),
+        `${c.sharePercentage.toFixed(1)}%`,
+      ]),
+    ],
+  };
+}

@@ -394,6 +394,9 @@ export async function runHierarchicalAccountsTestSuite(): Promise<HierarchicalTe
 
   // -------------------------------------------------------------------------
   // TEST C: Archived Child Exclusion ('active') vs Inclusion ('all')
+  // Updated per Mandatory Zero-Dormant Rule: when B (archived) is excluded under
+  // status='active', parent A (0/0/0 with 0 active descendants) is excluded as dormant,
+  // while helperActive=0 and status='all' includes both A and B (+20,000).
   // -------------------------------------------------------------------------
   {
     const accs = [
@@ -409,9 +412,9 @@ export async function runHierarchicalAccountsTestSuite(): Promise<HierarchicalTe
     const helperAll = calculateConsolidatedBalance('A', accs, [], 'all');
 
     const passed =
-      activeReport.rows.length === 1 &&
-      aInActive?.consolidatedBalanceMinor === 0 &&
-      aInActive?.descendantCount === 0 &&
+      activeReport.rows.length === 0 &&
+      activeReport.excludedDormantCount === 1 &&
+      !aInActive &&
       helperActive === 0 &&
       allReport.rows.length === 2 &&
       aInAll?.consolidatedBalanceMinor === 20000 &&
@@ -420,9 +423,9 @@ export async function runHierarchicalAccountsTestSuite(): Promise<HierarchicalTe
 
     record(
       'TEST-C',
-      'TEST C: Archived child excluded when filter=active (0) and included when filter=all (+20,000)',
+      'TEST C: Archived child excluded when filter=active (dormant A hidden, helper=0) and included when filter=all (+20,000)',
       passed,
-      `activeCons=${aInActive?.consolidatedBalanceMinor} (desc=${aInActive?.descendantCount}), allCons=${aInAll?.consolidatedBalanceMinor} (desc=${aInAll?.descendantCount})`
+      `activeRows=${activeReport.rows.length} (excluded=${activeReport.excludedDormantCount}, helperActive=${helperActive}), allCons=${aInAll?.consolidatedBalanceMinor} (desc=${aInAll?.descendantCount})`
     );
   }
 

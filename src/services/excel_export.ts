@@ -12,10 +12,10 @@ import { AccountModel, CategoryModel, TransactionModel } from '../domain/types.t
 import { calculateAccountStatement, getSignedTransactionMinor } from '../domain/balance_calculator.ts';
 import { sanitizeSpreadsheetText } from '../domain/account_privacy.ts';
 import {
-  AccountBalanceReportRow,
-  CategorySummaryReportRow,
-  PartyRow,
-  PeriodTransactionRow,
+  AccountsBalanceReport,
+  CategorySummaryReport,
+  DebtorsCreditorsReport,
+  PeriodSummaryReport,
   ReportFilterOptions,
 } from '../domain/financial_reports.ts';
 import {
@@ -348,6 +348,7 @@ export interface ComprehensiveExcelParams {
   ownerName?: string;
   filterOptions?: ReportFilterOptions;
   reportTitle?: string;
+  report?: HierarchicalAccountsReport; // Single Source of Truth from Screen
 }
 
 function getBalanceTypeLabel(type: 'receivable' | 'payable' | 'balanced'): string {
@@ -369,7 +370,7 @@ function getStatusScopeLabel(status?: HierarchyStatusScope): string {
  * 3. الأرصدة التفصيلية (Opening at period, owedBy, owedTo, net movement, closing balance, status + Totals)
  * 4. الشجرة المالية (Real alignment.indent, bold + tint + top border on parent rows, consolidated emphasis)
  * 5. الحركات (Created ONLY if movements exist: date, account, path, type, desc, owedBy, owedTo, net effect, cumulative running balance)
- * 6. التحليل المالي (Structured analytical sections: Top 10 Debtors, Top 10 Creditors, Top 10 Roots, Balanced, Zero-Movement)
+ * 6. التحليل المالي (Top 10 Debtors, Top 10 Creditors, Top 10 Roots, Settled Accounts, Zero-Movement with Balance — Zero dormant excluded)
  */
 export function createComprehensiveAccountsWorkbook(
   params: ComprehensiveExcelParams
@@ -383,27 +384,26 @@ export function createComprehensiveAccountsWorkbook(
     ownerName = 'المالك',
     filterOptions = {},
     reportTitle = 'التقرير المالي الشامل والشجرة المحاسبية',
+    report: providedReport,
   } = params;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'RAKAN BALANCE';
   workbook.created = new Date();
 
-  const report: HierarchicalAccountsReport = generateHierarchicalAccountsReport(
-    accounts,
-    transactions,
-    categories,
-    filterOptions
-  );
+  const report: HierarchicalAccountsReport =
+    providedReport ??
+    generateHierarchicalAccountsReport(accounts, transactions, categories, filterOptions);
 
+  const scope = report.appliedScope;
   const exportDateStr = new Date().toISOString().slice(0, 10);
   const periodLabel =
-    filterOptions.fromDate || filterOptions.toDate
-      ? `من ${filterOptions.fromDate || 'البداية'} إلى ${filterOptions.toDate || 'اليوم'}`
+    scope.fromDate || scope.toDate
+      ? `من ${scope.fromDate || 'البداية'} إلى ${scope.toDate || 'اليوم'}`
       : 'جميع الفترات';
-  const statusLabel = getStatusScopeLabel(filterOptions.status);
+  const statusLabel = getStatusScopeLabel(scope.status);
   const currencyLabel = currencyName ? `${currencyName} (${currencySymbol})` : currencySymbol;
-  const metaLine = `المالك: ${ownerName}  |  العملة: ${currencyLabel}  |  الفترة: ${periodLabel}  |  النطاق: ${statusLabel}  |  التصدير: ${exportDateStr}`;
+  const metaLine = `المالك: ${ownerName}  |  العملة: ${currencyLabel}  |  الفترة: ${periodLabel}  |  النطاق: ${statusLabel}  |  المشمولة: ${report.totalScopedAccountsCount}  |  المستبعدة (خاملة): ${report.excludedDormantCount}  |  التصدير: ${exportDateStr}`;
 
   // =========================================================================
   // SHEET 1: الملخص العام (Structured Executive Dashboard — No AutoFilter)
@@ -412,7 +412,7 @@ export function createComprehensiveAccountsWorkbook(
     { header: 'البند / المؤشر', align: 'right', type: 'text', minWidth: 30 },
     { header: 'القيمة', align: 'left', type: 'currency', semanticColor: true, minWidth: 22 },
     { header: 'الوحدة / النوع', align: 'center', type: 'text', minWidth: 16 },
-    { header: 'التوضيح التحليلي', align: 'right', type: 'text', minWidth: 40 },
+    { header: 'التوضيح التحليلي', align: 'right', type: 'text', minWidth: 42 },
   ];
 
   const kpiSheet = workbook.addWorksheet('الملخص العام');
@@ -443,7 +443,7 @@ export function createComprehensiveAccountsWorkbook(
     { kind: 'metric', label: 'اسم التقرير', value: reportTitle, unit: 'متعدد الشيتات', note: 'الأرصدة المباشرة والمجمعة دون احتساب مزدوج', type: 'text' },
     { kind: 'metric', label: 'اسم المالك', value: ownerName, unit: 'صاحب الدفتر', note: 'الكيان المالي المعتمد', type: 'text' },
     { kind: 'metric', label: 'العملة المحلية', value: currencyLabel, unit: currencySymbol, note: 'العملة الموحدة لجميع المؤشرات', type: 'text' },
-    { kind: 'metric', label: 'الفترة الزمنية', value: periodLabel, unit: 'نطاق التاريخ', note: filterOptions.toDate ? `الرصيد محسوب بدقة حتى ${filterOptions.toDate}` : 'شامل جميع الحركات', type: 'text' },
+    { kind: 'metric', label: 'الفترة الزمنية', value: periodLabel, unit: 'نطاق التاريخ', note: scope.toDate ? `الرصيد محسوب بدقة حتى ${scope.toDate}` : 'شامل جميع الحركات', type: 'text' },
     { kind: 'metric', label: 'نطاق حالة الحسابات', value: statusLabel, unit: 'فلتر الحالة', note: 'ينطبق بشكل موحد على الحسابات والتجميع', type: 'text' },
     { kind: 'metric', label: 'تاريخ التصدير', value: exportDateStr, unit: 'YYYY-MM-DD', note: 'تاريخ إنشاء التقرير', type: 'text' },
 
@@ -458,7 +458,8 @@ export function createComprehensiveAccountsWorkbook(
     { kind: 'metric', label: 'رصيد آخر الفترة الإجمالي', value: exec.totalClosingDirectBalanceMinor / 100, unit: currencySymbol, note: 'يساوي: رصيد أول الفترة + صافي حركة الفترة', type: 'currency', semantic: true },
 
     { kind: 'section', title: '3. مؤشرات تشغيلية', accent: 'emerald' },
-    { kind: 'metric', label: 'إجمالي الحسابات بالتقرير', value: exec.accountsCount, unit: 'حساب', note: 'الحسابات المطابقة للفلتر المحدد', type: 'integer' },
+    { kind: 'metric', label: 'الحسابات الفعالة المشمولة بالتقرير', value: exec.accountsCount, unit: 'حساب', note: 'بعد استبعاد الحسابات الصفرية الخاملة (0 / 0 / 0)', type: 'integer' },
+    { kind: 'metric', label: 'الحسابات الصفرية الخاملة المستبعدة', value: report.excludedDormantCount, unit: 'حساب خامل', note: 'حسابات رصيدها وحركتها صفر خلال الفترة', type: 'integer' },
     { kind: 'metric', label: 'عدد الحسابات الرئيسية (الجذور)', value: exec.rootAccountsCount, unit: 'حساب رئيسي', note: 'حسابات المستوى الأول', type: 'integer' },
     { kind: 'metric', label: 'عدد الحسابات الفرعية والتابعة', value: exec.branchAccountsCount, unit: 'حساب فرعي', note: 'فروع وأحفاد مرتبطة بحسابات أب', type: 'integer' },
     { kind: 'metric', label: 'حسابات حدثت عليها حركة بالفترة', value: exec.accountsWithActivityCount, unit: 'حساب نشط', note: 'عدد الحسابات التي سجلت قيداً واحداً على الأقل', type: 'integer' },
@@ -601,18 +602,7 @@ export function createComprehensiveAccountsWorkbook(
     { header: 'الحالة', align: 'center', type: 'text', minWidth: 12 },
   ];
 
-  let sumOpening = 0;
-  let sumOwedBy = 0;
-  let sumOwedTo = 0;
-  let sumNetMov = 0;
-  let sumDirect = 0;
-
   const detailedRows = report.rows.map((r) => {
-    sumOpening += r.openingAtPeriodMinor;
-    sumOwedBy += r.directOwedByMinor;
-    sumOwedTo += r.directOwedToMinor;
-    sumNetMov += r.directNetMovementMinor;
-    sumDirect += r.directBalanceMinor;
     return {
       values: [
         r.account.name,
@@ -639,16 +629,20 @@ export function createComprehensiveAccountsWorkbook(
       detailedColumns,
       detailedRows,
       [
-        'الإجمالي العام (مباشر بدون تكرار)',
-        `${report.rows.length} حساب`,
+        'الإجمالي المباشر للنطاق المالي (بدون تكرار)',
+        `${report.totalScopedAccountsCount} حساب مشمول`,
         '',
         '',
-        sumOpening / 100,
-        sumOwedBy / 100,
-        sumOwedTo / 100,
-        sumNetMov / 100,
-        sumDirect / 100,
-        sumDirect > 0 ? 'صافي لك' : sumDirect < 0 ? 'صافي عليك' : 'متزن',
+        report.totalOpeningAtPeriodMinor / 100,
+        report.totalPeriodOwedByMinor / 100,
+        report.totalPeriodOwedToMinor / 100,
+        report.totalPeriodNetMovementMinor / 100,
+        report.totalClosingDirectBalanceMinor / 100,
+        report.totalClosingDirectBalanceMinor > 0
+          ? 'صافي لك'
+          : report.totalClosingDirectBalanceMinor < 0
+          ? 'صافي عليك'
+          : 'متزن',
         '',
       ],
       true
@@ -876,21 +870,21 @@ export function createComprehensiveAccountsWorkbook(
     );
 
     appendSection(
-      '4. الحسابات المتزنة (الرصيد = 0)',
+      '4. الحسابات المسواة خلال الفترة (تحركت وأغلقت على صفر)',
       'emerald',
-      analysis.balancedAccounts.map((r) => ({
+      analysis.settledAccounts.map((r) => ({
         values: [
           r.account.name,
           r.hierarchicalPath || r.categoryName,
-          r.categoryName,
-          0,
-          r.lastTransactionDate ? `آخر حركة: ${r.lastTransactionDate}` : 'لا توجد حركات',
+          `تمت التسوية (${r.periodTransactionCount} حركة)`,
+          r.openingAtPeriodMinor / 100,
+          `صافي الحركة: ${(r.directNetMovementMinor / 100).toFixed(2)}`,
         ],
       }))
     );
 
     appendSection(
-      '5. الحسابات بدون حركة خلال الفترة',
+      '5. الحسابات بدون حركة خلال الفترة ولها رصيد',
       'emerald',
       analysis.zeroMovementAccounts.map((r) => ({
         values: [
@@ -1450,105 +1444,115 @@ export async function exportComprehensiveAccountsReportToExcel(
 }
 
 /**
- * Export Accounts Balance Report to Excel
- * Uses comprehensive multi-sheet workbook when full context is passed.
+ * Creates Single-Source-of-Truth Accounts Balance Workbook matching Screen Report Model 1:1.
+ * NEVER silently swaps to the 6-sheet hierarchical workbook.
  */
-export async function exportAccountsReportToExcel(
-  rows: AccountBalanceReportRow[],
+export function createAccountsBalanceWorkbook(
+  report: AccountsBalanceReport,
   currencySymbol: string,
-  summary: { totalReceivable: number; totalPayable: number; netBalance: number },
-  fullContext?: {
-    accounts: AccountModel[];
-    transactions: TransactionModel[];
-    categories: CategoryModel[];
-    currencyName?: string;
-    ownerName?: string;
-    filterOptions?: ReportFilterOptions;
-  }
-): Promise<void> {
-  if (fullContext) {
-    const workbook = createComprehensiveAccountsWorkbook({
-      accounts: fullContext.accounts,
-      transactions: fullContext.transactions,
-      categories: fullContext.categories,
-      currencySymbol,
-      currencyName: fullContext.currencyName,
-      ownerName: fullContext.ownerName,
-      filterOptions: fullContext.filterOptions,
-    });
-    await downloadWorkbook(workbook, 'Rakan_Balance_Accounts_Report');
-    return;
-  }
-
+  meta?: { ownerName?: string; currencyName?: string }
+): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'RAKAN BALANCE';
+  workbook.created = new Date();
+
+  const scope = report.appliedScope;
+  const periodLabel =
+    scope.fromDate || scope.toDate
+      ? `من ${scope.fromDate || 'البداية'} إلى ${scope.toDate || 'اليوم'}`
+      : 'جميع الفترات';
+  const statusLabel = getStatusScopeLabel(scope.status);
+  const owner = meta?.ownerName || 'المالك';
+  const exportDateStr = new Date().toISOString().slice(0, 10);
+
   const columns: TableColumnSpec[] = [
-    { header: 'اسم الحساب', align: 'right', type: 'text', minWidth: 22 },
+    { header: 'اسم الحساب', align: 'right', type: 'text', minWidth: 24 },
     { header: 'التصنيف', align: 'right', type: 'text', minWidth: 16 },
-    { header: `الرصيد الافتتاحي (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 16 },
-    { header: `إجمالي عليه (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
-    { header: `إجمالي له (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
-    { header: `صافي الحركة (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 15 },
-    { header: `الرصيد النهائي (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 17 },
-    { header: 'الحالة الحالية', align: 'center', type: 'text', minWidth: 14 },
-    { header: 'حالة الحساب', align: 'center', type: 'text', minWidth: 12 },
+    { header: `رصيد أول الفترة (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 17 },
+    { header: `عليه (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+    { header: `له (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+    { header: `صافي الحركة (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 16 },
+    { header: `رصيد آخر الفترة (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 18 },
+    { header: 'الحالة', align: 'center', type: 'text', minWidth: 16 },
   ];
 
-  const dataRows = rows.map((r) => ({
+  const dataRows = report.rows.map((r) => ({
     values: [
-      r.account.name,
+      r.hierarchicalPath !== r.account.name ? `${r.account.name} (${r.hierarchicalPath})` : r.account.name,
       r.categoryName,
-      r.openingBalanceMinor / 100,
+      r.openingAtPeriodMinor / 100,
       r.totalOwedByMinor / 100,
       r.totalOwedToMinor / 100,
       r.netMovementMinor / 100,
       r.currentBalanceMinor / 100,
-      r.balanceType === 'receivable' ? 'لك (له رصيد)' : r.balanceType === 'payable' ? 'عليك (مطلوب)' : 'متزن',
-      r.account.status === 'active' ? 'نشط' : 'مؤرشف',
+      `${r.balanceType === 'receivable' ? 'لك' : r.balanceType === 'payable' ? 'عليك' : 'متزن'} (${r.account.status === 'active' ? 'نشط' : 'مؤرشف'})`,
     ],
   }));
 
+  const metaLine = `المالك: ${owner}  |  العملة: ${currencySymbol}  |  الفترة: ${periodLabel}  |  الحالة: ${statusLabel}  |  المشمولة: ${report.totalScopedAccountsCount}  |  المستبعدة (خاملة): ${report.excludedDormantCount}  |  لك: ${(report.totalReceivableMinor / 100).toFixed(2)}  |  عليك: ${(report.totalPayableMinor / 100).toFixed(2)}  |  الصافي: ${(report.netBalanceMinor / 100).toFixed(2)}  |  التصدير: ${exportDateStr}`;
+
   createStyledTableSheet(
     workbook,
-    'تقرير الأرصدة الشامل',
     'تقرير أرصدة الحسابات',
-    `العملة: ${currencySymbol}  |  تاريخ التصدير: ${new Date().toISOString().slice(0, 10)}`,
+    'تقرير أرصدة الحسابات والأطراف',
+    metaLine,
     columns,
     dataRows,
     [
-      'الإجمالي العام',
-      `${rows.length} حساب`,
-      '',
-      summary.totalReceivable / 100,
-      summary.totalPayable / 100,
-      '',
-      summary.netBalance / 100,
-      summary.netBalance > 0 ? 'صافي لك' : summary.netBalance < 0 ? 'صافي عليك' : 'متزن',
-      '',
+      'الإجمالي المالي للتقرير (النطاق المحدد)',
+      `${report.totalScopedAccountsCount} حساب`,
+      report.totalOpeningAtPeriodMinor / 100,
+      report.totalPeriodOwedByMinor / 100,
+      report.totalPeriodOwedToMinor / 100,
+      report.totalPeriodNetMovementMinor / 100,
+      report.totalClosingBalanceMinor / 100,
+      report.netBalanceMinor > 0 ? 'صافي لك' : report.netBalanceMinor < 0 ? 'صافي عليك' : 'متزن',
     ],
     true
   );
 
+  return workbook;
+}
+
+/**
+ * Export Accounts Balance Report to Excel using the exact screen AccountsBalanceReport model.
+ */
+export async function exportAccountsReportToExcel(
+  report: AccountsBalanceReport,
+  currencySymbol: string,
+  meta?: { ownerName?: string; currencyName?: string }
+): Promise<void> {
+  const workbook = createAccountsBalanceWorkbook(report, currencySymbol, meta);
   await downloadWorkbook(workbook, 'Rakan_Balance_Accounts_Report');
 }
 
 /**
- * Export Category Summary Report to Excel
+ * Creates Category Summary Workbook from CategorySummaryReport model.
  */
-export async function exportCategoriesReportToExcel(
-  rows: CategorySummaryReportRow[],
-  currencySymbol: string,
-  grandTotals: { totalReceivable: number; totalPayable: number; grandNet: number }
-): Promise<void> {
+export function createCategoriesSummaryWorkbook(
+  report: CategorySummaryReport,
+  currencySymbol: string
+): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'RAKAN BALANCE';
+  workbook.created = new Date();
+
+  const scope = report.appliedScope;
+  const periodLabel =
+    scope.fromDate || scope.toDate
+      ? `من ${scope.fromDate || 'البداية'} إلى ${scope.toDate || 'اليوم'}`
+      : 'جميع الفترات';
+  const statusLabel = getStatusScopeLabel(scope.status);
+
   const columns: TableColumnSpec[] = [
     { header: 'اسم التصنيف', align: 'right', type: 'text', minWidth: 24 },
-    { header: 'عدد الحسابات النشطة', align: 'center', type: 'integer', minWidth: 16 },
+    { header: 'عدد الحسابات المشمولة', align: 'center', type: 'integer', minWidth: 18 },
     { header: `إجمالي لك (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 18 },
     { header: `إجمالي عليك (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 18 },
     { header: `صافي المركز المالي (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 20 },
   ];
 
-  const dataRows = rows.map((r) => ({
+  const dataRows = report.rows.map((r) => ({
     values: [
       r.category.name,
       r.accountsCount,
@@ -1562,56 +1566,75 @@ export async function exportCategoriesReportToExcel(
     workbook,
     'تقرير التصنيفات',
     'تقرير تجميع الأرصدة حسب التصنيفات',
-    `العملة: ${currencySymbol}  |  تاريخ التصدير: ${new Date().toISOString().slice(0, 10)}`,
+    `العملة: ${currencySymbol}  |  الفترة: ${periodLabel}  |  الحالة: ${statusLabel}  |  المشمولة: ${report.includedAccountsCount}  |  المستبعدة: ${report.excludedDormantCount}`,
     columns,
     dataRows,
     [
-      'الإجمالي العام لجميع التصنيفات',
-      rows.reduce((sum, r) => sum + r.accountsCount, 0),
-      grandTotals.totalReceivable / 100,
-      grandTotals.totalPayable / 100,
-      grandTotals.grandNet / 100,
+      'الإجمالي العام للتصنيفات',
+      report.includedAccountsCount,
+      report.grandTotalReceivableMinor / 100,
+      report.grandTotalPayableMinor / 100,
+      report.grandNetBalanceMinor / 100,
     ],
     true
   );
 
+  return workbook;
+}
+
+/**
+ * Export Category Summary Report to Excel
+ */
+export async function exportCategoriesReportToExcel(
+  report: CategorySummaryReport,
+  currencySymbol: string
+): Promise<void> {
+  const workbook = createCategoriesSummaryWorkbook(report, currencySymbol);
   await downloadWorkbook(workbook, 'Rakan_Balance_Category_Summary');
 }
 
 /**
- * Export Period Summary Statement to Excel
+ * Creates Period Statement Workbook from PeriodSummaryReport model.
  */
-export async function exportPeriodReportToExcel(
-  rows: PeriodTransactionRow[],
-  currencySymbol: string,
-  meta: { fromDate?: string; toDate?: string; openingMinor: number; closingMinor: number }
-): Promise<void> {
+export function createPeriodReportWorkbook(
+  report: PeriodSummaryReport,
+  currencySymbol: string
+): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'RAKAN BALANCE';
+  workbook.created = new Date();
+
+  const scope = report.appliedScope;
+  const statusLabel = getStatusScopeLabel(scope.status);
+
   const columns: TableColumnSpec[] = [
     { header: 'التاريخ', align: 'center', type: 'date', minWidth: 13 },
     { header: 'اسم الحساب', align: 'right', type: 'text', minWidth: 22 },
     { header: 'التصنيف', align: 'right', type: 'text', minWidth: 16 },
     { header: 'نوع الحركة', align: 'center', type: 'text', minWidth: 16 },
     { header: 'البيان / الوصف', align: 'right', type: 'text', minWidth: 28 },
-    { header: `المبلغ (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 16 },
+    { header: `عليه (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
+    { header: `له (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 15 },
     { header: `المبلغ الموقع (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 17 },
-    { header: 'الملاحظات', align: 'right', type: 'text', minWidth: 22 },
   ];
 
-  const dataRows = rows.map((r) => ({
-    values: [
-      r.transaction.date,
-      r.accountName,
-      r.categoryName,
-      r.transaction.entryType === 'owedByAccount' ? 'عليه (يزيد الدين)' : 'له (ينقص الدين)',
-      r.transaction.description,
-      r.transaction.amountMinor / 100,
-      r.signedAmountMinor / 100,
-      r.transaction.notes || '',
-    ],
-  }));
+  const dataRows = report.rows.map((r) => {
+    const isOwedBy = r.transaction.entryType === 'owedByAccount';
+    return {
+      values: [
+        r.transaction.date,
+        r.accountName,
+        r.categoryName,
+        isOwedBy ? 'عليه (يزيد الدين)' : 'له (ينقص الدين)',
+        r.transaction.description,
+        isOwedBy ? r.transaction.amountMinor / 100 : 0,
+        !isOwedBy ? r.transaction.amountMinor / 100 : 0,
+        r.signedAmountMinor / 100,
+      ],
+    };
+  });
 
-  const metaLine = `الفترة: ${meta.fromDate || 'البداية'} إلى ${meta.toDate || 'اليوم'}  |  افتتاحي: ${(meta.openingMinor / 100).toFixed(2)} ${currencySymbol}  |  ختامي: ${(meta.closingMinor / 100).toFixed(2)} ${currencySymbol}`;
+  const metaLine = `الفترة: ${scope.fromDate || 'البداية'} إلى ${scope.toDate || 'اليوم'}  |  الحالة: ${statusLabel}  |  عدد الحركات المالي: ${report.transactionsCount}  |  افتتاحي: ${(report.openingBalanceMinor / 100).toFixed(2)} ${currencySymbol}  |  ختامي: ${(report.closingBalanceMinor / 100).toFixed(2)} ${currencySymbol}`;
 
   createStyledTableSheet(
     workbook,
@@ -1621,40 +1644,57 @@ export async function exportPeriodReportToExcel(
     columns,
     dataRows,
     [
-      'الإجمالي',
-      `${rows.length} حركة`,
+      'الإجمالي المالي للفترة',
+      `${report.transactionsCount} حركة`,
       '',
       '',
       '',
-      rows.reduce((s, r) => s + r.transaction.amountMinor, 0) / 100,
-      rows.reduce((s, r) => s + r.signedAmountMinor, 0) / 100,
-      '',
+      report.totalOwedByMinor / 100,
+      report.totalOwedToMinor / 100,
+      report.periodNetChangeMinor / 100,
     ],
     true
   );
 
+  return workbook;
+}
+
+/**
+ * Export Period Summary Statement to Excel
+ */
+export async function exportPeriodReportToExcel(
+  report: PeriodSummaryReport,
+  currencySymbol: string
+): Promise<void> {
+  const workbook = createPeriodReportWorkbook(report, currencySymbol);
   await downloadWorkbook(workbook, 'Rakan_Balance_Period_Statement');
 }
 
 /**
- * Export Debtors / Creditors Report to Excel
+ * Creates Debtors / Creditors Workbook from DebtorsCreditorsReport model.
  */
-export async function exportDebtorsCreditorsReportToExcel(
-  debtors: PartyRow[],
-  creditors: PartyRow[],
+export function createDebtorsCreditorsWorkbook(
+  report: DebtorsCreditorsReport,
   currencySymbol: string
-): Promise<void> {
+): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
-  const dateStr = new Date().toISOString().slice(0, 10);
+  workbook.creator = 'RAKAN BALANCE';
+  workbook.created = new Date();
 
-  if (debtors.length > 0 || creditors.length === 0) {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const scope = report.appliedScope;
+  const statusLabel = getStatusScopeLabel(scope.status);
+  const cutoffLabel = scope.toDate ? `حتى تاريخ ${scope.toDate}` : 'كامل التاريخ';
+  const metaLine = `العملة: ${currencySymbol}  |  النطاق: ${cutoffLabel}  |  الحالة: ${statusLabel}  |  التصدير: ${dateStr}`;
+
+  if (report.debtors.length > 0 || report.creditors.length === 0) {
     const debtorCols: TableColumnSpec[] = [
       { header: 'اسم الحساب (المدين)', align: 'right', type: 'text', minWidth: 24 },
       { header: 'التصنيف', align: 'right', type: 'text', minWidth: 16 },
       { header: `الرصيد لك (${currencySymbol})`, align: 'left', type: 'currency', semanticColor: true, minWidth: 18 },
       { header: 'نسبة التركز (%)', align: 'center', type: 'percent', minWidth: 15 },
     ];
-    const debtorData = debtors.map((d) => ({
+    const debtorData = report.debtors.map((d) => ({
       values: [
         d.account.name,
         d.categoryName,
@@ -1667,27 +1707,27 @@ export async function exportDebtorsCreditorsReportToExcel(
       workbook,
       'المدينون (لك)',
       'تقرير المدينين — حقوقك (لك)',
-      `العملة: ${currencySymbol}  |  تاريخ التصدير: ${dateStr}`,
+      metaLine,
       debtorCols,
       debtorData,
       [
-        'الإجمالي',
-        `${debtors.length} مدين`,
-        debtors.reduce((s, d) => s + d.balanceMinor, 0) / 100,
-        debtors.length > 0 ? 100 : 0,
+        'الإجمالي المالي للمدينين',
+        `${report.totalDebtorsCount} مدين`,
+        report.totalDebtorsMinor / 100,
+        report.totalDebtorsCount > 0 ? 100 : 0,
       ],
       true
     );
   }
 
-  if (creditors.length > 0 || debtors.length === 0) {
+  if (report.creditors.length > 0 || report.debtors.length === 0) {
     const creditorCols: TableColumnSpec[] = [
       { header: 'اسم الحساب (الدائن)', align: 'right', type: 'text', minWidth: 24 },
       { header: 'التصنيف', align: 'right', type: 'text', minWidth: 16 },
       { header: `المبلغ عليك (${currencySymbol})`, align: 'left', type: 'currency', minWidth: 18 },
       { header: 'نسبة التركز (%)', align: 'center', type: 'percent', minWidth: 15 },
     ];
-    const creditorData = creditors.map((c) => ({
+    const creditorData = report.creditors.map((c) => ({
       values: [
         c.account.name,
         c.categoryName,
@@ -1700,18 +1740,29 @@ export async function exportDebtorsCreditorsReportToExcel(
       workbook,
       'الدائنون (عليك)',
       'تقرير الدائنين — التزاماتك (عليك)',
-      `العملة: ${currencySymbol}  |  تاريخ التصدير: ${dateStr}`,
+      metaLine,
       creditorCols,
       creditorData,
       [
-        'الإجمالي',
-        `${creditors.length} دائن`,
-        creditors.reduce((s, c) => s + c.absBalanceMinor, 0) / 100,
-        creditors.length > 0 ? 100 : 0,
+        'الإجمالي المالي للدائنين',
+        `${report.totalCreditorsCount} دائن`,
+        report.totalCreditorsMinor / 100,
+        report.totalCreditorsCount > 0 ? 100 : 0,
       ],
       true
     );
   }
 
+  return workbook;
+}
+
+/**
+ * Export Debtors / Creditors Report to Excel
+ */
+export async function exportDebtorsCreditorsReportToExcel(
+  report: DebtorsCreditorsReport,
+  currencySymbol: string
+): Promise<void> {
+  const workbook = createDebtorsCreditorsWorkbook(report, currencySymbol);
   await downloadWorkbook(workbook, 'Rakan_Balance_Debtors_Creditors');
 }
