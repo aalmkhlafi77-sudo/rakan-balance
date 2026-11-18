@@ -8,6 +8,21 @@
 import type { AccountModel } from './types.ts';
 import type { calculateAccountStatement } from './balance_calculator.ts';
 
+export function sanitizeSpreadsheetText(val: unknown): string {
+  if (val === null || val === undefined) {
+    return '';
+  }
+  const raw = String(val);
+  if (/^[=+\-@\t\r]/.test(raw)) {
+    return `'${raw.trim()}`;
+  }
+  const trimmed = raw.trim();
+  if (/^[=+\-@\t\r]/.test(trimmed)) {
+    return `'${trimmed}`;
+  }
+  return trimmed;
+}
+
 export function matchesPublicAccountSearch(account: AccountModel, query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
@@ -25,9 +40,9 @@ export function buildStatementCSV(
   toDate?: string
 ): string {
   let csv = '\uFEFF';
-  csv += `كشف حساب: ${account.name}\n`;
+  csv += `كشف حساب: ${sanitizeSpreadsheetText(account.name)}\n`;
   csv += 'العملة: SAR (ر.س)\n';
-  csv += `الفترة: ${fromDate || 'البداية'} إلى ${toDate || 'اليوم'}\n`;
+  csv += `الفترة: ${sanitizeSpreadsheetText(fromDate || 'البداية')} إلى ${sanitizeSpreadsheetText(toDate || 'اليوم')}\n`;
   csv += `رصيد أول المدة: ${(statement.openingBalanceMinor / 100).toFixed(2)}\n\n`;
   csv += 'م,التاريخ,البيان,عليه (لك),له (عليك),الرصيد بعد الحركة\n';
 
@@ -43,8 +58,10 @@ export function buildStatementCSV(
         description += ` (${row.transaction.transferRole === 'source' ? 'نقل مديونية إلى: ' : 'مديونية محولة من: '}${counterpart.name})`;
       }
     }
-    const quotedDescription = `"${description.replace(/"/g, '""')}"`;
-    csv += `${index + 1},${row.transaction.date},${quotedDescription},${owedByAmount},${owedToAmount},${balance}\n`;
+    const safeDesc = sanitizeSpreadsheetText(description);
+    const quotedDescription = `"${safeDesc.replace(/"/g, '""')}"`;
+    const safeDate = sanitizeSpreadsheetText(row.transaction.date);
+    csv += `${index + 1},${safeDate},${quotedDescription},${owedByAmount},${owedToAmount},${balance}\n`;
   });
 
   csv += `\nإجمالي عليه خلال الفترة: ${(statement.totalOwedByMinor / 100).toFixed(2)}\n`;
@@ -81,8 +98,8 @@ export function buildConsolidatedStatementCSV(
   toDate?: string
 ): string {
   let csv = '\uFEFF';
-  csv += `كشف حساب مجمع: ${account.name} (يشمل ${consolidated.descendantCount} فروع وتوابع)\n`;
-  csv += `الفترة: ${fromDate || 'البداية'} إلى ${toDate || 'اليوم'}\n`;
+  csv += `كشف حساب مجمع: ${sanitizeSpreadsheetText(account.name)} (يشمل ${consolidated.descendantCount} فروع وتوابع)\n`;
+  csv += `الفترة: ${sanitizeSpreadsheetText(fromDate || 'البداية')} إلى ${sanitizeSpreadsheetText(toDate || 'اليوم')}\n`;
   csv += `رصيد أول المدة المجمع: ${(consolidated.openingConsolidatedBalanceMinor / 100).toFixed(2)}\n\n`;
   csv += 'م,التاريخ,الحساب المصدر,المسار الهرمي,البيان,عليه (لك),له (عليك),الرصيد المجمع بعد الحركة\n';
 
@@ -98,10 +115,11 @@ export function buildConsolidatedStatementCSV(
         description += ` (${row.transaction.transferRole === 'source' ? 'نقل مديونية إلى: ' : 'مديونية محولة من: '}${counterpart.name})`;
       }
     }
-    const qSource = `"${row.sourceAccountName.replace(/"/g, '""')}"`;
-    const qPath = `"${row.hierarchicalPath.replace(/"/g, '""')}"`;
-    const qDesc = `"${description.replace(/"/g, '""')}"`;
-    csv += `${index + 1},${row.transaction.date},${qSource},${qPath},${qDesc},${owedByAmount},${owedToAmount},${balance}\n`;
+    const qSource = `"${sanitizeSpreadsheetText(row.sourceAccountName).replace(/"/g, '""')}"`;
+    const qPath = `"${sanitizeSpreadsheetText(row.hierarchicalPath).replace(/"/g, '""')}"`;
+    const qDesc = `"${sanitizeSpreadsheetText(description).replace(/"/g, '""')}"`;
+    const safeDate = sanitizeSpreadsheetText(row.transaction.date);
+    csv += `${index + 1},${safeDate},${qSource},${qPath},${qDesc},${owedByAmount},${owedToAmount},${balance}\n`;
   });
 
   csv += `\nإجمالي عليه المجمع خلال الفترة: ${(consolidated.totalOwedByMinor / 100).toFixed(2)}\n`;
@@ -109,4 +127,5 @@ export function buildConsolidatedStatementCSV(
   csv += `رصيد آخر المدة المجمع: ${(consolidated.closingConsolidatedBalanceMinor / 100).toFixed(2)}\n`;
   return csv;
 }
+
 

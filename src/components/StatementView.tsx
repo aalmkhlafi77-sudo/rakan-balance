@@ -15,7 +15,10 @@ import {
 import { buildConsolidatedStatementCSV, buildStatementCSV } from '../domain/account_privacy.ts';
 import { formatCurrency, formatMinorAmount } from '../domain/money.ts';
 import { generatePdfReport } from '../services/pdf_export.ts';
-import { exportSingleParentAccountToExcel } from '../services/excel_export.ts';
+import {
+  exportConsolidatedParentAccountToExcel,
+  exportDirectAccountToExcel,
+} from '../services/excel_export.ts';
 import { createStatementPdf } from '../services/statement_pdf_file.ts';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal.tsx';
 import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
@@ -190,10 +193,10 @@ export const StatementView: React.FC<StatementViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Excel Export (Multi-sheet Single Parent Consolidated or Account Workbook)
+  // Excel Export: strictly follows active mode ('direct' vs 'consolidated')
   const exportExcel = () => {
     if (!selectedAccount) return;
-    exportSingleParentAccountToExcel({
+    const baseParams = {
       accountId: selectedAccount.id,
       accounts,
       transactions,
@@ -203,7 +206,13 @@ export const StatementView: React.FC<StatementViewProps> = ({
       ownerName: settings.ownerName,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
-    });
+    };
+
+    if (effectiveMode === 'consolidated') {
+      exportConsolidatedParentAccountToExcel(baseParams);
+    } else {
+      exportDirectAccountToExcel(baseParams);
+    }
   };
 
   const createPdfForShare = () => {
@@ -564,25 +573,65 @@ export const StatementView: React.FC<StatementViewProps> = ({
         </div>
 
         {/* Consolidated Mode Analytical Breakdown Strip */}
-        {effectiveMode === 'consolidated' && consolidatedStatement && (
-          <div className="mb-5 p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/50 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex flex-wrap items-center gap-4">
-              <span>
-                الرصيد المباشر للحساب الرئيسي:{' '}
-                <strong className="font-mono tabular-nums">
-                  {formatCurrency(consolidatedStatement.directBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
-                </strong>
-              </span>
-              <span>
-                مجموع أرصدة الفروع والتوابع ({consolidatedStatement.descendantCount}):{' '}
-                <strong className="font-mono tabular-nums">
-                  {formatCurrency(consolidatedStatement.descendantsDirectSumMinor, { showSign: true, symbol: settings.currencySymbol })}
-                </strong>
+        {effectiveMode === 'consolidated' && consolidatedStatement && selectedAccount && (
+          <div className="mb-5 p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/50 space-y-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                  الحساب الرئيسي: {selectedAccount.name}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-semibold">
+                  عدد الفروع والتابعين: {consolidatedStatement.descendantCount}
+                </span>
+              </div>
+              <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                كشف تحليلي مجمع (لا ينشئ قيوداً مكررة)
               </span>
             </div>
-            <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
-              كشف تحليلي مجمع (لا ينشئ قيوداً مكررة)
-            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/40 text-[11px]">
+              <div>
+                <span className="text-slate-500 block">رصيد أول الفترة</span>
+                <strong className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                  {formatCurrency(consolidatedStatement.openingConsolidatedBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">إجمالي عليه</span>
+                <strong className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                  +{formatMinorAmount(consolidatedStatement.totalOwedByMinor)} {settings.currencySymbol}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">إجمالي له</span>
+                <strong className="font-mono tabular-nums text-rose-600 dark:text-rose-400">
+                  -{formatMinorAmount(consolidatedStatement.totalOwedToMinor)} {settings.currencySymbol}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">صافي الحركة</span>
+                <strong className="font-mono tabular-nums text-blue-600 dark:text-blue-400">
+                  {formatCurrency(consolidatedStatement.netPeriodMovementMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">الرصيد المباشر</span>
+                <strong className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                  {formatCurrency(consolidatedStatement.directBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">أرصدة التابعين</span>
+                <strong className="font-mono tabular-nums text-amber-700 dark:text-amber-300">
+                  {formatCurrency(consolidatedStatement.descendantsDirectSumMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-500 block">رصيد آخر الفترة</span>
+                <strong className="font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                  {formatCurrency(consolidatedStatement.closingConsolidatedBalanceMinor, { showSign: true, symbol: settings.currencySymbol })}
+                </strong>
+              </div>
+            </div>
           </div>
         )}
 
@@ -744,6 +793,15 @@ export const StatementView: React.FC<StatementViewProps> = ({
                           return (
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                    isOwedBy
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                  }`}
+                                >
+                                  {isOwedBy ? 'عليه' : 'له'}
+                                </span>
                                 <span>{row.transaction.description}</span>
                                 {isTransfer && (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300">
