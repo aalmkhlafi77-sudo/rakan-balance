@@ -1,0 +1,4 @@
+{"version":10,"type":"context-options","origin":"library","browserName":"chromium","playwrightVersion":"1.65.1","options":{"baseURL":"http://127.0.0.1:3005","viewport":{"width":1280,"height":720},"deviceScaleFactor":1,"isMobile":false,"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.8154.6 Safari/537.36"},"platform":"linux","wallTime":1795114713327,"monotonicTime":15138.496,"sdkLanguage":"javascript","testIdAttributeName":"data-testid","title":"statement-pdf-whatsapp.spec.ts:108 › mobile emulation: NotAllowedError falls back to download and keeps modal open"}
+{"type":"before","callId":"dyux@310","startTime":15148.132,"class":"BrowserContext","method":"newPage","params":{}}
+{"type":"event","time":15254.626,"class":"BrowserContext","method":"page","params":{"pageId":"page@d6a7b8aab27e8b0ec91cc1f22decc374"}}
+{"type":"after","callId":"dyux@310","endTime":15254.703,"result":{"page":"<Page>"}}

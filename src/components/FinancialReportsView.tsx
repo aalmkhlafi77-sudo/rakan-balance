@@ -41,6 +41,11 @@ import {
   generatePdfReport,
 } from '../services/pdf_export.ts';
 import {
+  buildReportSharePayload,
+  ReportSharePayload,
+} from '../services/whatsapp_share_service.ts';
+import { ShareWhatsAppModal } from './ShareWhatsAppModal.tsx';
+import {
   AlertTriangle,
   ArrowUpDown,
   BarChart3,
@@ -54,6 +59,7 @@ import {
   Layers,
   Printer,
   Search,
+  Share2,
   TrendingDown,
   TrendingUp,
   UserCheck,
@@ -92,6 +98,7 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
   const [selectedParentId, setSelectedParentId] = useState<string>('');
   const [parentReportMode, setParentReportMode] = useState<ParentAccountReportMode>('detailed');
   const [parentManualRefreshTick, setParentManualRefreshTick] = useState<number>(0);
+  const [reportShareOpen, setReportShareOpen] = useState<boolean>(false);
 
   // Honest Per-Report Filter Capabilities (#8 & #23)
   const supportsCutoffOnly = subTab === 'debtors_creditors';
@@ -344,6 +351,42 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
   const canExportCurrentTab =
     dateValidation.valid && (subTab !== 'parent_branch' || Boolean(parentAccountReport && parentAccountReport.rootAccount));
 
+  const activeSharePayload: ReportSharePayload | null = useMemo(() => {
+    if (!canExportCurrentTab) return null;
+    const ownerName = settings.ownerName || 'راكان بلانس';
+
+    if (subTab === 'accounts') {
+      return buildReportSharePayload({ reportKey: 'accounts', report: accountsReport, ownerName, currencySymbol });
+    }
+    if (subTab === 'hierarchical') {
+      return buildReportSharePayload({ reportKey: 'hierarchical', report: hierarchicalReport, ownerName, currencySymbol });
+    }
+    if (subTab === 'parent_branch' && parentAccountReport) {
+      return buildReportSharePayload({ reportKey: 'parent_branch', report: parentAccountReport, ownerName, currencySymbol });
+    }
+    if (subTab === 'categories') {
+      return buildReportSharePayload({ reportKey: 'categories', report: categoriesReport, ownerName, currencySymbol });
+    }
+    if (subTab === 'period') {
+      return buildReportSharePayload({ reportKey: 'period', report: periodReport, ownerName, currencySymbol });
+    }
+    if (subTab === 'debtors_creditors') {
+      return buildReportSharePayload({ reportKey: 'debtors_creditors', report: debtorsCreditorsReport, ownerName, currencySymbol });
+    }
+    return null;
+  }, [
+    canExportCurrentTab,
+    settings.ownerName,
+    subTab,
+    currencySymbol,
+    accountsReport,
+    hierarchicalReport,
+    parentAccountReport,
+    categoriesReport,
+    periodReport,
+    debtorsCreditorsReport,
+  ]);
+
   // Export Trigger: Excel (uses exact Screen Report Model — Section 16 & #17)
   const handleExportExcel = () => {
     if (!canExportCurrentTab) return;
@@ -414,6 +457,17 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={!canExportCurrentTab}
+            onClick={() => setReportShareOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-green-600 hover:bg-green-500 active:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm shadow-green-600/20 cursor-pointer"
+            title="مشاركة ملخص التقرير أو ملف PDF عبر واتساب والجهاز"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>مشاركة واتساب</span>
+          </button>
+
           <button
             type="button"
             disabled={!canExportCurrentTab}
@@ -1975,6 +2029,22 @@ export const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* WhatsApp & PDF Share Modal for Financial Reports */}
+      {activeSharePayload && (
+        <ShareWhatsAppModal
+          isOpen={reportShareOpen}
+          onClose={() => setReportShareOpen(false)}
+          accountName={activeSharePayload.reportName}
+          suggestedPhone={activeSharePayload.suggestedPhone}
+          messageText={activeSharePayload.messageText}
+          title={activeSharePayload.title}
+          onCreatePdf={activeSharePayload.pdfFileFactory}
+          defaultTargetMode="general"
+          shareContext="report"
+          headerSubjectLabel="التقرير"
+        />
       )}
     </div>
   );

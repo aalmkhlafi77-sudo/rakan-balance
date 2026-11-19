@@ -1,0 +1,4 @@
+{"version":10,"type":"context-options","origin":"library","browserName":"chromium","playwrightVersion":"1.65.1","options":{"baseURL":"http://127.0.0.1:3005","viewport":{"width":1280,"height":720},"deviceScaleFactor":1,"isMobile":false,"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.8154.6 Safari/537.36"},"platform":"linux","wallTime":1795114713168,"monotonicTime":14979.486,"sdkLanguage":"javascript","testIdAttributeName":"data-testid","title":"statement-pdf-whatsapp.spec.ts:89 › mobile emulation: text-only Web Share does NOT falsely advertise native PDF file share"}
+{"type":"before","callId":"dyux@232","startTime":14984.093,"class":"BrowserContext","method":"newPage","params":{}}
+{"type":"event","time":15080.177,"class":"BrowserContext","method":"page","params":{"pageId":"page@ae4c2409e5c76816d31568f1e9230bed"}}
+{"type":"after","callId":"dyux@232","endTime":15080.247,"result":{"page":"<Page>"}}

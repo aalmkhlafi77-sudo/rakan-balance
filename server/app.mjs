@@ -18,6 +18,7 @@ export function createApp({ pool, env = process.env, staticRoot = dist }) {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.set('Content-Security-Policy', "frame-ancestors 'none'");
+    res.set('Permissions-Policy', 'web-share=(self)');
     next();
   });
   app.use('/api', (req, res, next) => {

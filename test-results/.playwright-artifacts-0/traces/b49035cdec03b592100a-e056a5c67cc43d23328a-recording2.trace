@@ -1,0 +1,4 @@
+{"version":10,"type":"context-options","origin":"library","browserName":"chromium","playwrightVersion":"1.65.1","options":{"baseURL":"http://127.0.0.1:3005","viewport":{"width":1280,"height":720},"deviceScaleFactor":1,"isMobile":false,"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.8154.6 Safari/537.36"},"platform":"linux","wallTime":1795114713018,"monotonicTime":14829.603,"sdkLanguage":"javascript","testIdAttributeName":"data-testid","title":"statement-pdf-whatsapp.spec.ts:49 › mobile emulation: native share receives a genuine PDF File and keeps direct wa.me open cleanly"}
+{"type":"before","callId":"dyux@154","startTime":14835.592,"class":"BrowserContext","method":"newPage","params":{}}
+{"type":"event","time":14937.279,"class":"BrowserContext","method":"page","params":{"pageId":"page@bd231b779d9f1a683e44ef2a39953a41"}}
+{"type":"after","callId":"dyux@154","endTime":14937.35,"result":{"page":"<Page>"}}
